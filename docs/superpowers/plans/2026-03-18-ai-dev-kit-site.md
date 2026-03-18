@@ -186,7 +186,7 @@ Go to https://github.com/robkisk/aidevkit.github.io/settings/pages:
 - Source: **GitHub Actions**
 - Enforce HTTPS: **enabled**
 
-Or via CLI:
+Or via CLI (note: if Pages has never been enabled, this may require initial setup in the GitHub web UI first — the API call works for updating an existing Pages config, not always for first-time creation):
 
 ```bash
 gh api repos/robkisk/aidevkit.github.io/pages -X PUT -f build_type=workflow
@@ -222,22 +222,28 @@ mkdir -p public/fonts
 # Download from Google Fonts CDN (woff2 format)
 curl -L -o public/fonts/DMSans-Regular.woff2 "https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2"
 curl -L -o public/fonts/DMSans-Medium.woff2 "https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZ2IHTWEBlw.woff2"
-curl -L -o public/fonts/DMSans-Bold.woff2 "https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2"
 ```
 
-If the CDN URLs have changed, download from https://fonts.google.com/specimen/DM+Sans and convert with a woff2 tool, or use the `@fontsource/dm-sans` npm package:
+**Recommended approach:** Use `@fontsource` npm packages for reliable, versioned font files:
 
 ```bash
-npm install @fontsource/dm-sans
-# Then reference from node_modules in CSS
+npm install @fontsource/dm-sans @fontsource/jetbrains-mono
+# Copy woff2 files from node_modules to public/fonts/
+cp node_modules/@fontsource/dm-sans/files/dm-sans-latin-400-normal.woff2 public/fonts/DMSans-Regular.woff2
+cp node_modules/@fontsource/dm-sans/files/dm-sans-latin-500-normal.woff2 public/fonts/DMSans-Medium.woff2
+cp node_modules/@fontsource/dm-sans/files/dm-sans-latin-700-normal.woff2 public/fonts/DMSans-Bold.woff2
 ```
 
-- [ ] **Step 2: Download JetBrains Mono woff2 files**
+If the `@fontsource` file paths differ, check `ls node_modules/@fontsource/dm-sans/files/` for exact filenames.
+
+- [ ] **Step 2: Copy JetBrains Mono woff2 files from @fontsource**
 
 ```bash
-curl -L -o public/fonts/JetBrainsMono-Regular.woff2 "https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@latest/fonts/webfonts/JetBrainsMono-Regular.woff2"
-curl -L -o public/fonts/JetBrainsMono-Bold.woff2 "https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@latest/fonts/webfonts/JetBrainsMono-Bold.woff2"
+cp node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2 public/fonts/JetBrainsMono-Regular.woff2
+cp node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2 public/fonts/JetBrainsMono-Bold.woff2
 ```
+
+If the file paths differ, check `ls node_modules/@fontsource/jetbrains-mono/files/`.
 
 - [ ] **Step 3: Verify font files exist and are non-empty**
 
@@ -604,7 +610,6 @@ const categories = [
   <title>AI Dev Kit for Databricks</title>
   <meta name="description" content="Skills, MCP tools, and an interactive builder to accelerate AI development on Databricks" />
   <link rel="icon" href={`${base}favicon.svg`} />
-  <link rel="stylesheet" href={`${base}fonts/databricks-landing.css`} />
   <style>
     @font-face { font-family: 'DM Sans'; src: url('/aidevkit.github.io/fonts/DMSans-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
     @font-face { font-family: 'DM Sans'; src: url('/aidevkit.github.io/fonts/DMSans-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
@@ -725,6 +730,71 @@ git commit -m "feat: add custom landing page with hero, features, and category n
 git push origin main
 ```
 
+### Task 3.2: Create Hero.astro Starlight override and PromptCard component
+
+**Files:**
+- Create: `src/components/Hero.astro`
+- Create: `src/components/PromptCard.astro`
+- Modify: `astro.config.mjs` (add Hero to `components` override)
+
+- [ ] **Step 1: Create Hero.astro override**
+
+Create `src/components/Hero.astro` — a Starlight Hero component override that uses Databricks branding (Navy 900 background, Lava 600 CTA buttons, DM Sans typography) when a doc page uses the `hero` frontmatter. Import and extend Starlight's default Hero component, wrapping it with brand-styled CSS.
+
+- [ ] **Step 2: Create PromptCard.astro component**
+
+Create `src/components/PromptCard.astro` — a reusable component for displaying prompts in the Prompt Library pages. Renders a prompt string in a styled code block with a copy button. Used in Phase 6 Task 6.2.
+
+```astro
+---
+interface Props {
+  prompt: string;
+}
+const { prompt } = Astro.props;
+---
+<div class="prompt-card">
+  <pre><code>{prompt}</code></pre>
+</div>
+
+<style>
+  .prompt-card {
+    background: var(--sl-color-gray-1);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .prompt-card pre {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+</style>
+```
+
+- [ ] **Step 3: Register Hero override in astro.config.mjs**
+
+```javascript
+starlight({
+  title: 'AI Dev Kit',
+  components: {
+    Hero: './src/components/Hero.astro',
+  },
+  // ... rest of config
+})
+```
+
+- [ ] **Step 4: Build and verify**
+
+```bash
+npm run build && npm run preview
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/Hero.astro src/components/PromptCard.astro astro.config.mjs
+git commit -m "feat: add Databricks-branded Hero override and PromptCard component"
+```
+
 ---
 
 ## Phase 4: Core Docs Structure
@@ -815,7 +885,7 @@ AI Dev Kit gives Claude Code deep knowledge of the Databricks platform through *
 
 ## Try It
 
-After [installing](/aidevkit.github.io/docs/getting-started/installation/), try these prompts:
+After [installing](./installation/), try these prompts:
 
 \`\`\`
 List all tables in my main catalog and show row counts.
@@ -832,9 +902,9 @@ Build a Streamlit app that queries my sales data and shows a revenue chart.
 
 ## Next Steps
 
-- Browse [Skills](/aidevkit.github.io/docs/skills/) to see what's available
-- Explore the [MCP Tools](/aidevkit.github.io/docs/mcp-tools/) catalog
-- Check the [Prompt Library](/aidevkit.github.io/docs/prompt-library/) for ready-to-use prompts
+- Browse [Skills](../skills/) to see what's available
+- Explore the [MCP Tools](../mcp-tools/) catalog
+- Check the [Prompt Library](../prompt-library/) for ready-to-use prompts
 ```
 
 - [ ] **Step 3: Create configuration guide**
@@ -987,39 +1057,25 @@ git push origin main
 
 ## Phase 5: Content Migration (Skills)
 
-### Task 5.1: Migrate all single-file skills (15 skills)
+### Task 5.1: Migrate single-file skills (6 skills)
 
-Skills with only 1 SKILL.md file — each becomes one doc page.
+Skills with only 1-2 markdown files — each becomes one doc page. For skills with 2 files, inline the reference content as a section within the main page.
 
-**Skills (1 file each):**
-`databricks-config`, `databricks-aibi-dashboards`, `databricks-agent-skill-databricks-jobs`, `databricks-agent-skill-databricks-lakebase`
+| Skill Directory | Files | Target Path |
+|---|---|---|
+| `databricks-config` | 1 | `skills/devops-config/workspace-config.mdx` |
+| `databricks-aibi-dashboards` | 1 | `skills/sql-analytics/aibi-dashboards.mdx` |
+| `databricks-agent-skill-databricks-jobs` | 1 | `skills/devops-config/jobs-orchestration.mdx` |
+| `databricks-agent-skill-databricks-lakebase` | 1 | `skills/apps-databases/lakebase-autoscale.mdx` |
+| `databricks-python-sdk` | 2 | `skills/devops-config/python-sdk.mdx` |
 
-**Skills (2 files — inline reference):**
-(remaining skills with ≤2 markdown files that weren't converted in Phase 4)
+**Note:** `databricks-config` and `databricks-agent-skill-databricks` both map to "Workspace Config". Merge their content into one page, with `databricks-config` providing auth/profile guidance and `databricks-agent-skill-databricks` providing CLI operations and data exploration.
 
 - [ ] **Step 1: For each skill, read the source SKILL.md**
 
 Source: `/Users/robby.kiskanyan/dev/devx/dbx-devx-workshop/.claude/skills/<skill-name>/SKILL.md`
 
 - [ ] **Step 2: Convert to Starlight page using the skill page template**
-
-For each, create the target file under the appropriate category directory:
-
-| Skill Directory | Target Path |
-|---|---|
-| `databricks-config` | `docs/skills/devops-config/workspace-config.mdx` |
-| `databricks-aibi-dashboards` | `docs/skills/sql-analytics/aibi-dashboards.mdx` |
-| `databricks-agent-skill-databricks-jobs` | `docs/skills/devops-config/jobs-orchestration.mdx` |
-| `databricks-agent-skill-databricks-lakebase` | `docs/skills/apps-databases/lakebase-autoscale.mdx` |
-| `databricks-agent-skill-databricks` | `docs/skills/devops-config/workspace-config.mdx` (merge with config) |
-| `databricks-bundles` | `docs/skills/devops-config/asset-bundles.mdx` |
-| `databricks-genie` | `docs/skills/sql-analytics/genie-spaces.mdx` |
-| `databricks-agent-bricks` | `docs/skills/ai-ml/agent-bricks.mdx` |
-| `databricks-metric-views` | `docs/skills/sql-analytics/metric-views.mdx` |
-| `databricks-lakebase-provisioned` | `docs/skills/apps-databases/lakebase-provisioned.mdx` |
-| `databricks-python-sdk` | `docs/skills/devops-config/python-sdk.mdx` |
-| `databricks-synthetic-data-gen` | `docs/skills/ai-ml/synthetic-data.mdx` |
-| `databricks-unity-catalog` | `docs/skills/governance-catalog/unity-catalog.mdx` |
 
 Apply conversion rules: strip agent metadata, keep capabilities, add frontmatter, add Related MCP Tools, Example Prompts, and References sections.
 
@@ -1035,23 +1091,24 @@ Expected: No build errors. All pages appear in sidebar under correct categories.
 
 ```bash
 git add src/content/docs/skills/
-git commit -m "docs: migrate 15 single-file skills to Starlight pages"
+git commit -m "docs: migrate 6 single-file skills to Starlight pages"
 ```
 
-### Task 5.2: Migrate multi-file skills (13 skills with child pages)
+### Task 5.2: Migrate multi-file skills (22 skills with child pages)
 
-Skills with 3+ reference files — each gets a directory with child pages.
+Skills with 3+ markdown files — each gets a directory with an index page and child pages.
 
 **Skills to migrate:**
 
 | Skill | Files | Target Directory |
 |---|---|---|
-| `databricks-spark-declarative-pipelines` | 11 | `skills/data-engineering/spark-declarative-pipelines/` |
+| `databricks-agent-skill-databricks-pipelines` | 35 | `skills/data-engineering/spark-declarative-pipelines/` (consolidated) |
+| `databricks-mlflow-evaluation` | 12 | `skills/ai-ml/mlflow-evaluation/` |
+| `databricks-spark-declarative-pipelines` | 11 | `skills/data-engineering/spark-declarative-pipelines/` (merge with above) |
 | `databricks-spark-structured-streaming` | 10 | `skills/data-engineering/spark-structured-streaming/` |
 | `databricks-model-serving` | 10 | `skills/ai-ml/model-serving/` |
 | `databricks-agent-skill-databricks-apps` | 10 | `skills/apps-databases/databricks-apps-appkit/` |
 | `spark-python-data-source` | 9 | `skills/data-engineering/custom-spark-data-sources/` |
-| `databricks-mlflow-evaluation` | 12 | `skills/ai-ml/mlflow-evaluation/` |
 | `databricks-app-python` | 7 | `skills/apps-databases/databricks-apps-python/` |
 | `databricks-synthetic-data-gen` | 7 | `skills/ai-ml/synthetic-data/` |
 | `databricks-zerobus-ingest` | 6 | `skills/data-engineering/zerobus-ingest/` |
@@ -1060,8 +1117,18 @@ Skills with 3+ reference files — each gets a directory with child pages.
 | `databricks-dbsql` | 6 | `skills/sql-analytics/databricks-sql/` |
 | `databricks-jobs` | 5 | `skills/devops-config/jobs-orchestration/` |
 | `databricks-ai-functions` | 5 | `skills/sql-analytics/ai-functions/` |
-| `databricks-vector-search` | 3 | `skills/ai-ml/vector-search/` |
 | `databricks-agent-skill-databricks` | 5 | `skills/devops-config/workspace-config/` |
+| `databricks-unity-catalog` | 4 | `skills/governance-catalog/unity-catalog/` |
+| `databricks-vector-search` | 3 | `skills/ai-ml/vector-search/` |
+| `databricks-genie` | 3 | `skills/sql-analytics/genie-spaces/` |
+| `databricks-agent-bricks` | 3 | `skills/ai-ml/agent-bricks/` |
+| `databricks-metric-views` | 3 | `skills/sql-analytics/metric-views/` |
+| `databricks-lakebase-provisioned` | 3 | `skills/apps-databases/lakebase-provisioned/` |
+| `databricks-bundles` | 3 | `skills/devops-config/asset-bundles/` |
+
+**Notes:**
+- `databricks-agent-skill-databricks-pipelines` (35 files) and `databricks-spark-declarative-pipelines` (11 files) both map to the same sidebar entry "Spark Declarative Pipelines". Merge content from both into a single directory, deduplicating overlapping topics.
+- `databricks-unity-catalog` (4 files) maps to both "Unity Catalog" and "Volumes & Sharing" sidebar entries. Create the directory with child pages for system tables, volumes, and data profiling.
 
 - [ ] **Step 1: For each skill, read all source markdown files**
 
@@ -1073,7 +1140,25 @@ For each skill, create `<target-dir>/index.mdx` from the SKILL.md using the skil
 
 Each numbered file (e.g., `1-ingestion-patterns.md`) becomes a child page (e.g., `ingestion-patterns.mdx`). Apply frontmatter with `sidebar.order` matching the original numbering.
 
-**Special case for `databricks-agent-skill-databricks-pipelines`:** Consolidate Python/SQL variant pairs into single pages with tabbed code blocks (e.g., `auto-cdc-python.md` + `auto-cdc-sql.md` → `auto-cdc.mdx` with tabs).
+**Tabbed code blocks for Python/SQL variants:** `databricks-agent-skill-databricks-pipelines` has many language-specific pairs (e.g., `auto-cdc-python.md` + `auto-cdc-sql.md`). Consolidate each pair into a single page using Starlight's built-in `<Tabs>` component. This reduces ~34 files to ~15 pages.
+
+Import pattern for every MDX file that uses tabs:
+```mdx
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+<Tabs>
+  <TabItem label="Python">
+  ```python
+  # Python code here
+  ```
+  </TabItem>
+  <TabItem label="SQL">
+  ```sql
+  -- SQL code here
+  ```
+  </TabItem>
+</Tabs>
+```
 
 - [ ] **Step 4: Embed code examples**
 
@@ -1091,7 +1176,7 @@ Expected: No build errors. All skill pages with child pages appear in sidebar.
 
 ```bash
 git add src/content/docs/skills/
-git commit -m "docs: migrate 13 multi-file skills with child pages"
+git commit -m "docs: migrate 22 multi-file skills with child pages"
 git push origin main
 ```
 
@@ -1113,6 +1198,8 @@ git push origin main
 - Create: `src/content/docs/mcp-tools/compute-workspace.mdx`
 
 - [ ] **Step 1: Catalog all 99 MCP tools from the ai-dev-kit MCP server**
+
+Source the tool definitions from the MCP server's tool listing. In a Claude Code session with the ai-dev-kit MCP connected, the available tools are visible in the `<available-deferred-tools>` block. Alternatively, check the MCP server source code in `/Users/robby.kiskanyan/dev/aitools/ai-dev-kit/` for tool registration files. All tools prefixed with `mcp__ai-dev-kit__` should be documented.
 
 Group by category. For each tool, document: name, description, parameters (name, type, required), example prompt, related skills.
 
@@ -1232,9 +1319,40 @@ git push origin main
 ## Final Verification
 
 - [ ] **Verify live site** at `https://robkisk.github.io/aidevkit.github.io/`
-- [ ] **Check landing page** renders correctly with all sections
-- [ ] **Check docs sidebar** shows all categories and pages
-- [ ] **Check Pagefind search** works across doc pages
-- [ ] **Check dark/light mode** toggle uses Databricks colors
-- [ ] **Check mobile responsive** — landing page stacks correctly, docs sidebar collapses
-- [ ] **Check all internal links** resolve (no 404s from base path issues)
+
+- [ ] **Check page count matches expectations**
+
+```bash
+find dist -name "*.html" | wc -l
+```
+
+Expected: 110-130 HTML files (doc pages + index pages + 404).
+
+- [ ] **Run link checker on built output**
+
+```bash
+npx lychee dist/ --base "https://robkisk.github.io/aidevkit.github.io" --exclude "github.com" --no-progress
+```
+
+Expected: No broken internal links. External links may timeout but should not 404.
+
+- [ ] **Check landing page** renders correctly with all sections (hero, features, steps, categories, footer)
+
+- [ ] **Check docs sidebar** shows all categories and pages — expand each group and verify the skill/tool pages match the spec's sidebar navigation tree
+
+- [ ] **Check Pagefind search** — type "vector search" in the search box and verify relevant skill pages appear. Verify the landing page does NOT appear in results.
+
+- [ ] **Check dark/light mode** — toggle the theme in the header. Verify:
+  - Dark mode: Navy 900 background, Lava 500 accent links, light text
+  - Light mode: Oat Light background, Lava 800 body links, dark text
+  - Code blocks render correctly in both modes
+
+- [ ] **Check mobile responsive** — resize browser to 480px width. Verify landing page sections stack vertically, docs sidebar collapses to hamburger menu.
+
+- [ ] **Run Astro check**
+
+```bash
+npx astro check
+```
+
+Expected: No errors.
