@@ -217,14 +217,7 @@ Wait for the workflow to complete, then verify the site is live at `https://robk
 
 - [ ] **Step 1: Download DM Sans woff2 files**
 
-```bash
-mkdir -p public/fonts
-# Download from Google Fonts CDN (woff2 format)
-curl -L -o public/fonts/DMSans-Regular.woff2 "https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2"
-curl -L -o public/fonts/DMSans-Medium.woff2 "https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZ2IHTWEBlw.woff2"
-```
-
-**Recommended approach:** Use `@fontsource` npm packages for reliable, versioned font files:
+Use `@fontsource` npm packages for reliable, versioned font files:
 
 ```bash
 npm install @fontsource/dm-sans @fontsource/jetbrains-mono
@@ -1057,27 +1050,26 @@ git push origin main
 
 ## Phase 5: Content Migration (Skills)
 
-### Task 5.1: Migrate single-file skills (6 skills)
+### Task 5.1: Migrate single-file skills (2 skills)
 
-Skills with only 1-2 markdown files — each becomes one doc page. For skills with 2 files, inline the reference content as a section within the main page.
+Skills with only 1-2 markdown files and no corresponding multi-file skill in Task 5.2 — each becomes one standalone doc page. For `databricks-python-sdk` (2 files + 5 example `.py` files), inline the `doc-index.md` as a section and embed the example code as fenced blocks.
 
 | Skill Directory | Files | Target Path |
 |---|---|---|
-| `databricks-config` | 1 | `skills/devops-config/workspace-config.mdx` |
 | `databricks-aibi-dashboards` | 1 | `skills/sql-analytics/aibi-dashboards.mdx` |
-| `databricks-agent-skill-databricks-jobs` | 1 | `skills/devops-config/jobs-orchestration.mdx` |
-| `databricks-agent-skill-databricks-lakebase` | 1 | `skills/apps-databases/lakebase-autoscale.mdx` |
-| `databricks-python-sdk` | 2 | `skills/devops-config/python-sdk.mdx` |
+| `databricks-python-sdk` | 2 + 5 examples | `skills/devops-config/python-sdk.mdx` |
 
-**Note:** `databricks-config` and `databricks-agent-skill-databricks` both map to "Workspace Config". Merge their content into one page, with `databricks-config` providing auth/profile guidance and `databricks-agent-skill-databricks` providing CLI operations and data exploration.
+**Note:** `databricks-config` (1 file), `databricks-agent-skill-databricks-jobs` (1 file), and `databricks-agent-skill-databricks-lakebase` (1 file) are NOT migrated here — their content is merged into the corresponding Task 5.2 directory's `index.mdx` page to avoid target path conflicts (flat `.mdx` vs directory).
 
-- [ ] **Step 1: For each skill, read the source SKILL.md**
+- [ ] **Step 1: For each skill, read all source files**
 
-Source: `/Users/robby.kiskanyan/dev/devx/dbx-devx-workshop/.claude/skills/<skill-name>/SKILL.md`
+Source: `/Users/robby.kiskanyan/dev/devx/dbx-devx-workshop/.claude/skills/<skill-name>/`
+
+Read SKILL.md, any reference files, and all files in `examples/` directories.
 
 - [ ] **Step 2: Convert to Starlight page using the skill page template**
 
-Apply conversion rules: strip agent metadata, keep capabilities, add frontmatter, add Related MCP Tools, Example Prompts, and References sections.
+Apply conversion rules: strip agent metadata, keep capabilities, add frontmatter, add Related MCP Tools, Example Prompts, and References sections. For `databricks-python-sdk`, embed the 5 example `.py` files as fenced code blocks.
 
 - [ ] **Step 3: Build and verify**
 
@@ -1091,12 +1083,12 @@ Expected: No build errors. All pages appear in sidebar under correct categories.
 
 ```bash
 git add src/content/docs/skills/
-git commit -m "docs: migrate 6 single-file skills to Starlight pages"
+git commit -m "docs: migrate 2 single-file skills to Starlight pages"
 ```
 
-### Task 5.2: Migrate multi-file skills (22 skills with child pages)
+### Task 5.2: Migrate multi-file skills (23 skill directories → 22 target pages)
 
-Skills with 3+ markdown files — each gets a directory with an index page and child pages.
+Skills with 3+ markdown files — each gets a directory with an index page and child pages. Three single-file skills from Task 5.1 are also merged into their corresponding directories here.
 
 **Skills to migrate:**
 
@@ -1128,7 +1120,11 @@ Skills with 3+ markdown files — each gets a directory with an index page and c
 
 **Notes:**
 - `databricks-agent-skill-databricks-pipelines` (35 files) and `databricks-spark-declarative-pipelines` (11 files) both map to the same sidebar entry "Spark Declarative Pipelines". Merge content from both into a single directory, deduplicating overlapping topics.
-- `databricks-unity-catalog` (4 files) maps to both "Unity Catalog" and "Volumes & Sharing" sidebar entries. Create the directory with child pages for system tables, volumes, and data profiling.
+- `databricks-unity-catalog` (4 files) maps to both "Unity Catalog" and "Volumes & Sharing" sidebar entries. Create the directory with child pages for system tables, volumes, and data profiling. This is a deliberate simplification from the spec's separate "Volumes & Sharing" entry.
+- **Single-file skill merges:** Three skills from the original Task 5.1 scope are merged into Task 5.2 directories to avoid flat-file/directory target conflicts:
+  - `databricks-config` (1 file) → merge into `workspace-config/index.mdx` alongside `databricks-agent-skill-databricks` (config provides auth/profile guidance, agent-skill provides CLI operations)
+  - `databricks-agent-skill-databricks-jobs` (1 file) → merge into `jobs-orchestration/index.mdx` alongside `databricks-jobs` (agent-skill provides development guidance, jobs provides task types and scheduling)
+  - `databricks-agent-skill-databricks-lakebase` (1 file) → merge into `lakebase-autoscale/index.mdx` alongside `databricks-lakebase-autoscale` (agent-skill provides CLI management, lakebase provides patterns and best practices)
 
 - [ ] **Step 1: For each skill, read all source markdown files**
 
@@ -1176,7 +1172,7 @@ Expected: No build errors. All skill pages with child pages appear in sidebar.
 
 ```bash
 git add src/content/docs/skills/
-git commit -m "docs: migrate 22 multi-file skills with child pages"
+git commit -m "docs: migrate 23 skill directories into 22 target pages with child pages"
 git push origin main
 ```
 
