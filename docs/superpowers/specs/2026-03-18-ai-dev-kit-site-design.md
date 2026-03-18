@@ -10,7 +10,7 @@ A public documentation site for the Databricks AI Dev Kit, deployed to GitHub Pa
 - **Option A (recommended):** Configure a custom domain (e.g., `aidevkit.dev`) via CNAME record and GitHub Pages settings. Set `site: 'https://aidevkit.dev'` in `astro.config.mjs`. Base path stays `/`.
 - **Option B:** Accept the project site URL `https://robkisk.github.io/aidevkit.github.io/`. Set `base: '/aidevkit.github.io'` in `astro.config.mjs`. All internal links and asset paths resolve through Astro's base path handling.
 
-**Decision needed before implementation:** Which hosting option to use. The spec assumes Option A with a custom domain for clean URLs.
+**Decision:** Option B — project site at `https://robkisk.github.io/aidevkit.github.io/`. Set `base: '/aidevkit.github.io'` and `site: 'https://robkisk.github.io'` in `astro.config.mjs`. Astro handles base path prefixing for all internal links and assets automatically.
 
 **Site type:** Hybrid — custom marketing landing page as the front door, with Starlight-powered documentation as the inner pages covering all 28 skills, 99 MCP tools, tutorials, and a prompt library.
 
@@ -301,13 +301,12 @@ push to main → install deps → astro build → upload artifact → deploy to 
 - **Package manager:** npm
 - **Build output:** `dist/` (fully static HTML/CSS/JS)
 - **Deploy action:** `actions/deploy-pages@v4`
-- **Base path:** `/` with custom domain (Option A) or `/aidevkit.github.io` for project site (Option B). See Overview section for decision.
-- **Site URL in config:** set in `astro.config.mjs` `site` property based on hosting option chosen
+- **Base path:** `/aidevkit.github.io` (project site)
+- **Site URL in config:** `site: 'https://robkisk.github.io'`, `base: '/aidevkit.github.io'`
 
 ### GitHub repo settings
 
 - **Pages source:** set to "GitHub Actions" (not "Deploy from a branch")
-- **Custom domain** (if Option A): add CNAME record pointing to `robkisk.github.io`, configure in repo Settings → Pages → Custom domain
 - Enable "Enforce HTTPS"
 
 ### Rebuild trigger
