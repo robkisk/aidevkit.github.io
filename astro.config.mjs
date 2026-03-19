@@ -9,6 +9,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'AI Dev Kit',
+			customCss: ['./src/styles/databricks.css'],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/databricks-solutions/ai-dev-kit' },
 			],

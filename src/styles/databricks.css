@@ -1,0 +1,90 @@
+/* === Self-hosted Fonts === */
+
+@font-face {
+  font-family: 'DM Sans';
+  src: url('/aidevkit.github.io/fonts/DMSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  src: url('/aidevkit.github.io/fonts/DMSans-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  src: url('/aidevkit.github.io/fonts/DMSans-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/aidevkit.github.io/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/aidevkit.github.io/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* === Databricks Brand Tokens (Light Mode) === */
+
+:root {
+  --sl-font: 'DM Sans', sans-serif;
+  --sl-font-mono: 'JetBrains Mono', monospace;
+
+  --sl-color-accent-low: #FFB8AB;
+  --sl-color-accent: #FF3621;
+  --sl-color-accent-high: #801C17;
+  --sl-color-white: #F9F7F4;
+  --sl-color-gray-1: #A3B0B5;
+  --sl-color-gray-5: #1B3139;
+  --sl-color-gray-6: #0F1F25;
+  --sl-color-black: #0B2026;
+}
+
+/* === Databricks Brand Tokens (Dark Mode) === */
+
+[data-theme='dark'] {
+  --sl-color-accent-low: #801C17;
+  --sl-color-accent: #FF5F46;
+  --sl-color-accent-high: #FFB8AB;
+  --sl-color-white: #0B2026;
+  --sl-color-gray-1: #0F1F25;
+  --sl-color-gray-5: #6B7D83;
+  --sl-color-gray-6: #F9F7F4;
+  --sl-color-black: #FFFFFF;
+}
+
+/* === Typography === */
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 500;
+}
+
+/* === Links (WCAG AA) === */
+
+:root[data-theme='light'] a:not(.sl-btn) {
+  color: #801C17;
+}
+
+/* === Buttons === */
+
+.sl-btn {
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  transition: all 0.25s ease-in-out;
+}
