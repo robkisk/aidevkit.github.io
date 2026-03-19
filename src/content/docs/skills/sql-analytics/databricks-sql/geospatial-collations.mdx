@@ -1,0 +1,108 @@
+---
+title: Geospatial SQL & Collations
+description: H3 hexagonal indexing, ST spatial functions, and collation support for case-insensitive and locale-aware string matching in Databricks SQL.
+sidebar:
+  order: 3
+---
+
+## H3 Geospatial Functions
+
+H3 is Uber's hexagonal hierarchical spatial index with 16 resolutions (0-15). Available since DBR 11.2.
+
+```sql
+-- Index taxi trips by pickup location
+CREATE TABLE trips_h3 AS
+SELECT
+  h3_longlatash3(pickup_longitude, pickup_latitude, 12) AS pickup_cell,
+  h3_longlatash3(dropoff_longitude, dropoff_latitude, 12) AS dropoff_cell,
+  *
+FROM taxi_trips;
+
+-- Proximity search: cells within 2 rings of a location
+SELECT explode(h3_kring(h3_longlatash3(-73.985, 40.748, 9), 2)) AS nearby_cell;
+
+-- Roll up to coarser resolution
+SELECT h3_toparent(pickup_cell, 7) AS parent_cell, count(*) AS trip_count
+FROM trips_h3 GROUP BY h3_toparent(pickup_cell, 7);
+```
+
+### Key H3 Functions
+
+| Function | Description |
+|----------|-------------|
+| `h3_longlatash3(lon, lat, res)` | Convert coordinates to H3 cell |
+| `h3_polyfillash3(geog, res)` | Fill polygon with H3 cells |
+| `h3_toparent(cell, res)` | Get parent cell at coarser resolution |
+| `h3_kring(cell, k)` | All cells within grid distance k |
+| `h3_ischildof(cell1, cell2)` | Test parent-child relationship |
+| `h3_distance(cell1, cell2)` | Grid distance between cells |
+
+## ST Spatial Functions
+
+Native spatial SQL with 80+ functions operating on `GEOMETRY` and `GEOGRAPHY` types. Requires DBR 17.1+.
+
+```sql
+-- Point-in-polygon: find stores within a delivery zone
+SELECT s.name, z.zone_name
+FROM retail_stores s
+JOIN delivery_zones z ON ST_Contains(z.boundary, s.location);
+
+-- Distance calculation
+SELECT c.customer_id,
+  ST_DistanceSphere(c.location, s.location) AS distance_meters
+FROM customers c CROSS JOIN retail_stores s
+WHERE s.store_id = 1
+  AND ST_DWithin(
+    ST_GeogFromText(ST_AsText(c.location)),
+    ST_GeogFromText(ST_AsText(s.location)), 5000
+  );
+```
+
+### Combining H3 and ST Functions
+
+Use H3 for fast pre-filtering, then ST for precise spatial operations:
+
+```sql
+SELECT s.name AS store, c.name AS customer,
+  ST_DistanceSphere(s.location, c.location) AS distance_m
+FROM store_h3 s
+JOIN customer_h3 c
+  ON c.h3_cell IN (SELECT explode(h3_kring(s.h3_cell, 2)))
+WHERE ST_DistanceSphere(s.location, c.location) < 2000;
+```
+
+Spatial joins benefit from up to **17x performance improvement** on serverless SQL warehouses with automatic spatial indexing.
+
+## Collations
+
+Collations define rules for comparing and sorting strings. Available from DBR 16.1+.
+
+| Collation | Behavior |
+|-----------|----------|
+| `UTF8_BINARY` | Default byte-by-byte comparison |
+| `UTF8_LCASE` | Case-insensitive binary |
+| `UNICODE` | ICU root locale ordering |
+| `UNICODE_CI` | Unicode case-insensitive |
+| `UNICODE_CI_AI` | Case and accent-insensitive |
+| Locale-specific | Language-aware (e.g., `DE`, `FR`, `JA`) |
+
+### Setting Collations
+
+```sql
+-- Catalog level (DBR 17.1+)
+CREATE CATALOG customer_cat DEFAULT COLLATION UNICODE_CI_AI;
+
+-- Table level (DBR 16.3+)
+CREATE TABLE users (
+  id INT,
+  username STRING,
+  email STRING,
+  password_hash STRING COLLATE UTF8_BINARY
+) DEFAULT COLLATION UNICODE_CI;
+
+-- Query level
+SELECT * FROM products
+WHERE name COLLATE UNICODE_CI = 'laptop';
+```
+
+Collation inheritance: Catalog > Schema > Table > Column > Expression. `STARTSWITH` and `ENDSWITH` with `UTF8_LCASE` show up to **10x speedup** compared to `LOWER()` workarounds.

@@ -1,0 +1,83 @@
+---
+title: End-to-End RAG
+description: Complete RAG walkthrough — source table creation, endpoint setup, index creation, querying, hybrid search, filtering, and agent integration.
+sidebar:
+  order: 2
+---
+
+## Query Patterns
+
+### Text Query
+
+```python
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.my_index",
+    columns=["id", "content", "metadata"],
+    query_text="What is machine learning?",
+    num_results=5
+)
+for doc in results.result.data_array:
+    score = doc[-1]
+    print(f"Score: {score}, Content: {doc[1][:100]}...")
+```
+
+### Hybrid Search (Semantic + Keyword)
+
+```python
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.my_index",
+    columns=["id", "content"],
+    query_text="machine learning algorithms",
+    query_type="hybrid",
+    num_results=10
+)
+```
+
+### Filtering
+
+**Standard endpoints** (dictionary format):
+
+```python
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.my_index",
+    columns=["id", "content"],
+    query_text="machine learning",
+    num_results=10,
+    filters_json='{"category": "ai", "status": ["active", "pending"]}'
+)
+```
+
+**Storage-Optimized endpoints** (SQL-like syntax):
+
+```python
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.my_index",
+    columns=["id", "content"],
+    query_text="machine learning",
+    num_results=10,
+    filter_string="category = 'ai' AND created_at >= '2024-01-01'"
+)
+```
+
+## Agent Integration
+
+Use `VectorSearchRetrieverTool` to integrate vector search into agents as a retrieval tool. This enables RAG patterns where the agent queries the index for relevant context before generating responses.
+
+## CLI Quick Reference
+
+```bash
+databricks vector-search endpoints list
+databricks vector-search endpoints create --name my-endpoint --endpoint-type STANDARD
+databricks vector-search indexes get-index --index-name catalog.schema.my_index
+databricks vector-search indexes sync-index --index-name catalog.schema.my_index
+```
+
+## Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Index sync slow | Use Storage-Optimized (20x faster indexing) |
+| Query latency high | Use Standard endpoint for sub-100ms latency |
+| `filters_json` not working | Storage-Optimized uses `filter_string` (SQL syntax) |
+| Embedding dimension mismatch | Ensure query and index dimensions match |
+| Index not updating | Check pipeline_type; use `sync_index()` for TRIGGERED |

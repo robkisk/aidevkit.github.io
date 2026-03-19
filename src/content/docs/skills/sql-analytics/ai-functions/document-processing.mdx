@@ -1,0 +1,80 @@
+---
+title: Document Processing Pipelines
+description: End-to-end batch document processing using AI Functions in SDP pipelines — parsing, classification, extraction, similarity matching, and custom RAG pipelines.
+sidebar:
+  order: 4
+---
+
+## Pipeline Architecture
+
+```
+[Landing Volume] -> Stage 1: ai_parse_document
+                 -> Stage 2: ai_classify (document type)
+                 -> Stage 3: ai_extract (flat) + ai_query (nested JSON)
+                 -> Stage 4: ai_similarity (matching)
+                 -> Stage 5: Final Delta output
+```
+
+### Function Selection by Stage
+
+| Stage | Preferred | Use `ai_query` when... |
+|-------|-----------|----------------------|
+| Parse binary docs | `ai_parse_document` | Need image-level reasoning |
+| Classify document type | `ai_classify` | More than 20 categories |
+| Extract flat fields | `ai_extract` | Nested arrays in schema |
+| Score similarity | `ai_similarity` | Cross-document reasoning |
+| Extract nested JSON | `ai_query` with `responseFormat` | This is the intended use |
+
+## Centralized Configuration
+
+Store model names, prompts, and paths in `config.yml`:
+
+```yaml
+models:
+  default: "databricks-claude-sonnet-4"
+  mini: "databricks-meta-llama-3-1-8b-instruct"
+prompts:
+  extract_invoice: |
+    Extract invoice fields and return ONLY valid JSON.
+    Fields: invoice_number, vendor_name, total_amount,
+    line_items: [{item_code, description, quantity, unit_price}].
+```
+
+## Custom RAG Pipeline
+
+### Parse and Chunk into Delta
+
+```sql
+CREATE OR REPLACE TABLE catalog.schema.parsed_chunks AS
+WITH parsed AS (
+  SELECT path, ai_parse_document(content) AS doc
+  FROM read_files('/Volumes/catalog/schema/volume/docs/', format => 'binaryFile')
+),
+elements AS (
+  SELECT path,
+    explode(variant_get(doc, '$.document.elements', 'ARRAY<VARIANT>')) AS element
+  FROM parsed
+)
+SELECT
+  md5(concat(path, variant_get(element, '$.content', 'STRING'))) AS chunk_id,
+  path AS source_path,
+  variant_get(element, '$.content', 'STRING') AS content,
+  variant_get(element, '$.type', 'STRING') AS element_type
+FROM elements
+WHERE length(trim(variant_get(element, '$.content', 'STRING'))) > 10;
+```
+
+Enable Change Data Feed for Vector Search Delta Sync:
+
+```sql
+ALTER TABLE catalog.schema.parsed_chunks
+SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
+```
+
+## Tips
+
+1. **Parse first, enrich second** -- never pass raw binary to `ai_query`
+2. **Flat fields = `ai_extract`; nested arrays = `ai_query`**
+3. **`failOnError => false` is mandatory in batch** -- write errors to a sidecar table
+4. **Truncate before `ai_query`** -- use `LEFT(text, 6000)` for context window limits
+5. **Prompts belong in config.yml** -- a prompt change should be a config change

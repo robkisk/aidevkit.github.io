@@ -1,0 +1,53 @@
+---
+title: Scorers & Evaluation
+description: Built-in and custom scorers for MLflow GenAI evaluation — Guidelines, Correctness, Safety, RetrievalGroundedness, and custom @scorer patterns.
+sidebar:
+  order: 1
+---
+
+## Built-in Scorers
+
+| Scorer | Purpose | Requires |
+|--------|---------|----------|
+| Guidelines | Check adherence to custom guidelines | Guidelines text |
+| Correctness | Compare against ground truth | Expected response |
+| Safety | Detect harmful content | Nothing extra |
+| RetrievalGroundedness | Check if response is grounded in context | Retrieved documents |
+
+## Custom Scorers
+
+Use the `@scorer` decorator for project-specific metrics:
+
+```python
+from mlflow.genai import scorer
+
+@scorer
+def tone_check(request, response):
+    """Check if response maintains professional tone."""
+    # Return float (0-1), bool, or categorical
+    return {"professional_tone": 0.9, "rationale": "Response is formal and helpful"}
+```
+
+## Running Evaluations
+
+```python
+import mlflow.genai
+
+results = mlflow.genai.evaluate(
+    data=[{"inputs": {"query": "What is our refund policy?"}}],
+    predict_fn=my_agent_fn,
+    scorers=[Guidelines(guidelines="Always be professional"), Safety()]
+)
+```
+
+## Comparing Versions
+
+Use named runs to establish baselines and detect regressions:
+
+```python
+with mlflow.start_run(run_name="baseline_v1"):
+    results_v1 = mlflow.genai.evaluate(data=eval_data, predict_fn=agent_v1, scorers=scorers)
+
+with mlflow.start_run(run_name="candidate_v2"):
+    results_v2 = mlflow.genai.evaluate(data=eval_data, predict_fn=agent_v2, scorers=scorers)
+```

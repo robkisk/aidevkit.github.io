@@ -1,0 +1,65 @@
+---
+title: Deployment & Querying
+description: Job-based async deployment, endpoint status monitoring, and querying model serving endpoints via SDK, REST, and MCP tools.
+sidebar:
+  order: 3
+---
+
+## Job-Based Async Deployment
+
+Use Databricks Jobs for deployment to avoid timeout issues:
+
+```python
+manage_jobs(action="create", ...)  # Create deployment job (one-time)
+manage_job_runs(action="run_now", ...)  # Kick off deployment
+manage_job_runs(action="get", ...)  # Check status
+```
+
+Deployment typically takes ~15 minutes.
+
+## Check Endpoint Status
+
+```python
+get_serving_endpoint_status(name="my-agent-endpoint")
+# Returns: {"name": "...", "state": "READY", "served_entities": [...]}
+```
+
+## Query Endpoints
+
+### Chat/Agent Endpoint
+
+```python
+query_serving_endpoint(
+    name="my-agent-endpoint",
+    messages=[{"role": "user", "content": "What is Databricks?"}],
+    max_tokens=500
+)
+```
+
+### ML Endpoint
+
+```python
+query_serving_endpoint(
+    name="sklearn-classifier",
+    dataframe_records=[
+        {"age": 25, "income": 50000, "credit_score": 720}
+    ]
+)
+```
+
+## Logging and Registration
+
+```python
+import mlflow
+
+mlflow.set_registry_uri("databricks-uc")
+with mlflow.start_run():
+    mlflow.pyfunc.log_model(
+        artifact_path="my_agent",
+        python_model=MyAgent(),
+        registered_model_name="catalog.schema.my_agent",
+        pip_requirements=["mlflow==3.6.0", "databricks-langchain"],
+    )
+```
+
+Specify exact package versions in `pip_requirements` to avoid resolution issues on the endpoint.

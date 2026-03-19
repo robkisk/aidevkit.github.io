@@ -1,0 +1,64 @@
+---
+title: Data Patterns & Domain Guidance
+description: Realistic data patterns for synthetic generation — distributions, referential integrity, time patterns, and domain-specific guidance for e-commerce, IoT, and financial data.
+sidebar:
+  order: 2
+---
+
+## Realistic Distributions
+
+### Log-Normal Amounts
+
+```python
+@F.pandas_udf(DoubleType())
+def generate_amount(tiers: pd.Series) -> pd.Series:
+    amounts = []
+    for tier in tiers:
+        if tier == "Enterprise":
+            amounts.append(float(np.random.lognormal(7.5, 0.8)))
+        elif tier == "Pro":
+            amounts.append(float(np.random.lognormal(5.5, 0.7)))
+        else:
+            amounts.append(float(np.random.lognormal(4.0, 0.6)))
+    return pd.Series(amounts)
+```
+
+### Time Patterns
+
+```python
+from datetime import datetime, timedelta
+END_DATE = datetime.now()
+START_DATE = END_DATE - timedelta(days=180)
+
+F.date_add(F.lit(START_DATE.date()), (F.rand() * 180).cast("int")).alias("order_date")
+```
+
+## Referential Integrity
+
+Write master tables to Delta first, then read back for FK joins:
+
+```python
+# Write master table
+customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
+
+# Read back for FK joins
+customer_ids = spark.table(f"{CATALOG}.{SCHEMA}.customers").select("customer_id")
+orders_df = spark.range(0, 15000).join(customer_ids.sample(fraction=3.0, withReplacement=True), how="cross")
+```
+
+## Output Formats
+
+| Format | Use Case | Code |
+|--------|----------|------|
+| Parquet (default) | SDP pipeline input | `df.write.parquet(path)` |
+| JSON | Log-style ingestion | `df.write.json(path)` |
+| CSV | Legacy systems | `df.write.option("header", "true").csv(path)` |
+| Delta Table | Direct analytics | `df.write.saveAsTable("catalog.schema.table")` |
+
+## Best Practices
+
+- Generate raw data only -- no pre-aggregated fields
+- Create master tables first, then related tables with valid FKs
+- Use non-linear distributions (log-normal, Pareto, exponential)
+- Add table and column comments for Unity Catalog discoverability
+- Create infrastructure in script (`CREATE SCHEMA/VOLUME IF NOT EXISTS`)

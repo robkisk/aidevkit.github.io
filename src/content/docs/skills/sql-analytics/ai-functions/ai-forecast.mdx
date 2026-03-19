@@ -1,0 +1,78 @@
+---
+title: ai_forecast Reference
+description: Time series forecasting with ai_forecast — single metric, multi-group, multi-metric, confidence intervals, and PySpark integration.
+sidebar:
+  order: 3
+---
+
+`ai_forecast` is a table-valued function that returns forecast values with confidence intervals. Requires a Pro or Serverless SQL warehouse.
+
+## Basic Forecast
+
+```sql
+SELECT * FROM ai_forecast(
+    observed  => TABLE(SELECT order_date, revenue FROM daily_revenue),
+    horizon   => '2026-12-31',
+    time_col  => 'order_date',
+    value_col => 'revenue'
+);
+-- Returns: order_date, revenue_forecast, revenue_upper, revenue_lower
+```
+
+## Multi-Group Forecast
+
+Produces one forecast series per distinct value of `group_col`:
+
+```sql
+SELECT * FROM ai_forecast(
+    observed  => TABLE(SELECT date, region, sales FROM regional_sales),
+    horizon   => '2026-12-31',
+    time_col  => 'date',
+    value_col => 'sales',
+    group_col => 'region'
+);
+```
+
+## Multiple Metrics
+
+```sql
+SELECT * FROM ai_forecast(
+    observed  => TABLE(SELECT date, units, revenue FROM daily_kpis),
+    horizon   => '2026-06-30',
+    time_col  => 'date',
+    value_col => 'units,revenue'
+);
+```
+
+## Custom Confidence Interval
+
+```sql
+SELECT * FROM ai_forecast(
+    observed                   => TABLE(SELECT ts, sensor_value FROM iot_readings),
+    horizon                    => '2026-03-31',
+    time_col                   => 'ts',
+    value_col                  => 'sensor_value',
+    prediction_interval_width  => 0.80
+);
+```
+
+## PySpark Integration
+
+```python
+result = spark.sql("""
+    SELECT * FROM ai_forecast(
+        observed  => TABLE(SELECT date, sales FROM catalog.schema.daily_sales),
+        horizon   => '2026-12-31',
+        time_col  => 'date',
+        value_col => 'sales'
+    )
+""")
+result.write.format("delta").mode("overwrite").saveAsTable("catalog.schema.sales_forecast")
+```
+
+## Notes
+
+- Underlying model is prophet-like (piecewise linear + seasonality)
+- Handles any number of groups but up to 100 metrics per group
+- Output time column preserves input type (DATE stays DATE)
+- Value columns are always cast to DOUBLE in output

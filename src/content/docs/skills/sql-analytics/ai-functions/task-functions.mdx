@@ -1,0 +1,102 @@
+---
+title: Task-Specific Functions
+description: Complete reference for Databricks task-specific AI functions — ai_classify, ai_extract, ai_summarize, ai_mask, ai_translate, ai_similarity, ai_parse_document, and more.
+sidebar:
+  order: 1
+---
+
+Task-specific functions require no model endpoint selection. They call pre-configured Foundation Model APIs optimized for each task. All require DBR 15.1+; `ai_parse_document` requires DBR 17.1+.
+
+## ai_analyze_sentiment
+
+Returns one of: `positive`, `negative`, `neutral`, `mixed`, or `NULL`.
+
+```sql
+SELECT ai_analyze_sentiment(review_text) AS sentiment FROM customer_reviews;
+```
+
+## ai_classify
+
+Classifies text into 2-20 mutually exclusive categories.
+
+```sql
+SELECT ai_classify(ticket_text, ARRAY('urgent', 'not urgent', 'spam')) AS priority
+FROM support_tickets;
+```
+
+## ai_extract
+
+Extracts structured entities. Returns a STRUCT with fields matching each label.
+
+```sql
+SELECT entities.person, entities.location, entities.date
+FROM (
+    SELECT ai_extract(message, ARRAY('person', 'location', 'date')) AS entities
+    FROM messages
+);
+```
+
+Use `ai_query` instead when output has nested arrays.
+
+## ai_mask
+
+Redacts PII from text. Common labels: `'person'`, `'email'`, `'phone'`, `'address'`, `'ssn'`, `'credit_card'`.
+
+```sql
+SELECT ai_mask(message_body, ARRAY('person', 'email', 'phone', 'address')) AS message_safe
+FROM customer_messages;
+```
+
+## ai_summarize
+
+Summarizes text with optional word limit (default 50, use 0 for uncapped).
+
+```sql
+SELECT ai_summarize(article_body, 20) AS brief FROM news_articles;
+```
+
+## ai_translate
+
+Supports: `en`, `de`, `fr`, `it`, `pt`, `hi`, `es`, `th`. Use `ai_query` for unsupported languages.
+
+```sql
+SELECT ai_translate(product_description, 'es') AS description_es FROM products;
+```
+
+## ai_similarity
+
+Returns a FLOAT between 0.0 and 1.0 for semantic similarity.
+
+```sql
+SELECT a.id, b.id, ai_similarity(a.name, b.name) AS score
+FROM companies a JOIN companies b ON a.id < b.id
+WHERE ai_similarity(a.name, b.name) > 0.85;
+```
+
+## ai_parse_document
+
+Parses PDFs, images, DOCX, and PPTX files. Requires DBR 17.1+.
+
+```sql
+SELECT path,
+  parsed:pages[*].elements[*].content AS text_blocks,
+  parsed:error AS parse_error
+FROM (
+  SELECT path, ai_parse_document(content) AS parsed
+  FROM read_files('/Volumes/catalog/schema/docs/', format => 'binaryFile')
+);
+```
+
+## PySpark Usage
+
+All functions work with `expr()`:
+
+```python
+from pyspark.sql.functions import expr
+
+df = (spark.table("support_tickets")
+    .withColumn("priority", expr("ai_classify(ticket_text, array('urgent', 'not urgent', 'spam'))"))
+    .withColumn("entities", expr("ai_extract(ticket_text, array('product', 'error_code'))"))
+    .withColumn("sentiment", expr("ai_analyze_sentiment(ticket_text)"))
+)
+```

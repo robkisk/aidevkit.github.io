@@ -1,0 +1,139 @@
+---
+title: Metric View Patterns
+description: Common patterns for metric views — single table metrics, derived dimensions, ratios, filtered measures, star schema joins, snowflake schemas, materialization, and window measures.
+sidebar:
+  order: 1
+---
+
+## Simple Metrics from a Single Table
+
+```sql
+CREATE OR REPLACE VIEW catalog.schema.product_metrics
+WITH METRICS LANGUAGE YAML
+AS $$
+  version: 1.1
+  source: catalog.schema.sales
+  dimensions:
+    - name: Product Name
+      expr: product_name
+    - name: Sale Date
+      expr: sale_date
+  measures:
+    - name: Units Sold
+      expr: COUNT(1)
+    - name: Total Revenue
+      expr: SUM(price * quantity)
+    - name: Average Price
+      expr: AVG(price)
+$$
+```
+
+## Filtered Measures
+
+Create measures that only count a subset of rows using `FILTER`:
+
+```sql
+measures:
+  - name: Total Orders
+    expr: COUNT(1)
+  - name: Open Orders
+    expr: COUNT(1) FILTER (WHERE status = 'OPEN')
+  - name: Fulfillment Rate
+    expr: COUNT(1) FILTER (WHERE status = 'FULFILLED') * 1.0 / COUNT(1)
+```
+
+## Star Schema with Joins
+
+```sql
+CREATE OR REPLACE VIEW catalog.schema.sales_analytics
+WITH METRICS LANGUAGE YAML
+AS $$
+  version: 1.1
+  source: catalog.schema.fact_sales
+  joins:
+    - name: customer
+      source: catalog.schema.dim_customer
+      on: source.customer_id = customer.customer_id
+    - name: product
+      source: catalog.schema.dim_product
+      on: source.product_id = product.product_id
+  dimensions:
+    - name: Customer Segment
+      expr: customer.segment
+    - name: Product Category
+      expr: product.category
+    - name: Sale Month
+      expr: DATE_TRUNC('MONTH', source.sale_date)
+  measures:
+    - name: Total Revenue
+      expr: SUM(source.amount)
+    - name: Unique Customers
+      expr: COUNT(DISTINCT source.customer_id)
+$$
+```
+
+## Window Measures (Experimental)
+
+### 7-Day Trailing Customers
+
+```sql
+measures:
+  - name: t7d_customers
+    expr: COUNT(DISTINCT customer_id)
+    window:
+      - order: date
+        range: trailing 7 day
+        semiadditive: last
+```
+
+### Year-to-Date
+
+```sql
+measures:
+  - name: ytd_sales
+    expr: SUM(total_price)
+    window:
+      - order: date
+        range: cumulative
+        semiadditive: last
+      - order: year
+        range: current
+        semiadditive: last
+```
+
+### Period-over-Period Growth
+
+Derived measures can reference window measures using `MEASURE()`:
+
+```sql
+measures:
+  - name: previous_day_sales
+    expr: SUM(total_price)
+    window:
+      - order: date
+        range: trailing 1 day
+        semiadditive: last
+  - name: current_day_sales
+    expr: SUM(total_price)
+    window:
+      - order: date
+        range: current
+        semiadditive: last
+  - name: day_over_day_growth
+    expr: (MEASURE(current_day_sales) - MEASURE(previous_day_sales)) / MEASURE(previous_day_sales) * 100
+```
+
+## Materialized Metric View
+
+```sql
+materialization:
+  schedule: every 1 hour
+  mode: relaxed
+  materialized_views:
+    - name: daily_category
+      type: aggregated
+      dimensions: [Category, Day]
+      measures: [Revenue, Transactions]
+    - name: full_model
+      type: unaggregated
+```

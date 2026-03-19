@@ -1,0 +1,105 @@
+---
+title: Metric Views
+description: Define reusable, governed business metrics in YAML with Unity Catalog metric views — dimensions, measures, star schema joins, materialization, and window measures.
+sidebar:
+  order: 3
+---
+
+## Overview
+
+The Metric Views skill teaches Claude Code how to define reusable, governed business metrics using YAML in Unity Catalog. Metric views separate measure definitions from dimension groupings, enabling flexible querying at runtime. Use them when building standardized KPIs, revenue metrics, or any reusable business metrics that need consistent definitions across teams and tools.
+
+## Capabilities
+
+- Define standardized metrics with dimensions and aggregate measures
+- Create complex aggregations: ratios, distinct counts, filtered measures
+- Build star and snowflake schema joins declaratively in YAML
+- Define window measures for moving averages, running totals, and period-over-period comparisons
+- Enable materialization for pre-computed metric aggregations
+- Integrate natively with AI/BI Dashboards, Genie, and Alerts
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `manage_metric_views` | Create, alter, describe, query, drop, and grant access to metric views |
+| `execute_sql` | Run metric view queries directly |
+| `get_best_warehouse` | Find a warehouse for metric view operations |
+
+## Example Prompts
+
+```
+Create a metric view for orders with Total Revenue, Order Count,
+and Revenue per Customer, grouped by month and status
+```
+
+```
+Add a star schema join to my sales metrics connecting fact_sales
+to dim_customer and dim_product dimensions
+```
+
+```
+Query my orders_metrics view for 2024 revenue by month, filtered
+to fulfilled orders only
+```
+
+```
+Add a 7-day trailing window measure for distinct active customers
+```
+
+## Key Concepts
+
+### Dimensions vs Measures
+
+| | Dimensions | Measures |
+|---|---|---|
+| Purpose | Categorize and group | Aggregate numeric values |
+| Examples | Region, Date, Status | `SUM(revenue)`, `COUNT(orders)` |
+| In queries | SELECT and GROUP BY | Wrapped in `MEASURE()` |
+| Expressions | Any SQL expression | Must use aggregate functions |
+
+### Quick Start
+
+```sql
+CREATE OR REPLACE VIEW catalog.schema.orders_metrics
+WITH METRICS LANGUAGE YAML
+AS $$
+  version: 1.1
+  source: catalog.schema.orders
+  dimensions:
+    - name: Order Month
+      expr: DATE_TRUNC('MONTH', order_date)
+    - name: Order Status
+      expr: status
+  measures:
+    - name: Total Revenue
+      expr: SUM(total_price)
+    - name: Order Count
+      expr: COUNT(1)
+$$
+```
+
+### Query Pattern
+
+All measures must use the `MEASURE()` function. `SELECT *` is NOT supported.
+
+```sql
+SELECT `Order Month`, `Order Status`,
+  MEASURE(`Total Revenue`) AS total_revenue,
+  MEASURE(`Order Count`) AS order_count
+FROM catalog.schema.orders_metrics
+GROUP BY ALL ORDER BY ALL
+```
+
+### Prerequisites
+
+- Databricks Runtime 17.2+ (for YAML version 1.1)
+- SQL warehouse with `CAN USE` permissions
+- `SELECT` on source tables, `CREATE TABLE` + `USE SCHEMA` in target schema
+
+## References
+
+- [Metric Views Documentation](https://docs.databricks.com/en/metric-views/)
+- [YAML Syntax Reference](https://docs.databricks.com/en/metric-views/data-modeling/syntax)
+- [Window Measures](https://docs.databricks.com/aws/en/metric-views/data-modeling/window-measures)
+- [MEASURE() Function](https://docs.databricks.com/en/sql/language-manual/functions/measure)

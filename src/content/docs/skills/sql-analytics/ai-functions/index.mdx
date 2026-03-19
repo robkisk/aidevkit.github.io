@@ -7,7 +7,7 @@ sidebar:
 
 ## Overview
 
-The AI Functions skill teaches Claude Code how to use Databricks built-in AI functions that call Foundation Model APIs directly from SQL and PySpark pipelines. These functions work on table columns as naturally as `UPPER()` or `LENGTH()`, eliminating the need to set up model endpoints, manage API keys, or write inference boilerplate. Use it when you need to enrich data with classification, extraction, summarization, translation, or forecasting at scale.
+The AI Functions skill teaches Claude Code how to use Databricks built-in AI functions that call Foundation Model APIs directly from SQL and PySpark pipelines. These functions work on table columns as naturally as `UPPER()` or `LENGTH()`, eliminating the need to set up model endpoints, manage API keys, or write inference boilerplate.
 
 ## Capabilities
 
@@ -36,8 +36,6 @@ The AI Functions skill teaches Claude Code how to use Databricks built-in AI fun
 
 ## Example Prompts
 
-Use these prompts with Claude Code to apply AI functions:
-
 ```
 Classify support tickets in my_catalog.support.tickets into
 urgent, not urgent, and spam categories using ai_classify
@@ -46,11 +44,6 @@ urgent, not urgent, and spam categories using ai_classify
 ```
 Extract product names, error codes, and dates from the
 description column in my incident reports table
-```
-
-```
-Summarize each customer review in 30 words or fewer and
-add a sentiment score column
 ```
 
 ```
@@ -64,38 +57,26 @@ and extract vendor name, contract date, and total amount
 ```
 
 ```
-Find near-duplicate company names in my contacts table
-using ai_similarity with a threshold of 0.85
-```
-
-```
 Forecast daily sales through end of year using ai_forecast
 on my daily_revenue table
 ```
 
-```
-Create a SQL pipeline that classifies, extracts entities,
-and scores sentiment on incoming support tickets in one pass
-```
-
 ## Key Concepts
-
-### Task-Specific vs General-Purpose Functions
-
-Databricks provides two tiers of AI functions:
-
-**Task-specific functions** — Optimized for common NLP tasks. Always prefer these when they fit your use case:
-- `ai_analyze_sentiment`, `ai_classify`, `ai_extract`, `ai_fix_grammar`
-- `ai_gen`, `ai_mask`, `ai_similarity`, `ai_summarize`, `ai_translate`
-- `ai_parse_document`
-
-**General-purpose function** — `ai_query` sends arbitrary prompts to any model endpoint. Use it only when no task-specific function applies, such as complex nested JSON extraction or multi-step reasoning.
-
-**Table-valued function** — `ai_forecast` generates time series predictions and returns a result table with forecast values and confidence intervals.
 
 ### Function Selection Rule
 
-Always prefer a task-specific function over `ai_query`. For example, use `ai_classify` for categorization (not `ai_query` with a classification prompt), and `ai_summarize` for summarization (not `ai_query` with a summarize instruction).
+Always prefer a task-specific function over `ai_query`:
+
+| Task | Use This | Fall back to `ai_query` when... |
+|------|---------|--------------------------------|
+| Sentiment scoring | `ai_analyze_sentiment` | Never |
+| Fixed-label routing | `ai_classify` (2-20 labels) | Never |
+| Flat entity extraction | `ai_extract` | Nested arrays in output |
+| Summarization | `ai_summarize` | Never |
+| PII redaction | `ai_mask` | Never |
+| Free-form generation | `ai_gen` | Need structured JSON |
+| PDF/document parsing | `ai_parse_document` | Need image-level reasoning |
+| Complex JSON / reasoning | -- | This is the intended use case |
 
 ### Prerequisites
 

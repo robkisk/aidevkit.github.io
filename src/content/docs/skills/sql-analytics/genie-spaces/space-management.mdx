@@ -1,0 +1,87 @@
+---
+title: Space Management & Migration
+description: Creating, updating, exporting, importing, and migrating Genie Spaces across workspaces with catalog remapping.
+sidebar:
+  order: 2
+---
+
+## Creating a Genie Space
+
+Always inspect table schemas first, then create with content tailored to the data:
+
+```python
+# Step 1: Inspect tables
+get_table_details(catalog="my_catalog", schema="sales", table_stat_level="SIMPLE")
+
+# Step 2: Create the space
+create_or_update_genie(
+    display_name="Sales Analytics",
+    table_identifiers=["my_catalog.sales.customers", "my_catalog.sales.orders"],
+    description="""Explore retail sales data with two related tables:
+- customers: demographics, region, segment
+- orders: transaction history with amounts and dates
+Tables join on customer_id.""",
+    sample_questions=[
+        "What were total sales last month?",
+        "Who are our top 10 customers by total_amount?",
+        "How many orders were placed in Q4 by region?"
+    ]
+)
+```
+
+### Table Selection Tips
+
+| Layer | Recommended | Why |
+|-------|-------------|-----|
+| Bronze | No | Raw data, may have quality issues |
+| Silver | Yes | Cleaned and validated |
+| Gold | Yes | Aggregated, optimized for analytics |
+
+## Export, Import & Migration
+
+### Export a Space
+
+```python
+exported = migrate_genie(type="export", space_id="01abc123...")
+# Returns: space_id, title, description, warehouse_id, serialized_space
+```
+
+### Clone Within Same Workspace
+
+```python
+source = migrate_genie(type="export", space_id="01abc123...")
+migrate_genie(
+    type="import",
+    warehouse_id=source["warehouse_id"],
+    serialized_space=source["serialized_space"],
+    title=source["title"],
+    description=source["description"]
+)
+```
+
+### Cross-Workspace Migration with Catalog Remapping
+
+```python
+# Step 1: Export from source workspace
+exported = migrate_genie(type="export", space_id="01abc123...")
+
+# Step 2: Remap catalog name
+modified = exported["serialized_space"].replace("source_catalog", "target_catalog")
+
+# Step 3: Import to target workspace
+migrate_genie(
+    type="import",
+    warehouse_id="<target_warehouse_id>",
+    serialized_space=modified,
+    title=exported["title"],
+    description=exported["description"]
+)
+```
+
+### Permissions
+
+| Operation | Required Permission |
+|-----------|-------------------|
+| Export | CAN EDIT on source space |
+| Import | Create privileges in target folder |
+| Update with `serialized_space` | CAN EDIT on target space |

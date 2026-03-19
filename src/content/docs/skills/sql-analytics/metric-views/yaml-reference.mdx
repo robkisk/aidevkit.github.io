@@ -1,0 +1,120 @@
+---
+title: YAML Reference
+description: Complete YAML specification for Unity Catalog metric views — top-level fields, dimensions, measures, joins, filters, materialization, and window measures.
+sidebar:
+  order: 2
+---
+
+## Top-Level Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `version` | No | `"1.1"` for DBR 17.2+, `"0.1"` for DBR 16.4-17.1 |
+| `source` | Yes | Source table/view in three-level namespace |
+| `comment` | No | Description of the metric view (v1.1+) |
+| `filter` | No | SQL boolean expression as global WHERE clause |
+| `dimensions` | Yes | At least one dimension definition |
+| `measures` | Yes | At least one measure definition |
+| `joins` | No | Star/snowflake schema join definitions |
+| `materialization` | No | Pre-computation configuration (experimental) |
+
+## Dimensions
+
+```yaml
+dimensions:
+  - name: Region
+    expr: region_name
+    comment: "Sales region"
+  - name: Order Month
+    expr: DATE_TRUNC('MONTH', order_date)
+  - name: Customer Type
+    expr: CASE WHEN tier = 'A' THEN 'Enterprise' ELSE 'SMB' END
+  - name: Nation
+    expr: customer.c_name    # Reference joined table columns
+```
+
+Cannot use aggregate functions in dimensions.
+
+## Measures
+
+```yaml
+measures:
+  - name: Total Revenue
+    expr: SUM(total_price)
+  - name: Unique Customers
+    expr: COUNT(DISTINCT customer_id)
+  - name: Revenue per Customer
+    expr: SUM(total_price) / COUNT(DISTINCT customer_id)
+  - name: Open Revenue
+    expr: SUM(total_price) FILTER (WHERE status = 'O')
+```
+
+Queried via `MEASURE(\`name\`)`. Must contain aggregate functions.
+
+## Joins
+
+### Star Schema
+
+```yaml
+joins:
+  - name: customer
+    source: catalog.schema.dim_customer
+    on: source.customer_id = customer.id
+  - name: product
+    source: catalog.schema.dim_product
+    on: source.product_id = product.id
+```
+
+### Snowflake Schema (Nested, DBR 17.1+)
+
+```yaml
+joins:
+  - name: customer
+    source: catalog.schema.customer
+    on: source.customer_key = customer.customer_key
+    joins:
+      - name: nation
+        source: catalog.schema.nation
+        on: customer.nation_key = nation.nation_key
+        joins:
+          - name: region
+            source: catalog.schema.region
+            on: nation.region_key = region.region_key
+```
+
+## Window Measures
+
+| Range | Description |
+|-------|-------------|
+| `current` | Only rows matching current ordering value |
+| `cumulative` | All rows up to and including current |
+| `trailing <N> <unit>` | N units before current (excludes current) |
+| `leading <N> <unit>` | N units after current |
+| `all` | All rows |
+
+```yaml
+measures:
+  - name: Running Total
+    expr: SUM(total_price)
+    window:
+      - order: date
+        range: cumulative
+        semiadditive: last
+```
+
+## Materialization
+
+```yaml
+materialization:
+  schedule: every 6 hours
+  mode: relaxed
+  materialized_views:
+    - name: baseline
+      type: unaggregated
+    - name: revenue_breakdown
+      type: aggregated
+      dimensions: [category, region]
+      measures: [total_revenue, order_count]
+```
+
+Requires serverless compute and DBR 17.2+.

@@ -1,0 +1,92 @@
+---
+title: ai_query Reference
+description: General-purpose AI function for complex extraction, custom endpoints, multimodal inputs, and structured JSON output with responseFormat.
+sidebar:
+  order: 2
+---
+
+Use `ai_query` only when no task-specific function fits -- for nested JSON extraction, custom model endpoints, multimodal image input, or sampling parameter control.
+
+## Syntax
+
+```sql
+ai_query(
+    endpoint, request
+    [, returnType => ddl_schema]
+    [, failOnError => boolean]
+    [, modelParameters => named_struct(...)]
+    [, responseFormat => json_string]
+    [, files => binary_column]
+)
+```
+
+## Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `endpoint` | Foundation Model or custom endpoint name |
+| `request` | Prompt string for chat models |
+| `returnType` | DDL schema for structured parsing |
+| `failOnError` | If `false`, returns `{response, error}` struct |
+| `responseFormat` | Forces JSON output: `'{"type":"json_object"}'` |
+| `files` | Pass binary images directly (JPEG/PNG) |
+
+## Structured JSON Output
+
+```sql
+SELECT ai_query(
+    'databricks-claude-sonnet-4',
+    CONCAT('Extract invoice as JSON: ', text_blocks),
+    responseFormat => '{"type":"json_object"}',
+    failOnError => false
+) AS ai_response
+FROM parsed_documents;
+```
+
+Parse the response in PySpark:
+
+```python
+from pyspark.sql.functions import from_json, col
+df = df.withColumn("invoice", from_json(
+    col("ai_response.response"),
+    "STRUCT<numero:STRING, total:DOUBLE, itens:ARRAY<STRUCT<codigo:STRING, descricao:STRING>>>"
+))
+```
+
+## Multimodal -- Image Files
+
+```sql
+SELECT path, ai_query(
+    'databricks-llama-4-maverick',
+    'Describe what is in this image.',
+    files => content
+) AS description
+FROM read_files('/Volumes/catalog/schema/images/', format => 'binaryFile');
+```
+
+## Batch Pipeline Error Handling
+
+Always use `failOnError => false` in batch jobs:
+
+```sql
+SELECT id, ai_response.response, ai_response.error
+FROM (
+    SELECT id, ai_query(
+        'databricks-claude-sonnet-4', CONCAT('Classify: ', text),
+        failOnError => false
+    ) AS ai_response
+    FROM documents
+)
+```
+
+## Reusable SQL UDF
+
+```sql
+CREATE FUNCTION catalog.schema.extract_invoice(text STRING)
+RETURNS STRING
+RETURN ai_query(
+    'databricks-claude-sonnet-4',
+    CONCAT('Extract invoice JSON from: ', text),
+    responseFormat => '{"type":"json_object"}'
+);
+```

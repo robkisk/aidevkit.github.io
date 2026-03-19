@@ -1,0 +1,98 @@
+---
+title: Index Types & Creation
+description: Delta Sync with managed and self-managed embeddings, Direct Access indexes, and endpoint creation patterns for Databricks Vector Search.
+sidebar:
+  order: 1
+---
+
+## Create Endpoint
+
+```python
+from databricks.sdk import WorkspaceClient
+w = WorkspaceClient()
+
+endpoint = w.vector_search_endpoints.create_endpoint(
+    name="my-vs-endpoint",
+    endpoint_type="STANDARD"  # or "STORAGE_OPTIMIZED"
+)
+```
+
+## Delta Sync with Managed Embeddings
+
+Easiest setup -- Databricks computes and maintains embeddings automatically:
+
+```python
+index = w.vector_search_indexes.create_index(
+    name="catalog.schema.my_index",
+    endpoint_name="my-vs-endpoint",
+    primary_key="id",
+    index_type="DELTA_SYNC",
+    delta_sync_index_spec={
+        "source_table": "catalog.schema.documents",
+        "embedding_source_columns": [{
+            "name": "content",
+            "embedding_model_endpoint_name": "databricks-gte-large-en"
+        }],
+        "pipeline_type": "TRIGGERED"
+    }
+)
+```
+
+## Delta Sync with Self-Managed Embeddings
+
+For custom embedding models or pre-computed vectors:
+
+```python
+index = w.vector_search_indexes.create_index(
+    name="catalog.schema.my_index",
+    endpoint_name="my-vs-endpoint",
+    primary_key="id",
+    index_type="DELTA_SYNC",
+    delta_sync_index_spec={
+        "source_table": "catalog.schema.documents",
+        "embedding_vector_columns": [{
+            "name": "embedding",
+            "embedding_dimension": 768
+        }],
+        "pipeline_type": "TRIGGERED"
+    }
+)
+```
+
+## Direct Access Index
+
+For real-time CRUD operations:
+
+```python
+import json
+
+index = w.vector_search_indexes.create_index(
+    name="catalog.schema.direct_index",
+    endpoint_name="my-vs-endpoint",
+    primary_key="id",
+    index_type="DIRECT_ACCESS",
+    direct_access_index_spec={
+        "embedding_vector_columns": [{"name": "embedding", "embedding_dimension": 768}],
+        "schema_json": json.dumps({
+            "id": "string", "text": "string",
+            "embedding": "array<float>", "metadata": "string"
+        })
+    }
+)
+
+# Upsert data
+w.vector_search_indexes.upsert_data_vector_index(
+    index_name="catalog.schema.direct_index",
+    inputs_json=json.dumps([
+        {"id": "1", "text": "Hello", "embedding": [0.1, 0.2], "metadata": "doc1"},
+    ])
+)
+```
+
+## Trigger Sync
+
+For TRIGGERED pipeline types:
+
+```python
+w.vector_search_indexes.sync_index(index_name="catalog.schema.my_index")
+```

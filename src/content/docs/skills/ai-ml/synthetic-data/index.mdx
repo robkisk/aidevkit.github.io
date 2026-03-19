@@ -1,0 +1,85 @@
+---
+title: Synthetic Data Generation
+description: Generate realistic synthetic data using Spark + Faker + Pandas UDFs — serverless execution, weighted distributions, referential integrity, and multiple output formats.
+sidebar:
+  order: 4
+---
+
+## Overview
+
+The Synthetic Data Generation skill teaches Claude Code how to generate realistic, story-driven synthetic data on Databricks using Spark + Faker + Pandas UDFs. It supports serverless execution, multiple output formats, and scales from thousands to millions of rows. Use it when creating demo datasets, test data, or populating tables for Genie Spaces and data pipelines.
+
+## Capabilities
+
+- Generate data with Spark + Faker + Pandas UDFs (scalable, parallel)
+- Create realistic distributions: log-normal pricing, weighted tiers, seasonal time patterns
+- Maintain referential integrity across related tables
+- Support multiple output formats: Parquet, JSON, CSV, Delta tables
+- Run on serverless compute with managed dependencies
+- Add table and column comments for Unity Catalog discoverability
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `execute_databricks_command` | Run generation code on clusters |
+| `run_python_file_on_databricks` | Execute generation scripts |
+| `get_best_cluster` | Find a cluster for generation |
+
+## Example Prompts
+
+```
+Generate an e-commerce dataset with 5,000 customers and 15,000
+orders using realistic distributions — Enterprise customers should
+generate 5x more orders than Free tier
+```
+
+```
+Create synthetic IoT sensor data for 50 devices over 6 months
+with daily readings, occasional anomalies, and seasonal patterns
+```
+
+```
+Generate a support ticket dataset with customer_id foreign keys
+to the customers table, weighted priority distribution, and
+realistic resolution times
+```
+
+## Key Concepts
+
+### Planning Workflow
+
+1. **Gather requirements**: catalog/schema, domain, row counts, relationships
+2. **Present table specification**: columns, descriptions, distributions, assumptions
+3. **Confirm with user**: catalog, distributions, compute preference
+4. **Generate**: master tables first, then related tables with valid FKs
+
+### Critical Rules
+
+- Always use Spark + Faker + Pandas UDFs (not pure Python)
+- Never use `.cache()` or `.persist()` with serverless compute
+- Always ask for catalog/schema -- never default
+- Create infrastructure in script: `CREATE SCHEMA/VOLUME IF NOT EXISTS`
+- Present a plan for user approval before generating code
+
+### Common Patterns
+
+```python
+# Weighted tier distribution
+F.when(F.rand() < 0.6, "Free")
+ .when(F.rand() < 0.9, "Pro")
+ .otherwise("Enterprise").alias("tier")
+
+# Log-normal amounts (realistic pricing)
+@F.pandas_udf(DoubleType())
+def generate_amount(tiers: pd.Series) -> pd.Series:
+    return pd.Series([
+        float(np.random.lognormal({"Enterprise": 7.5, "Pro": 5.5, "Free": 4.0}[t], 0.7))
+        for t in tiers
+    ])
+```
+
+## References
+
+- [Databricks Connect](https://docs.databricks.com/aws/en/dev-tools/databricks-connect/)
+- [Faker Documentation](https://faker.readthedocs.io/)

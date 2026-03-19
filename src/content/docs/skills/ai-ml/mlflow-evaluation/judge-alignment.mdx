@@ -1,0 +1,42 @@
+---
+title: Judge Alignment & Prompt Optimization
+description: Align LLM judges to domain expert preferences with MemAlign and run automated prompt improvement with GEPA optimize_prompts().
+sidebar:
+  order: 3
+---
+
+## Judge Alignment with MemAlign
+
+Align an LLM judge to match domain expert preferences. A well-aligned judge improves evaluation accuracy, production monitoring signal, and prompt optimization quality.
+
+### Workflow
+
+1. **Design base judge** with `make_judge` (any feedback type)
+2. **Run evaluate()**, tag successful traces
+3. **Build UC dataset** and create SME labeling session
+4. **Align judge** with MemAlign after labeling completes
+5. **Register aligned judge** to experiment
+6. **Re-evaluate** with aligned judge as new baseline
+
+### Key Facts
+
+- MemAlign is scorer-agnostic (works with float, bool, or categorical feedback)
+- Label schema `name` must match the judge `name` used in `evaluate()`
+- Aligned judge scores may be lower than unaligned -- this means the judge is more accurate, not that the agent regressed
+- Episodic memory is lazily loaded -- `get_scorer()` results won't show it until first use
+
+## Automated Prompt Optimization with GEPA
+
+Use `optimize_prompts()` to automatically improve a registered system prompt.
+
+### Workflow
+
+1. **Build optimization dataset** with both `inputs` AND `expectations`
+2. **Run `optimize_prompts()`** with GEPA and a scorer
+3. **Register new version**, promote conditionally based on score improvement
+
+### Requirements
+
+- MLflow >= 3.5.0
+- Dataset must have both `inputs` and `expectations` per record
+- Works with any scorer but best paired with an aligned judge

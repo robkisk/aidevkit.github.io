@@ -1,0 +1,85 @@
+---
+title: Data Modeling & Best Practices
+description: Data modeling patterns, Liquid Clustering, performance optimization, cost management, and common anti-patterns for Databricks SQL.
+sidebar:
+  order: 5
+---
+
+## Data Modeling
+
+### Star Schema in the Lakehouse
+
+The recommended approach for the Gold layer. In benchmarks, dimensional models outperformed OBT (2.6s vs 3.5s) despite requiring joins. Both approaches achieve sub-500ms with automatic caching.
+
+**Fact table pattern:**
+
+```sql
+CREATE TABLE gold.sales.fact_orders (
+  order_key BIGINT GENERATED ALWAYS AS IDENTITY,
+  customer_key BIGINT NOT NULL,
+  product_key BIGINT NOT NULL,
+  date_key INT NOT NULL,
+  order_amount DECIMAL(18,2),
+  quantity INT,
+  CONSTRAINT fk_customer FOREIGN KEY (customer_key) REFERENCES gold.sales.dim_customer(customer_key),
+  CONSTRAINT fk_product FOREIGN KEY (product_key) REFERENCES gold.sales.dim_product(product_key)
+) CLUSTER BY (date_key, customer_key);
+```
+
+**Dimension table pattern:**
+
+```sql
+CREATE TABLE gold.sales.dim_customer (
+  customer_key BIGINT GENERATED ALWAYS AS IDENTITY,
+  customer_id STRING NOT NULL COMMENT 'Natural key from source system',
+  full_name STRING, email STRING, city STRING, state STRING,
+  segment STRING, effective_start_date TIMESTAMP,
+  effective_end_date TIMESTAMP, is_current BOOLEAN,
+  CONSTRAINT pk_customer PRIMARY KEY (customer_key)
+) CLUSTER BY (customer_key, segment);
+```
+
+### Liquid Clustering vs Partitioning
+
+Liquid Clustering is the default recommendation for all new Delta tables. It replaces both partitioning and Z-ORDER.
+
+| Aspect | Liquid Clustering | Partitioning + Z-ORDER |
+|--------|-------------------|------------------------|
+| Column flexibility | Change keys anytime | Fixed at creation |
+| Maintenance | Incremental, automatic | Manual OPTIMIZE required |
+| Filter dimensions | 1-4 clustering keys | One partition + Z-ORDER |
+| Performance | 30-60% query speed improvement | Better for single-partition lookups |
+
+## Performance Optimization
+
+**Engine-level optimizations (automatic on Serverless):**
+- **Predictive Query Execution (PQE)**: Detects skew and spills in real-time
+- **Photon Vectorized Shuffle**: 1.5x higher shuffle throughput
+- **Low Shuffle Merge**: Optimized MERGE for common workloads
+
+**Manual optimization actions:**
+- Run `ANALYZE TABLE ... COMPUTE STATISTICS FOR COLUMNS` on dimension keys
+- Define PRIMARY KEY and FOREIGN KEY constraints
+- Use deterministic queries to benefit from result caching
+- Prefer `CREATE OR REPLACE TABLE` over delete-then-create
+
+## Cost Optimization
+
+1. Use serverless SQL warehouses (pay only when queries run)
+2. Enable predictive optimization for automatic OPTIMIZE and VACUUM
+3. Use Liquid Clustering to reduce scan volume
+4. Design deterministic queries to maximize result cache hits
+5. Collect statistics with `ANALYZE TABLE`
+6. Use materialized views for frequently computed aggregations
+
+## Common Anti-Patterns
+
+| Anti-Pattern | Fix |
+|-------------|-----|
+| Skipping dimensional modeling in Gold | Use star schemas for multi-dimensional analysis |
+| Over-partitioning (>5,000 partitions) | Use Liquid Clustering instead |
+| String surrogate keys | Use integer IDENTITY columns |
+| Missing PK/FK constraints | Define constraints for optimizer |
+| Using FLOAT for financial data | Use DECIMAL for precision |
+| Python UDFs when native functions exist | Native functions avoid serialization overhead |
+| Non-deterministic functions in cached queries | Remove `NOW()`, `RAND()` from filters |

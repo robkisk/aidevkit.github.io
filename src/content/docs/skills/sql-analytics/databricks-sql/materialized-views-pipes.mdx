@@ -1,0 +1,106 @@
+---
+title: Materialized Views & Pipe Syntax
+description: Materialized views with scheduled refresh, temporary tables and views, and pipe syntax for readable SQL transformations in Databricks SQL.
+sidebar:
+  order: 2
+---
+
+## Materialized Views
+
+Materialized views (MVs) physically store precomputed query results as Delta tables. They update automatically via schedule, event trigger, or on-demand refresh.
+
+### Create with Scheduled Refresh
+
+```sql
+CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.daily_revenue
+  CLUSTER BY (order_date)
+  SCHEDULE EVERY 1 HOUR
+  COMMENT 'Hourly-refreshed daily revenue by region'
+AS SELECT
+    order_date,
+    region,
+    SUM(amount) AS total_revenue,
+    COUNT(DISTINCT customer_id) AS unique_customers
+FROM catalog.schema.fact_orders
+JOIN catalog.schema.dim_store USING (store_id)
+GROUP BY order_date, region;
+```
+
+### Refresh Strategies
+
+| Strategy | Syntax | Use Case |
+|----------|--------|----------|
+| Manual | `REFRESH MATERIALIZED VIEW mv_name` | On-demand |
+| Scheduled | `SCHEDULE EVERY 1 HOUR` | Predictable cadence |
+| Event-driven | `TRIGGER ON UPDATE` | Near-real-time SLA |
+| Async | `REFRESH MATERIALIZED VIEW mv_name ASYNC` | Long-running refreshes |
+
+### Event-Driven Refresh
+
+```sql
+CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.customer_orders
+  TRIGGER ON UPDATE AT MOST EVERY INTERVAL 5 MINUTES
+AS SELECT c.customer_id, c.name, COUNT(o.order_id) AS order_count
+FROM catalog.schema.customers c
+JOIN catalog.schema.orders o ON c.customer_id = o.customer_id
+GROUP BY c.customer_id, c.name;
+```
+
+## Temporary Tables and Views
+
+| Aspect | Temporary Tables | Temporary Views |
+|--------|-----------------|-----------------|
+| Storage | Physical Delta table | Logical query definition |
+| Max lifetime | 7 days or session end | Session end |
+| DML support | INSERT, UPDATE, MERGE | None (read-only) |
+| CREATE OR REPLACE | Not supported | Supported |
+| Performance | Faster for repeated reads | Recomputed each time |
+
+```sql
+-- Temporary table (physical storage)
+CREATE TEMP TABLE temp_active_users
+AS SELECT user_id, username, last_login
+FROM catalog.schema.users
+WHERE last_login > current_date() - INTERVAL 30 DAYS;
+
+-- Temporary view (logical alias)
+CREATE OR REPLACE TEMPORARY VIEW active_customers
+AS SELECT customer_id, name, email
+FROM catalog.schema.customers
+WHERE status = 'active';
+```
+
+## Pipe Syntax
+
+Pipe syntax (DBR 16.2+) allows composing SQL queries as a top-down chain using the `|>` operator. It eliminates nested subqueries and compiles to the same execution plan as traditional SQL.
+
+```sql
+FROM catalog.schema.orders
+  |> AS o
+  |> JOIN catalog.schema.products p ON o.product_id = p.product_id
+  |> JOIN catalog.schema.customers c ON o.customer_id = c.customer_id
+  |> WHERE o.order_date >= '2025-01-01'
+  |> EXTEND o.quantity * p.unit_price AS line_total
+  |> AGGREGATE
+       SUM(line_total) AS total_revenue,
+       COUNT(DISTINCT o.order_id) AS order_count
+     GROUP BY c.region, p.category
+  |> ORDER BY total_revenue DESC
+  |> LIMIT 20;
+```
+
+### Available Pipe Operators
+
+| Operator | Purpose | Traditional Equivalent |
+|----------|---------|----------------------|
+| `SELECT` | Project columns | `SELECT` |
+| `EXTEND` | Add new columns | `SELECT *, expr AS new_col` |
+| `SET` | Modify existing columns | `SELECT` with replacement |
+| `DROP` | Remove columns | `SELECT * EXCEPT` |
+| `WHERE` | Filter rows | `WHERE` |
+| `AGGREGATE ... GROUP BY` | Aggregation | `SELECT agg() GROUP BY` |
+| `JOIN` | Combine tables | `JOIN` |
+| `ORDER BY` | Sort | `ORDER BY` |
+| `LIMIT` / `OFFSET` | Pagination | `LIMIT` / `OFFSET` |
+| `TABLESAMPLE` | Sample rows | `TABLESAMPLE` |
+| `PIVOT` / `UNPIVOT` | Reshape | `PIVOT` / `UNPIVOT` |

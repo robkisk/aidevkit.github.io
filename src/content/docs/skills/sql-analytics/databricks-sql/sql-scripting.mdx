@@ -1,0 +1,136 @@
+---
+title: SQL Scripting & Stored Procedures
+description: Procedural SQL on Databricks — compound statements, variables, control flow, exception handling, stored procedures, recursive CTEs, and multi-statement transactions.
+sidebar:
+  order: 1
+---
+
+SQL Scripting enables procedural logic using the SQL/PSM standard. Available in Databricks Runtime 16.3+ and Databricks SQL.
+
+## Compound Statements
+
+Every SQL script starts with a `BEGIN...END` block containing variable declarations, condition/handler declarations, and executable statements.
+
+```sql
+BEGIN
+  DECLARE v_count INT;
+  DECLARE v_status STRING DEFAULT 'pending';
+
+  SET v_count = (SELECT COUNT(*) FROM catalog.schema.raw_orders WHERE status = 'new');
+
+  IF v_count > 0 THEN
+    INSERT INTO catalog.schema.processed_orders
+    SELECT *, current_timestamp() AS processed_at
+    FROM catalog.schema.raw_orders
+    WHERE status = 'new';
+    SET v_status = 'completed';
+  ELSE
+    SET v_status = 'skipped';
+  END IF;
+
+  SELECT v_status AS result, v_count AS rows_processed;
+END
+```
+
+## Stored Procedures
+
+Stored procedures persist SQL scripts in Unity Catalog and are invoked with `CALL`. Available in DBR 17.0+ (Public Preview).
+
+```sql
+CREATE OR REPLACE PROCEDURE catalog.schema.upsert_customers(
+  IN p_source STRING,
+  OUT p_rows_affected INT
+)
+LANGUAGE SQL
+SQL SECURITY INVOKER
+BEGIN
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    SET p_rows_affected = -1;
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = concat('Upsert failed for source: ', p_source);
+  END;
+
+  MERGE INTO catalog.schema.dim_customer AS t
+  USING (SELECT * FROM identifier(p_source)) AS s
+  ON t.customer_id = s.customer_id
+  WHEN MATCHED THEN UPDATE SET *
+  WHEN NOT MATCHED THEN INSERT *;
+
+  SET p_rows_affected = (SELECT COUNT(*) FROM identifier(p_source));
+END;
+
+-- Invoke:
+CALL catalog.schema.upsert_customers('catalog.schema.staging_customers', ?);
+```
+
+## Control Flow
+
+| Statement | Purpose |
+|-----------|---------|
+| `IF / ELSEIF / ELSE` | Conditional branching |
+| `CASE` | Simple or searched case |
+| `WHILE ... DO` | Condition-based loop |
+| `FOR row AS query DO` | Iterate over query results |
+| `LOOP ... END LOOP` | Unconditional loop (use `LEAVE` to exit) |
+| `REPEAT ... UNTIL` | Execute at least once, repeat until condition |
+| `LEAVE label` | Exit a labeled loop (like `BREAK`) |
+| `ITERATE label` | Skip to next iteration (like `CONTINUE`) |
+
+## Recursive CTEs
+
+Available in DBR 17.0+ and DBSQL 2025.20+. Enables hierarchy traversal and graph walking.
+
+```sql
+WITH RECURSIVE org_chart AS (
+  SELECT employee_id, name, manager_id, 0 AS depth, ARRAY(name) AS path
+  FROM catalog.schema.employees
+  WHERE manager_id IS NULL
+
+  UNION ALL
+
+  SELECT e.employee_id, e.name, e.manager_id, o.depth + 1, array_append(o.path, e.name)
+  FROM catalog.schema.employees e
+  JOIN org_chart o ON e.manager_id = o.employee_id
+  WHERE o.depth < 10
+)
+SELECT * FROM org_chart ORDER BY depth, name;
+```
+
+Default recursion depth is 100 (override with `MAX RECURSION LEVEL`). Default row limit is 1,000,000.
+
+## Multi-Statement Transactions
+
+Use `BEGIN ATOMIC...END` for atomic multi-statement operations (Preview):
+
+```sql
+BEGIN ATOMIC
+  INSERT INTO customers (id, name) VALUES (1, 'Alice');
+  INSERT INTO orders (id, customer_id, amount) VALUES (1, 1, 250.00);
+  INSERT INTO audit_log (action, ts) VALUES ('new_customer_order', current_timestamp());
+END;
+```
+
+Tables used in `BEGIN ATOMIC` blocks must have the `catalogManaged` table feature enabled.
+
+## Dynamic SQL
+
+```sql
+BEGIN
+  DECLARE total INT;
+  EXECUTE IMMEDIATE 'SELECT SUM(c1) FROM VALUES(:a), (:b) AS t(c1)'
+    INTO total USING (5 AS a, 6 AS b);
+  VALUES (total);  -- Returns 11
+END;
+```
+
+## Runtime Version Reference
+
+| Feature | Minimum Runtime | Status |
+|---------|----------------|--------|
+| SQL Scripting | 16.3 | GA |
+| Stored Procedures | 17.0 | Public Preview |
+| Recursive CTEs | 17.0 / DBSQL 2025.20 | GA |
+| Multi-variable DECLARE | 17.2 | GA |
+| EXECUTE IMMEDIATE (basic) | 14.3 | GA |
+| Multi-statement Transactions | Varies | Preview |

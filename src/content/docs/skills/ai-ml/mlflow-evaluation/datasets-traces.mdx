@@ -1,0 +1,47 @@
+---
+title: Datasets & Trace Analysis
+description: Build evaluation datasets from traces and manual examples, analyze production traces for latency, token usage, and error patterns.
+sidebar:
+  order: 2
+---
+
+## Building Evaluation Datasets
+
+### From Manual Examples
+
+```python
+eval_data = [
+    {"inputs": {"query": "What is our return policy?"}, "expectations": {"expected_response": "30-day returns"}},
+    {"inputs": {"query": "How do I reset my password?"}, "expectations": {"expected_response": "Go to Settings > Security"}},
+]
+```
+
+### From Production Traces
+
+1. Search and filter traces for interesting examples
+2. Tag traces for inclusion in evaluation datasets
+3. Extract inputs and expected outputs
+4. Store as Unity Catalog tables for reproducibility
+
+## Trace Analysis
+
+### Latency Profiling by Span
+
+Identify bottlenecks by analyzing span durations across trace types (LLM calls, tool executions, retrieval).
+
+### Token Usage Analysis
+
+Track input/output tokens per span to identify cost-heavy operations and optimize context lengths.
+
+### Error Pattern Detection
+
+Filter traces by error status to find systematic failures and debug agent behavior.
+
+## Context Optimization
+
+When agents are slow or expensive:
+
+1. Profile retrieval context sizes
+2. Identify irrelevant chunks being passed to LLM
+3. Tune chunk sizes and retrieval `num_results`
+4. Re-evaluate to measure improvement

@@ -1,0 +1,79 @@
+---
+title: Genie Spaces
+description: Create and manage Databricks Genie Spaces for natural language SQL exploration — space creation, conversation API, export/import, and cross-workspace migration.
+sidebar:
+  order: 2
+---
+
+## Overview
+
+The Genie Spaces skill teaches Claude Code how to create, manage, and query Databricks Genie Spaces -- natural language interfaces for SQL-based data exploration. Genie translates questions into SQL queries, executes them on a SQL warehouse, and presents results conversationally. Use it when building conversational data interfaces, exporting/importing spaces for migration, or programmatically querying data through the Conversation API.
+
+## Capabilities
+
+- Create Genie Spaces connected to Unity Catalog tables
+- Add sample questions and descriptions that improve query accuracy
+- Ask natural language questions via the Conversation API with follow-up context
+- Export and import Genie Space configurations for backup and migration
+- Clone spaces within a workspace or migrate across workspaces with catalog remapping
+- Auto-detect available SQL warehouses for space creation
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_or_update_genie` | Create or update a Genie Space (supports `serialized_space`) |
+| `get_genie` | Get space details or list all spaces |
+| `delete_genie` | Delete a Genie Space |
+| `migrate_genie` | Export or import a Genie Space for cloning/migration |
+| `ask_genie` | Ask a question or follow-up via Conversation API |
+| `get_table_details` | Inspect table schemas before creating a space |
+
+## Example Prompts
+
+```
+Create a Genie Space for my sales data in catalog.schema with
+customers, orders, and products tables and 5 sample questions
+```
+
+```
+Ask my Sales Genie what the customer churn rate was last quarter
+```
+
+```
+Export my production Genie Space and import it into the dev workspace
+with catalog remapping from prod_catalog to dev_catalog
+```
+
+```
+Clone my HR Analytics Genie Space to create a test copy
+```
+
+## Key Concepts
+
+### Space Creation Workflow
+
+1. **Inspect tables** with `get_table_details` to understand available data
+2. **Plan sample questions** that reference actual column names
+3. **Create the space** with descriptive name, table list, description, and sample questions
+4. **Test** with the Conversation API or Databricks UI
+
+### Conversation API
+
+Use `ask_genie` for programmatic access. Pass `conversation_id` from previous responses for follow-up questions with context:
+
+```python
+result = ask_genie(space_id="01abc123...", question="What were total sales last month?")
+# Follow-up with context
+ask_genie(space_id="01abc123...", question="Break that down by region",
+          conversation_id=result["conversation_id"])
+```
+
+### Export and Migration
+
+Each MCP server is workspace-scoped. For cross-workspace migration: export from source, remap catalog names in `serialized_space`, then import to target.
+
+## References
+
+- [Genie Spaces Documentation](https://docs.databricks.com/aws/en/genie/)
+- [Genie Conversation API](https://docs.databricks.com/api/workspace/genie)

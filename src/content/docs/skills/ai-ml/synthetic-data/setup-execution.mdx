@@ -1,0 +1,56 @@
+---
+title: Setup & Execution
+description: Environment setup, compute selection, and execution modes for synthetic data generation — Databricks Connect serverless, jobs, and classic clusters.
+sidebar:
+  order: 1
+---
+
+## Execution Modes
+
+| Mode | Best For | Setup |
+|------|----------|-------|
+| DB Connect 16.4+ Serverless | Local dev, Python 3.12+ | `DatabricksEnv().withDependencies(...)` |
+| Serverless Job | Production, scheduled | Job with `environments` parameter |
+| Classic Cluster | Fallback only | Install libraries via CLI |
+
+## Quick Start with Serverless
+
+```python
+from databricks.connect import DatabricksSession, DatabricksEnv
+from pyspark.sql import functions as F
+from pyspark.sql.types import StringType, DoubleType
+import pandas as pd, numpy as np
+
+env = DatabricksEnv().withDependencies("faker", "pandas", "numpy")
+spark = DatabricksSession.builder.withEnvironment(env).serverless(True).getOrCreate()
+
+@F.pandas_udf(StringType())
+def fake_name(ids: pd.Series) -> pd.Series:
+    from faker import Faker
+    fake = Faker()
+    return pd.Series([fake.name() for _ in range(len(ids))])
+
+customers_df = (
+    spark.range(0, 10000, numPartitions=16)
+    .select(
+        F.concat(F.lit("CUST-"), F.lpad(F.col("id").cast("string"), 5, "0")).alias("customer_id"),
+        fake_name(F.col("id")).alias("name"),
+        F.when(F.rand() < 0.6, "Free")
+         .when(F.rand() < 0.9, "Pro")
+         .otherwise("Enterprise").alias("tier"),
+    )
+)
+
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
+spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.raw_data")
+customers_df.write.mode("overwrite").parquet(f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/customers")
+```
+
+## Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| `ModuleNotFoundError: faker` | Use `DatabricksEnv().withDependencies("faker")` |
+| `PERSIST TABLE is not supported` | Never use `.cache()` or `.persist()` on serverless |
+| Slow Faker UDFs | Use `pandas_udf` for batch processing |
+| Out of memory | Increase `numPartitions` in `spark.range()` |

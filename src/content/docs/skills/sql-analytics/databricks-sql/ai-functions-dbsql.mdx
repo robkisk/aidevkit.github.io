@@ -1,0 +1,75 @@
+---
+title: AI Functions in DBSQL
+description: Built-in AI functions for LLM-powered data enrichment, external API calls, federated queries, and file ingestion directly from Databricks SQL.
+sidebar:
+  order: 4
+---
+
+## AI Functions Overview
+
+Databricks AI Functions invoke Foundation Model APIs directly from SQL. They work on table columns as naturally as `UPPER()` or `LENGTH()`.
+
+```sql
+-- Classify, extract, and enrich in one query
+SELECT
+  ticket_id,
+  ai_classify(description, ARRAY('billing', 'technical', 'account')) AS category,
+  ai_analyze_sentiment(description) AS sentiment,
+  ai_extract(content, ARRAY('person_name', 'company', 'dollar_amount')) AS entities
+FROM catalog.schema.support_tickets
+LIMIT 100;
+```
+
+### Structured Output with `ai_query`
+
+```sql
+SELECT ai_query(
+  'databricks-meta-llama-3-3-70b-instruct',
+  concat('Summarize as JSON with keys: topic, sentiment, action_items. Feedback: ', feedback),
+  returnType => 'STRUCT<topic STRING, sentiment STRING, action_items ARRAY<STRING>>'
+) AS analysis
+FROM catalog.schema.customer_feedback LIMIT 50;
+```
+
+## External API Calls
+
+### `http_request` -- Call External APIs
+
+```sql
+CREATE CONNECTION my_api_conn TYPE HTTP
+  OPTIONS (host 'https://api.example.com', bearer_token secret('scope', 'token'));
+
+SELECT order_id, http_request(
+  conn => 'my_api_conn', method => 'POST', path => '/v1/validate',
+  json => to_json(named_struct('order_id', order_id, 'amount', amount))
+).text AS api_response
+FROM catalog.schema.orders WHERE needs_validation = true;
+```
+
+### `remote_query` -- Federated Queries
+
+```sql
+SELECT * FROM remote_query(
+  'my_postgres_connection',
+  database => 'my_database',
+  query => 'SELECT customer_id, email FROM customers WHERE active = true'
+);
+```
+
+### `read_files` -- Ingest Raw Files
+
+```sql
+SELECT * FROM read_files(
+  '/Volumes/catalog/schema/raw/events/',
+  format => 'json',
+  schemaHints => 'event_id STRING, timestamp TIMESTAMP, payload MAP<STRING, STRING>',
+  pathGlobFilter => '*.json',
+  recursiveFileLookup => true
+);
+```
+
+## Requirements
+
+- Databricks SQL warehouse (not Classic) or DBR 15.1+
+- Pro or Serverless warehouse for `ai_forecast`
+- DBR 17.1+ for `ai_parse_document`

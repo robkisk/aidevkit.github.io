@@ -1,0 +1,69 @@
+---
+title: Genie Conversations
+description: Programmatically ask questions to Genie Spaces via the Conversation API with follow-up context, timeout handling, and response parsing.
+sidebar:
+  order: 1
+---
+
+## Conversation API
+
+The `ask_genie` tool sends natural language questions to a curated Genie Space and receives SQL-generated answers.
+
+### Basic Usage
+
+```python
+ask_genie(
+    space_id="01abc123...",
+    question="What were total sales last month?"
+)
+```
+
+**Response fields:**
+
+| Field | Description |
+|-------|-------------|
+| `question` | The original question asked |
+| `conversation_id` | ID for follow-up questions |
+| `status` | `COMPLETED`, `FAILED`, `CANCELLED`, `TIMEOUT` |
+| `sql` | The SQL query Genie generated |
+| `columns` | List of column names in result |
+| `data` | Query results as list of rows |
+| `row_count` | Number of rows returned |
+
+### Follow-up Questions
+
+```python
+result = ask_genie(space_id="01abc123...", question="What were total sales last month?")
+
+# Follow-up uses context from first question
+ask_genie(
+    space_id="01abc123...",
+    question="Break that down by region",
+    conversation_id=result["conversation_id"]
+)
+```
+
+### When to Use `ask_genie` vs Direct SQL
+
+| Scenario | Use |
+|----------|-----|
+| Genie Space has curated business logic | `ask_genie` |
+| User explicitly says "ask Genie" | `ask_genie` |
+| Testing a Genie Space after creating it | `ask_genie` |
+| Simple ad-hoc query with known SQL | `execute_sql` |
+| Need precise control over query | `execute_sql` |
+
+### Best Practices
+
+- **New conversations for new topics** -- do not reuse conversations across unrelated questions
+- **Handle clarification requests** -- check for `text_response` when Genie asks for more detail
+- **Set appropriate timeouts** -- 30-60s for simple aggregations, 120+ for large scans
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "Genie Space not found" | Verify `space_id` with `get_genie` |
+| "Query timed out" | Increase `timeout_seconds` or simplify question |
+| "Failed to generate SQL" | Rephrase question or add instructions to space |
+| Unexpected results | Review generated SQL and add certified queries |

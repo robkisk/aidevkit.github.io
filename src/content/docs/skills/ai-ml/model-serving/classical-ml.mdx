@@ -1,0 +1,35 @@
+---
+title: Classical ML Models
+description: Deploy traditional ML models (sklearn, xgboost) with MLflow autolog, auto-registration, and model serving endpoints.
+sidebar:
+  order: 1
+---
+
+## Quick Start
+
+```python
+import mlflow
+import mlflow.sklearn
+from sklearn.linear_model import LogisticRegression
+
+mlflow.sklearn.autolog(
+    log_input_examples=True,
+    registered_model_name="main.models.my_classifier"
+)
+
+model = LogisticRegression()
+model.fit(X_train, y_train)
+```
+
+The model is logged and registered to Unity Catalog automatically. Deploy via UI or SDK.
+
+## Query a Traditional ML Endpoint
+
+```python
+query_serving_endpoint(
+    name="sklearn-classifier",
+    dataframe_records=[
+        {"age": 25, "income": 50000, "credit_score": 720}
+    ]
+)
+```

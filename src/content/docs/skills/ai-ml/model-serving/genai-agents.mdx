@@ -1,0 +1,53 @@
+---
+title: GenAI Agents
+description: Build and deploy GenAI agents using ResponsesAgent pattern with LangGraph, tool integration, and MLflow 3.
+sidebar:
+  order: 2
+---
+
+## ResponsesAgent Pattern
+
+The recommended approach for building GenAI agents on Databricks. Uses MLflow 3's `ResponsesAgent` base class.
+
+### Setup
+
+```python
+%pip install -U mlflow==3.6.0 databricks-langchain langgraph==0.3.4 databricks-agents pydantic
+dbutils.library.restartPython()
+```
+
+### Agent Development Workflow
+
+1. **Create agent file** (`agent.py`) with `ResponsesAgent` pattern
+2. **Upload to workspace** via `upload_folder`
+3. **Test agent** via `run_python_file_on_databricks`
+4. **Log model** to Unity Catalog
+5. **Deploy** asynchronously via Databricks Job
+6. **Query endpoint** once READY
+
+### Output Format
+
+Always use helper methods:
+
+```python
+# Text response
+return ResponsesAgentResponse(
+    output=[self.create_text_output_item(text="Answer here", id="msg_1")]
+)
+
+# Tool call
+self.create_function_call_item(id="call_1", call_id="fc_1", name="search", arguments='{}')
+
+# Tool result
+self.create_function_call_output_item(call_id="fc_1", output="result text")
+```
+
+### Foundation Model Endpoints
+
+| Use Case | Endpoint |
+|----------|----------|
+| General reasoning | `databricks-claude-sonnet-4` |
+| Fast/cheap tasks | `databricks-meta-llama-3-1-8b-instruct` |
+| Large context | `databricks-meta-llama-3-3-70b-instruct` |
+| Multimodal | `databricks-llama-4-maverick` |
+| Embeddings | `databricks-gte-large-en` |
