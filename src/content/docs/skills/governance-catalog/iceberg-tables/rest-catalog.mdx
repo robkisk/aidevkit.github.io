@@ -1,26 +1,131 @@
 ---
 title: Iceberg REST Catalog
-description: Expose Databricks tables to external engines via the IRC endpoint with authentication and credential vending.
+description: Expose Unity Catalog tables to external engines via the standard Iceberg REST Catalog protocol with credential vending.
 sidebar:
   order: 3
 ---
 
-The Iceberg REST Catalog (IRC) lets external engines read and write Databricks-managed Iceberg data using the standard Apache Iceberg REST Catalog protocol.
+## What You Can Build
 
-External tools connect to the IRC endpoint, authenticate, and receive vended credentials for direct cloud storage access.
+The Iceberg REST Catalog (IRC) is Unity Catalog's built-in endpoint that implements the standard Apache Iceberg REST Catalog protocol. External engines -- PyIceberg, Spark, Snowflake, Flink -- connect to one URL, authenticate, and get vended cloud credentials to read or write Iceberg data directly from storage. You don't configure cloud credentials in every external tool; the IRC handles credential vending automatically.
 
-## Endpoint
+## In Action
 
+> "Using SQL, grant external engine access to a schema so PyIceberg and Spark can read tables via the IRC endpoint."
+
+```sql
+-- Grant the external use privilege (required in addition to SELECT)
+GRANT EXTERNAL USE SCHEMA ON SCHEMA analytics.gold TO `etl-service-principal`;
+
+-- Grant data access
+GRANT USE CATALOG ON CATALOG analytics TO `etl-service-principal`;
+GRANT USE SCHEMA ON SCHEMA analytics.gold TO `etl-service-principal`;
+GRANT SELECT ON SCHEMA analytics.gold TO `etl-service-principal`;
 ```
-https://<workspace-host>/api/2.1/unity-catalog/iceberg
+
+**Key decisions:**
+- `EXTERNAL USE SCHEMA` is the gate -- without it, external engines get credential vending failures even if they have SELECT
+- The IRC endpoint is `https://<workspace-url>/api/2.1/unity-catalog/iceberg-rest` (the older `/iceberg` path is in maintenance mode)
+- Managed Iceberg tables support both read and write via IRC; Delta + UniForm and Compatibility Mode are read-only
+- Credential vending provides temporary, table-scoped cloud tokens (STS on AWS, SAS on Azure) -- credentials auto-expire after ~1 hour
+
+## More Patterns
+
+### Connect PyIceberg to Unity Catalog
+
+> "Using Python, connect PyIceberg to a Databricks workspace and query an Iceberg table."
+
+```python
+from pyiceberg.catalog import load_catalog
+
+catalog = load_catalog(
+    "databricks",
+    uri="https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest",
+    warehouse="analytics",
+    token="dapi_your_pat_token",
+)
+
+# warehouse pins the UC catalog, so identifiers are schema.table
+table = catalog.load_table("gold.customers")
+df = table.scan(
+    row_filter="region = 'us-west-2'",
+    limit=1000,
+).to_pandas()
 ```
 
-## Authentication
+The `warehouse` parameter sets the Unity Catalog catalog name. All subsequent table references use `schema.table` format, not the full three-level name.
 
-- PAT (Personal Access Token) or OAuth M2M
-- `EXTERNAL USE SCHEMA` grants for external engine access
-- Credential vending provides temporary cloud storage credentials
+### Connect OSS Spark via OAuth
 
-## Supported Operations
+> "Using Python, configure an open-source Spark session to read from Unity Catalog via the IRC with OAuth authentication."
 
-External engines can list namespaces, list tables, load table metadata, and read/write data (for managed Iceberg tables).
+```python
+from pyspark.sql import SparkSession
+
+spark = (
+    SparkSession.builder
+    .appName("uc-iceberg-reader")
+    .config("spark.jars.packages",
+            "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.7.1,"
+            "org.apache.iceberg:iceberg-aws-bundle:1.7.1")
+    .config("spark.sql.extensions",
+            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+    .config("spark.sql.catalog.uc", "org.apache.iceberg.spark.SparkCatalog")
+    .config("spark.sql.catalog.uc.type", "rest")
+    .config("spark.sql.catalog.uc.uri",
+            "https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest")
+    .config("spark.sql.catalog.uc.rest.auth.type", "oauth2")
+    .config("spark.sql.catalog.uc.oauth2-server-uri",
+            "https://my-workspace.cloud.databricks.com/oidc/v1/token")
+    .config("spark.sql.catalog.uc.credential",
+            "<client-id>:<client-secret>")
+    .config("spark.sql.catalog.uc.scope", "all-apis")
+    .config("spark.sql.catalog.uc.warehouse", "analytics")
+    .getOrCreate()
+)
+
+spark.sql("SELECT * FROM uc.gold.customers LIMIT 10").show()
+```
+
+This configuration is for OSS Spark outside Databricks. Inside Databricks Runtime, use the built-in Iceberg support -- do not install additional Iceberg JARs.
+
+### Write from PyIceberg to a managed Iceberg table
+
+> "Using Python, append rows to a managed Iceberg table from PyIceberg."
+
+```python
+import pyarrow as pa
+from pyiceberg.catalog import load_catalog
+
+catalog = load_catalog(
+    "databricks",
+    uri="https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest",
+    warehouse="analytics",
+    token="dapi_your_pat_token",
+)
+
+table = catalog.load_table("gold.orders")
+
+arrow_schema = pa.schema([
+    pa.field("order_id", pa.int64()),
+    pa.field("customer_id", pa.int64()),
+    pa.field("amount", pa.decimal128(10, 2)),
+    pa.field("order_date", pa.date32()),
+])
+
+rows = pa.Table.from_pylist(
+    [{"order_id": 1001, "customer_id": 42, "amount": 199.99, "order_date": "2025-06-15"}],
+    schema=arrow_schema,
+)
+table.append(rows)
+```
+
+Only managed Iceberg tables (`USING ICEBERG`) accept writes via IRC. UniForm and Compatibility Mode tables are read-only from external engines because the underlying format is Delta.
+
+## Watch Out For
+
+- **IP access lists block external connections** -- if your workspace has IP access lists enabled, add the external engine's egress CIDR to the allowlist. Blocked IPs produce timeouts or 403 errors that look like auth failures. Check this first before debugging credentials.
+- **Missing `EXTERNAL USE SCHEMA`** -- this is the most common setup issue. A principal can have SELECT on every table and still fail to connect via IRC without this grant. The error in external tools typically says "failed to retrieve credentials."
+- **Legacy endpoint still in use** -- the older `/api/2.1/unity-catalog/iceberg` path is in maintenance mode. New integrations should always use `/api/2.1/unity-catalog/iceberg-rest`.
+- **PyArrow schema mismatches** -- PyArrow defaults to int64. If your Iceberg table uses int32 columns, cast explicitly in the Arrow schema or writes fail with type errors.
+- **v3 tables need Iceberg 1.9.0+** -- external engines with older Iceberg libraries can't read format-version 3 tables. Verify client library versions before upgrading tables to v3.

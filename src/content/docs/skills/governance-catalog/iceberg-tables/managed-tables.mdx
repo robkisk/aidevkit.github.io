@@ -1,52 +1,102 @@
 ---
 title: Managed Iceberg Tables
-description: Create and manage native Iceberg tables with DDL, DML, Liquid Clustering, Predictive Optimization, and Iceberg v3.
+description: Create native Iceberg tables in Unity Catalog with full read/write support across Databricks and external engines.
 sidebar:
   order: 1
 ---
 
-Managed Iceberg tables are native Apache Iceberg tables stored in Unity Catalog with full read/write support in Databricks and external engines via IRC.
+## What You Can Build
 
-## Creating Tables
+Managed Iceberg tables give you native Apache Iceberg storage inside Unity Catalog. You get full DML support in Databricks and read/write access from external engines via the Iceberg REST Catalog -- no format conversion, no metadata sync delays. When you need a single table that Spark, PyIceberg, Snowflake, and Flink can all hit directly, this is the path.
+
+## In Action
+
+> "Using SQL, create a managed Iceberg v2 table for an orders dataset with Liquid Clustering on order_date. Use PARTITIONED BY for cross-platform compatibility."
 
 ```sql
--- Basic CTAS
-CREATE TABLE my_catalog.my_schema.events
-USING ICEBERG
-AS SELECT * FROM raw_events;
-
--- PARTITIONED BY (standard Iceberg, cross-platform)
-CREATE TABLE my_catalog.my_schema.events
-USING ICEBERG
-PARTITIONED BY (event_date)
-AS SELECT * FROM raw_events;
-
--- CLUSTER BY on v2 (DBR-only, requires TBLPROPERTIES)
-CREATE TABLE my_catalog.my_schema.events
-USING ICEBERG
-TBLPROPERTIES (
-  'delta.enableDeletionVectors' = false,
-  'delta.enableRowTracking' = false
+CREATE TABLE analytics.sales.orders (
+  order_id BIGINT,
+  customer_id BIGINT,
+  amount DECIMAL(10,2),
+  region STRING,
+  order_date DATE
 )
-CLUSTER BY (event_date)
-AS SELECT * FROM raw_events;
+USING ICEBERG
+PARTITIONED BY (order_date);
+```
 
--- CLUSTER BY on v3 (no TBLPROPERTIES needed)
-CREATE TABLE my_catalog.my_schema.events
+**Key decisions:**
+- `USING ICEBERG` makes this a native Iceberg table, not Delta with UniForm
+- `PARTITIONED BY` auto-handles deletion vector and row-tracking properties -- no manual TBLPROPERTIES needed on v2 or v3
+- Both `PARTITIONED BY` and `CLUSTER BY` produce the same Iceberg metadata for external engines -- UC maps both to Liquid Clustering keys exposed as Iceberg partition fields
+- `PARTITIONED BY` is standard Iceberg DDL that any engine can create; `CLUSTER BY` is Databricks-only
+
+## More Patterns
+
+### Create from existing data with CTAS
+
+> "Using SQL, create a managed Iceberg table from raw events, clustered on event_date, targeting Iceberg v3."
+
+```sql
+CREATE TABLE analytics.bronze.events_archive
 USING ICEBERG
 TBLPROPERTIES ('format-version' = '3')
 CLUSTER BY (event_date)
-AS SELECT * FROM raw_events;
+AS SELECT * FROM analytics.staging.raw_events
+WHERE event_date < '2025-01-01';
 ```
 
-## PARTITIONED BY vs CLUSTER BY
+On v3, `CLUSTER BY` works without extra TBLPROPERTIES because deletion vectors and row tracking are handled natively. On v2, you'd need to explicitly set `'delta.enableDeletionVectors' = false` and `'delta.enableRowTracking' = false`.
 
-Both produce the same Iceberg metadata for external engines. Differences:
+### Upsert with MERGE
 
-- `PARTITIONED BY` is standard Iceberg DDL (works on any engine) and auto-handles DV/row-tracking properties
-- `CLUSTER BY` is DBR-only and requires manual TBLPROPERTIES on v2
-- Expression transforms (`bucket()`, `years()`) are not supported with `PARTITIONED BY`
+> "Using SQL, write a MERGE statement that upserts staged order data into a managed Iceberg table."
 
-## Supported DML
+```sql
+MERGE INTO analytics.sales.orders AS target
+USING analytics.staging.new_orders AS source
+ON target.order_id = source.order_id
+WHEN MATCHED THEN UPDATE SET *
+WHEN NOT MATCHED THEN INSERT *;
+```
 
-Full MERGE, INSERT, UPDATE, DELETE, and time travel support. No Change Data Feed (CDF) on managed Iceberg tables -- use Delta + UniForm if CDF is needed.
+Managed Iceberg tables support full MERGE, INSERT, UPDATE, and DELETE. The one DML gap: Change Data Feed (CDF) is Delta-only. If you need CDF, use Delta with UniForm instead.
+
+### Time travel queries
+
+> "Using SQL, query an Iceberg table as it existed at a specific point in time."
+
+```sql
+-- By timestamp
+SELECT * FROM analytics.sales.orders
+TIMESTAMP AS OF '2025-06-01T00:00:00Z';
+
+-- By snapshot ID
+SELECT * FROM analytics.sales.orders
+VERSION AS OF 1234567890;
+```
+
+Time travel works against Iceberg snapshots. External engines can also inspect snapshot history via `SELECT * FROM analytics.sales.orders.snapshots`.
+
+### Convert a Delta table to managed Iceberg
+
+> "Using SQL, deep-clone an existing Delta table into a managed Iceberg table with Liquid Clustering."
+
+```sql
+CREATE TABLE analytics.sales.orders_iceberg
+USING ICEBERG
+TBLPROPERTIES ('format-version' = '3')
+CLUSTER BY (order_date)
+DEEP CLONE analytics.sales.orders_delta;
+```
+
+`DEEP CLONE` copies all data into native Iceberg format. `SHALLOW CLONE` is not supported for Iceberg tables -- always use `DEEP CLONE` or CTAS.
+
+## Watch Out For
+
+- **Expression transforms not supported** -- `bucket()`, `years()`, `months()`, `days()`, and `hours()` don't work with `PARTITIONED BY` on managed Iceberg tables. Only plain column references are allowed.
+- **`CLUSTER BY` on v2 requires manual TBLPROPERTIES** -- forgetting `'delta.enableDeletionVectors' = false` and `'delta.enableRowTracking' = false` produces a `MANAGED_ICEBERG_ATTEMPTED_TO_ENABLE_CLUSTERING_WITHOUT_DISABLING_DVS_OR_ROW_TRACKING` error. Use `PARTITIONED BY` to avoid this entirely.
+- **No CDF on Iceberg** -- Change Data Feed is a Delta feature. If downstream consumers depend on CDF, keep the table as Delta and add UniForm for external Iceberg reads.
+- **Do not install an Iceberg library into DBR** -- Databricks Runtime includes built-in Iceberg support. Adding an Iceberg JAR causes version conflicts.
+- **v3 is irreversible** -- once you upgrade a table to format-version 3, you cannot downgrade. External engines must use Iceberg library 1.9.0+ to read v3 tables.
+- **Enable Predictive Optimization** -- it's recommended but not auto-enabled for managed Iceberg tables. Turn it on at the catalog or schema level to get automatic compaction, vacuum, and statistics collection.

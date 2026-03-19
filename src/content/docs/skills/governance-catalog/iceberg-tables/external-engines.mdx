@@ -1,43 +1,140 @@
 ---
 title: External Engine Interop
-description: Connect PyIceberg, OSS Spark, AWS EMR, Apache Flink, and Kafka Connect to Databricks via the Iceberg REST Catalog.
+description: Connect PyIceberg, OSS Spark, AWS EMR, Flink, and other engines to Databricks tables via the Iceberg REST Catalog.
 sidebar:
   order: 5
 ---
 
-Connect external engines to Databricks via the Iceberg REST Catalog (IRC). Each engine uses the standard Iceberg REST Catalog protocol.
+## What You Can Build
 
-## Supported Engines
+Any engine that speaks the Iceberg REST Catalog protocol can read (and for managed Iceberg tables, write) your Databricks data. PyIceberg for lightweight Python scripts, OSS Spark for non-Databricks clusters, EMR for AWS-native workflows, Flink for stream processing -- they all connect to the same IRC endpoint, authenticate, and get vended credentials for direct storage access. You configure it once per engine and every Unity Catalog table is available.
 
-- **PyIceberg** -- Python library for Iceberg operations
-- **OSS Spark** -- Open-source Apache Spark
-- **AWS EMR** -- Amazon Elastic MapReduce
-- **Apache Flink** -- Stream processing
-- **Kafka Connect** -- Kafka sink connector
+## In Action
 
-## Common Configuration
+> "Using Python, connect PyIceberg to a Databricks workspace and scan an Iceberg table with a filter pushdown."
 
-All engines connect to the same IRC endpoint:
+```python
+from pyiceberg.catalog import load_catalog
 
+catalog = load_catalog(
+    "databricks",
+    uri="https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest",
+    warehouse="analytics",
+    token="dapi_your_pat_token",
+)
+
+table = catalog.load_table("gold.orders")
+df = table.scan(
+    row_filter="order_date >= '2025-01-01' AND region = 'us-east-1'",
+    limit=5000,
+).to_pandas()
 ```
-https://<workspace-host>/api/2.1/unity-catalog/iceberg
+
+**Key decisions:**
+- `warehouse` pins the Unity Catalog catalog, so table identifiers use `schema.table` format
+- Filter pushdown (`row_filter`) prunes at the file level -- only matching data files are read from storage
+- PAT authentication works for development; use OAuth service principals for production
+- The service principal needs `EXTERNAL USE SCHEMA` plus `SELECT` (and `MODIFY` for writes) on the target schema
+
+## More Patterns
+
+### Write from PyIceberg with explicit Arrow types
+
+> "Using Python, append data to a managed Iceberg table from PyIceberg with correct type casting."
+
+```python
+import pyarrow as pa
+from pyiceberg.catalog import load_catalog
+
+catalog = load_catalog(
+    "databricks",
+    uri="https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest",
+    warehouse="analytics",
+    token="dapi_your_pat_token",
+)
+
+table = catalog.load_table("gold.orders")
+
+# Match the Iceberg schema exactly -- PyArrow defaults to int64
+arrow_schema = pa.schema([
+    pa.field("order_id", pa.int64()),
+    pa.field("customer_id", pa.int64()),
+    pa.field("amount", pa.decimal128(10, 2)),
+    pa.field("region", pa.string()),
+    pa.field("order_date", pa.date32()),
+])
+
+new_rows = pa.Table.from_pylist([
+    {"order_id": 5001, "customer_id": 77, "amount": 349.99,
+     "region": "eu-west-1", "order_date": "2025-07-01"},
+], schema=arrow_schema)
+
+table.append(new_rows)
 ```
 
-Authentication uses PAT or OAuth M2M tokens. External engines receive vended credentials for direct cloud storage access after authenticating.
+Only managed Iceberg tables accept external writes. UniForm and Compatibility Mode tables are read-only from external engines because the underlying format is Delta.
 
-## PyIceberg Example
+### OSS Spark with OAuth authentication
 
-Configure `pyiceberg.yaml` or environment variables:
+> "Using Python, configure an open-source Spark cluster to read and write Databricks Iceberg tables."
+
+```python
+from pyspark.sql import SparkSession
+
+WORKSPACE = "https://my-workspace.cloud.databricks.com"
+CATALOG_ALIAS = "uc"
+
+spark = (
+    SparkSession.builder
+    .appName("external-iceberg")
+    .config("spark.jars.packages",
+            "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.7.1,"
+            "org.apache.iceberg:iceberg-aws-bundle:1.7.1")
+    .config("spark.sql.extensions",
+            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+    .config(f"spark.sql.catalog.{CATALOG_ALIAS}",
+            "org.apache.iceberg.spark.SparkCatalog")
+    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.type", "rest")
+    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.uri",
+            f"{WORKSPACE}/api/2.1/unity-catalog/iceberg-rest")
+    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.rest.auth.type", "oauth2")
+    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.oauth2-server-uri",
+            f"{WORKSPACE}/oidc/v1/token")
+    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.credential",
+            "<client-id>:<client-secret>")
+    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.scope", "all-apis")
+    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.warehouse", "analytics")
+    .getOrCreate()
+)
+
+# Read
+spark.sql("SELECT * FROM uc.gold.orders LIMIT 10").show()
+
+# Write (managed Iceberg only)
+df.writeTo("uc.gold.orders").append()
+```
+
+Choose the cloud bundle matching your metastore: `iceberg-aws-bundle` for AWS, `iceberg-azure-bundle` for Azure, `iceberg-gcp-bundle` for GCP. This configuration is for Spark outside Databricks -- inside DBR, use the built-in support.
+
+### PyIceberg config via YAML
+
+> "Set up a pyiceberg.yaml config file so scripts connect without inline credentials."
 
 ```yaml
 catalog:
   databricks:
     type: rest
-    uri: https://<workspace-host>/api/2.1/unity-catalog/iceberg
-    credential: <pat-token>
-    warehouse: <catalog-name>
+    uri: https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest
+    warehouse: analytics
+    credential: dapi_your_pat_token
 ```
 
-## Version Requirements
+Place this at `~/.pyiceberg.yaml` or set the `PYICEBERG_CATALOG__DATABRICKS__URI` (and related) environment variables. Scripts then call `load_catalog("databricks")` without passing connection details inline.
 
-Iceberg v3 tables require Iceberg library 1.9.0+. Ensure external engines use a compatible library version.
+## Watch Out For
+
+- **IP access lists are the first thing to check** -- if connections time out or return 403 even with valid credentials, the external engine's egress IP is not on the workspace allowlist. This is the most common setup issue.
+- **Do not install Iceberg JARs inside Databricks Runtime** -- DBR includes built-in Iceberg support. Adding a library causes class conflicts. Only configure external Iceberg JARs on non-Databricks engines.
+- **PyArrow version matters** -- PyIceberg requires `pyarrow>=17`. The default `pyarrow` v15 bundled in some environments causes write errors. Upgrade explicitly: `pip install "pyarrow>=17,<20"`.
+- **Schema type mismatches cause silent failures** -- PyArrow defaults to int64 for all integers. If your Iceberg table uses int32 columns, the append succeeds but downstream reads may break. Always build an explicit Arrow schema matching the table.
+- **v3 tables require Iceberg library 1.9.0+** -- external engines on older library versions can't read format-version 3 tables. Check client versions before upgrading your tables to v3.

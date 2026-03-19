@@ -1,68 +1,152 @@
 ---
 title: System Tables
-description: Query Unity Catalog system tables for audit logs, lineage, billing, compute usage, and job monitoring.
+description: Query Unity Catalog system tables for audit trails, billing analysis, lineage tracking, and operational monitoring.
 sidebar:
   order: 1
 ---
 
-System tables are read-only tables under the `system` catalog providing operational metadata across your Databricks workspace.
+## What You Can Build
 
-## Available System Tables
+System tables are read-only tables in the `system` catalog that expose operational metadata across your Databricks account -- audit logs, billing records, lineage graphs, compute usage, query history. Instead of building custom logging infrastructure, you query these tables with standard SQL to answer questions like "who accessed this table last week," "which jobs are failing," and "where is our DBU spend going."
 
-| Schema | Table | Description |
-|--------|-------|-------------|
-| `system.access` | `audit` | All audit events (table access, queries, logins) |
-| `system.access` | `column_lineage` | Column-level data lineage |
-| `system.access` | `table_lineage` | Table-level data lineage |
-| `system.billing` | `usage` | DBU consumption and billing records |
-| `system.billing` | `list_prices` | SKU pricing |
-| `system.compute` | `clusters` | Cluster configurations and state changes |
-| `system.compute` | `node_types` | Available node types |
-| `system.lakeflow` | `job_task_run_timeline` | Job task execution details |
-| `system.lakeflow` | `pipeline_event_log` | SDP pipeline events |
-| `system.storage` | `predictive_optimization_operations_history` | Table maintenance operations |
+## In Action
 
-## Common Queries
-
-### Recent Table Access
+> "Using SQL, find all users who accessed a specific sensitive table in the last 7 days, including their IP addresses."
 
 ```sql
 SELECT
-  event_time, action_name, user_identity.email,
-  request_params.full_name_arg
+  event_time,
+  user_identity.email AS user_email,
+  source_ip_address,
+  action_name,
+  response.status_code
 FROM system.access.audit
-WHERE action_name IN ('getTable', 'commandSubmit')
-  AND event_date >= current_date() - INTERVAL 1 DAY
-ORDER BY event_time DESC
-LIMIT 100
+WHERE event_date >= current_date() - 7
+  AND request_params.full_name_arg = 'analytics.gold.customer_pii'
+  AND action_name IN ('getTable', 'commandSubmit')
+ORDER BY event_time DESC;
 ```
 
-### Billing by SKU
+**Key decisions:**
+- Always filter on `event_date` (the partition key) -- filtering on `event_time` alone scans all partitions and runs slowly
+- System tables must be explicitly enabled per schema by an account admin or metastore admin
+- Audit log retention is 365 days; query history is 30 days -- plan aggregation jobs if you need longer retention
+- Grant access per schema: `system.access` for audit, `system.billing` for cost, `system.query` for performance
+
+## More Patterns
+
+### Monthly billing breakdown by compute type
+
+> "Using SQL, break down last month's DBU consumption by compute type with estimated dollar costs."
 
 ```sql
 SELECT
-  sku_name,
-  SUM(usage_quantity) as total_dbus,
-  SUM(usage_quantity * list_prices.pricing.default) as estimated_cost
-FROM system.billing.usage
-JOIN system.billing.list_prices USING (sku_name)
-WHERE usage_date >= current_date() - INTERVAL 30 DAY
-GROUP BY sku_name
-ORDER BY estimated_cost DESC
+  CASE
+    WHEN sku_name LIKE '%ALL_PURPOSE%' THEN 'All-Purpose Compute'
+    WHEN sku_name LIKE '%JOBS%' THEN 'Jobs Compute'
+    WHEN sku_name LIKE '%SQL%' THEN 'SQL Warehouse'
+    WHEN sku_name LIKE '%SERVERLESS%' THEN 'Serverless'
+    ELSE 'Other'
+  END AS compute_type,
+  SUM(u.usage_quantity) AS total_dbus,
+  SUM(u.usage_quantity * p.pricing.default) AS estimated_cost
+FROM system.billing.usage u
+LEFT JOIN system.billing.list_prices p
+  ON u.sku_name = p.sku_name AND u.cloud = p.cloud
+WHERE u.usage_date >= current_date() - 30
+  AND p.price_end_time IS NULL
+GROUP BY 1
+ORDER BY estimated_cost DESC;
 ```
 
-### Table Lineage
+The `list_prices` join gives you estimated dollar costs. Filter `price_end_time IS NULL` to get current prices only -- historical prices have an end date.
+
+### Trace upstream lineage for a gold table
+
+> "Using SQL, find all upstream tables that feed into a gold-layer table, recursively."
 
 ```sql
-SELECT
-  source_table_full_name, target_table_full_name, event_time
-FROM system.access.table_lineage
-WHERE target_table_full_name = 'my_catalog.my_schema.my_table'
-ORDER BY event_time DESC
+WITH RECURSIVE lineage AS (
+  SELECT
+    source_table_full_name,
+    target_table_full_name,
+    1 AS depth
+  FROM system.access.table_lineage
+  WHERE target_table_full_name = 'analytics.gold.customer_360'
+
+  UNION ALL
+
+  SELECT
+    t.source_table_full_name,
+    t.target_table_full_name,
+    l.depth + 1
+  FROM system.access.table_lineage t
+  JOIN lineage l ON t.target_table_full_name = l.source_table_full_name
+  WHERE l.depth < 10
+)
+SELECT DISTINCT source_table_full_name, target_table_full_name, depth
+FROM lineage
+ORDER BY depth;
 ```
 
-## Prerequisites
+Recursive CTEs walk the lineage graph from gold back to bronze. The `depth < 10` guard prevents infinite loops from circular references.
 
-- Account admin or metastore admin to enable system tables
-- System tables must be explicitly enabled per schema
-- Data retention varies by table (typically 365 days for audit)
+### Job failure monitoring
+
+> "Using SQL, find failing jobs in the last 24 hours with success rate trends over the past month."
+
+```sql
+-- Failed jobs in last 24 hours
+SELECT
+  job_id,
+  run_id,
+  period_start_time,
+  result_state,
+  termination_code
+FROM system.lakeflow.job_run_timeline
+WHERE period_start_time >= current_timestamp() - INTERVAL 24 HOURS
+  AND result_state IN ('FAILED', 'TIMEDOUT', 'CANCELED')
+ORDER BY period_start_time DESC;
+
+-- Job success rates over 30 days
+SELECT
+  job_id,
+  COUNT(*) AS total_runs,
+  ROUND(100.0 * SUM(CASE WHEN result_state = 'SUCCESS' THEN 1 ELSE 0 END)
+    / COUNT(*), 2) AS success_rate_pct
+FROM system.lakeflow.job_run_timeline
+WHERE period_start_time >= current_date() - 30
+GROUP BY job_id
+HAVING COUNT(*) >= 5
+ORDER BY success_rate_pct ASC;
+```
+
+The `lakeflow` schema covers both jobs and SDP pipeline events. Filter `HAVING COUNT(*) >= 5` to avoid flagging jobs with too few runs to be statistically meaningful.
+
+### Enable system schemas with the Python SDK
+
+> "Using Python, list available system schemas and enable the ones you need."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# List system schemas and their state
+for schema in w.system_schemas.list(metastore_id="your-metastore-id"):
+    print(f"{schema.schema}: {schema.state}")
+
+# Enable access and billing schemas
+w.system_schemas.enable(metastore_id="your-metastore-id", schema_name="access")
+w.system_schemas.enable(metastore_id="your-metastore-id", schema_name="billing")
+```
+
+System schemas must be enabled before they're queryable. This is a one-time setup step per metastore.
+
+## Watch Out For
+
+- **Always filter on the partition key** -- `event_date` for audit, `usage_date` for billing, `period_start_time` for jobs. Filtering only on timestamp columns without the date partition triggers full table scans on tables that can be hundreds of GB.
+- **System tables must be explicitly enabled** -- they're not on by default. An account admin or metastore admin needs to enable each schema (access, billing, compute, lakeflow, query) before anyone can query it.
+- **Retention limits vary** -- audit and billing data retain 365 days; query history and compute events retain 30 days. If compliance requires longer retention, schedule a job to copy system table data into your own Delta tables.
+- **Column lineage tracks PII flow** -- use `system.access.column_lineage` to trace where sensitive columns like `email` or `ssn` propagate. This is critical for GDPR/CCPA compliance audits.
+- **Create views for repeated queries** -- system table queries tend to be complex. Wrap common patterns in views (e.g., `analytics.governance.daily_audit_summary`) to avoid duplicating logic across dashboards and alerts.
