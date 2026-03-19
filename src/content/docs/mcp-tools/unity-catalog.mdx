@@ -1,0 +1,210 @@
+---
+title: Unity Catalog & Governance
+description: MCP tools for managing catalogs, schemas, tables, grants, tags, and data sharing.
+sidebar:
+  order: 3
+---
+
+These tools interact with Unity Catalog — the unified governance layer for Databricks. They manage data objects, permissions, tags, monitors, sharing, and storage credentials.
+
+## manage_uc_objects
+
+**Description:** Multi-action tool for managing Unity Catalog objects — catalogs, schemas, tables, views, and functions. Supports creating, listing, getting, updating, and deleting catalog objects.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `create`, `list`, `get`, `update`, or `delete` |
+| object_type | string | Yes | Type: `catalog`, `schema`, `table`, `view`, or `function` |
+| full_name | string | No | Three-level name (e.g., `catalog.schema.table`) for `get`, `update`, `delete` |
+| parent | string | No | Parent name (e.g., `catalog` or `catalog.schema`) for `list`, `create` |
+| properties | object | No | Object properties for `create` or `update` |
+
+**Example prompt:**
+```
+Create a schema called analytics in the production catalog
+with a comment describing it as the team's reporting layer
+```
+
+**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
+
+---
+
+## get_table_details
+
+**Description:** Retrieves detailed metadata for a specific table including column names, types, comments, partitioning, storage location, row count, and size.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| full_name | string | Yes | Full three-level table name (e.g., `catalog.schema.table`) |
+
+**Example prompt:**
+```
+Show me the schema and column details for production.sales.orders
+```
+
+**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/), [Data Profiling](/aidevkit.github.io/skills/governance-catalog/unity-catalog/data-profiling/)
+
+---
+
+## manage_uc_grants
+
+**Description:** Multi-action tool for managing Unity Catalog permissions. Supports granting, revoking, and listing permissions on catalogs, schemas, tables, and other securable objects.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `grant`, `revoke`, or `get` |
+| securable_type | string | Yes | Object type: `catalog`, `schema`, `table`, `volume`, `function`, etc. |
+| full_name | string | Yes | Full name of the securable object |
+| principal | string | No | User, group, or service principal (required for `grant`/`revoke`) |
+| privileges | string[] | No | List of privileges (e.g., `SELECT`, `MODIFY`, `ALL_PRIVILEGES`) |
+
+**Example prompt:**
+```
+Grant SELECT and MODIFY on production.analytics to the data-team group
+```
+
+**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
+
+---
+
+## manage_uc_tags
+
+**Description:** Multi-action tool for managing tags on Unity Catalog objects. Tags enable data classification, discovery, and governance policy enforcement.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `set`, `delete`, or `list` |
+| securable_type | string | Yes | Object type to tag |
+| full_name | string | Yes | Full name of the object |
+| tags | object | No | Key-value pairs to set as tags |
+
+**Example prompt:**
+```
+Tag the customers table with pii=true and data_owner=analytics-team
+```
+
+**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
+
+---
+
+## manage_uc_monitors
+
+**Description:** Multi-action tool for managing Data Profiling monitors on Unity Catalog tables. Monitors track data quality, drift, and statistical properties over time.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `create`, `get`, `update`, `delete`, `run`, or `list_refreshes` |
+| full_name | string | Yes | Full table name to monitor |
+| monitor_type | string | No | Type: `SNAPSHOT`, `TIME_SERIES`, or `INFERENCE` |
+| baseline_table | string | No | Reference table for drift detection |
+| slicing_exprs | string[] | No | Columns to slice metrics by |
+
+**Example prompt:**
+```
+Set up a time-series monitor on the sales.daily_revenue table
+to track data quality and alert on anomalies
+```
+
+**Related skills:** [Data Profiling](/aidevkit.github.io/skills/governance-catalog/unity-catalog/data-profiling/)
+
+---
+
+## manage_uc_sharing
+
+**Description:** Multi-action tool for managing Delta Sharing — the open protocol for secure data exchange. Supports creating shares, adding recipients, and managing shared objects.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `create_share`, `list_shares`, `get_share`, `update_share`, `delete_share`, `create_recipient`, `list_recipients`, `get_recipient`, `delete_recipient` |
+| name | string | No | Share or recipient name |
+| objects | array | No | Tables and schemas to include in a share |
+
+**Example prompt:**
+```
+Create a share called partner_data containing the
+production.public.product_catalog table and add
+partner-corp as a recipient
+```
+
+**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
+
+---
+
+## manage_uc_storage
+
+**Description:** Multi-action tool for managing Unity Catalog external storage credentials and locations. These define where data physically resides and how Databricks accesses cloud storage.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `create_credential`, `list_credentials`, `create_location`, `list_locations`, `get_location`, `delete_location` |
+| name | string | No | Credential or location name |
+| url | string | No | Cloud storage URL (e.g., `s3://bucket/path`) |
+| credential_name | string | No | Storage credential to associate with a location |
+
+**Example prompt:**
+```
+Create an external location called raw-data pointing to
+s3://my-bucket/raw/ using the aws-access credential
+```
+
+**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
+
+---
+
+## manage_uc_connections
+
+**Description:** Multi-action tool for managing Unity Catalog connections to external data sources. Connections enable federated queries against systems like PostgreSQL, MySQL, Snowflake, and others.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `create`, `list`, `get`, `update`, or `delete` |
+| name | string | No | Connection name |
+| connection_type | string | No | Type: `POSTGRESQL`, `MYSQL`, `SNOWFLAKE`, `REDSHIFT`, `SQLDW`, etc. |
+| options | object | No | Connection-specific options (host, port, credentials) |
+
+**Example prompt:**
+```
+Create a connection called pg-analytics to our PostgreSQL
+database at analytics-db.example.com
+```
+
+**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
+
+---
+
+## manage_uc_security_policies
+
+**Description:** Multi-action tool for managing Unity Catalog security policies including row filters, column masks, and access control policies that protect sensitive data at query time.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `create`, `list`, `get`, `update`, or `delete` |
+| policy_type | string | No | Type: `row_filter` or `column_mask` |
+| table_name | string | No | Full table name to apply the policy to |
+| function_name | string | No | UDF that implements the filter or mask logic |
+
+**Example prompt:**
+```
+Apply a column mask on the customers.email field that redacts
+email addresses for users without the pii-viewer role
+```
+
+**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)

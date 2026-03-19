@@ -1,0 +1,117 @@
+---
+title: Serving & Models
+description: MCP tools for monitoring model serving endpoints and managing AI agents.
+sidebar:
+  order: 7
+---
+
+These tools interact with Databricks Model Serving — listing endpoints, checking status, querying models, and managing knowledge assistants and multi-agent systems.
+
+## list_serving_endpoints
+
+**Description:** Lists all model serving endpoints in the workspace with their names, states, and configuration summaries. Covers foundation model endpoints, custom model endpoints, and external model endpoints.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| — | — | — | No parameters required |
+
+**Example prompt:**
+```
+Show me all the model serving endpoints in my workspace
+```
+
+**Related skills:** [Model Serving](/aidevkit.github.io/skills/ai-ml/model-serving/)
+
+---
+
+## get_serving_endpoint_status
+
+**Description:** Retrieves the detailed status and configuration of a specific serving endpoint including its served models, traffic routing, compute configuration, and readiness state.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Endpoint name to look up |
+
+**Example prompt:**
+```
+Check the status and traffic config of the customer-support-agent endpoint
+```
+
+**Related skills:** [Model Serving](/aidevkit.github.io/skills/ai-ml/model-serving/)
+
+---
+
+## query_serving_endpoint
+
+**Description:** Sends an inference request to a model serving endpoint. Supports chat completions, embeddings, and custom model input formats depending on the endpoint type.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Endpoint name to query |
+| messages | array | No | Chat messages for chat completion endpoints |
+| input | object | No | Input payload for custom model endpoints |
+| max_tokens | number | No | Maximum tokens in the response |
+| temperature | number | No | Sampling temperature (0.0 to 2.0) |
+
+**Example prompt:**
+```
+Send a test query to the customer-support-agent endpoint:
+"How do I reset my password?"
+```
+
+**Related skills:** [Model Serving](/aidevkit.github.io/skills/ai-ml/model-serving/), [GenAI Agents](/aidevkit.github.io/skills/ai-ml/model-serving/genai-agents/)
+
+---
+
+## manage_ka
+
+**Description:** Multi-action tool for managing Knowledge Assistants — AI agents backed by retrieval-augmented generation that can answer questions using your organization's documents and data.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `create`, `get`, `list`, `update`, or `delete` |
+| name | string | No | Knowledge assistant name |
+| model_endpoint | string | No | LLM endpoint for generation |
+| vector_search_index | string | No | Vector index for document retrieval |
+| instructions | string | No | System instructions for the assistant |
+
+**Example prompt:**
+```
+Create a knowledge assistant called docs-bot that uses
+the internal-docs vector index and the databricks-meta-llama-3-1-70b
+endpoint to answer employee questions
+```
+
+**Related skills:** [Agent Bricks](/aidevkit.github.io/skills/ai-ml/agent-bricks/), [Knowledge Assistants](/aidevkit.github.io/skills/ai-ml/agent-bricks/knowledge-assistants/)
+
+---
+
+## manage_mas
+
+**Description:** Multi-action tool for managing Multi-Agent Systems — orchestrated collections of specialized agents that collaborate to handle complex tasks through a supervisor pattern.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `create`, `get`, `list`, `update`, or `delete` |
+| name | string | No | Multi-agent system name |
+| agents | array | No | List of agent configurations (name, endpoint, tools, instructions) |
+| supervisor_config | object | No | Supervisor agent configuration for routing and orchestration |
+
+**Example prompt:**
+```
+Create a multi-agent system with a SQL analyst agent,
+a documentation agent, and a supervisor that routes
+questions to the right specialist
+```
+
+**Related skills:** [Agent Bricks](/aidevkit.github.io/skills/ai-ml/agent-bricks/), [Supervisor Agents](/aidevkit.github.io/skills/ai-ml/agent-bricks/supervisor-agents/)

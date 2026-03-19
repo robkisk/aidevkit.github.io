@@ -1,0 +1,233 @@
+---
+title: Apps & Lakebase
+description: MCP tools for deploying Databricks Apps and managing Lakebase databases, branches, and syncs.
+sidebar:
+  order: 6
+---
+
+These tools deploy and manage Databricks Apps (hosted web applications) and Lakebase (managed PostgreSQL-compatible databases that sync with the lakehouse).
+
+## create_or_update_app
+
+**Description:** Creates a new Databricks App or updates an existing one. Apps are containerized web applications hosted on Databricks with built-in authentication and access to workspace resources.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | App name (used in the URL) |
+| description | string | No | Human-readable description |
+| resources | array | No | Workspace resources the app can access (SQL warehouses, serving endpoints, secrets) |
+| source_code_path | string | No | Workspace path containing the app source code |
+
+**Example prompt:**
+```
+Create a Databricks App called sales-dashboard that has
+access to the main SQL warehouse and the sales schema
+```
+
+**Related skills:** [Databricks Apps (Python)](/aidevkit.github.io/skills/apps-databases/databricks-apps-python/), [Databricks Apps (AppKit)](/aidevkit.github.io/skills/apps-databases/databricks-apps-appkit/)
+
+---
+
+## get_app
+
+**Description:** Retrieves the configuration, deployment status, and URL of a Databricks App.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | App name to look up |
+
+**Example prompt:**
+```
+Check the deployment status of my sales-dashboard app
+```
+
+**Related skills:** [Databricks Apps (Python)](/aidevkit.github.io/skills/apps-databases/databricks-apps-python/)
+
+---
+
+## delete_app
+
+**Description:** Deletes a Databricks App, removing its deployment and freeing compute resources.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | App name to delete |
+
+**Example prompt:**
+```
+Delete the old prototype app
+```
+
+**Related skills:** [Databricks Apps (Python)](/aidevkit.github.io/skills/apps-databases/databricks-apps-python/)
+
+---
+
+## create_or_update_lakebase_database
+
+**Description:** Creates a new Lakebase database or updates an existing one. Lakebase provides a managed PostgreSQL-compatible database that automatically syncs data from your lakehouse tables.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Database name |
+| catalog | string | No | Unity Catalog catalog for metadata |
+| schema | string | No | Unity Catalog schema for metadata |
+| compute_size | string | No | Compute tier for the database |
+
+**Example prompt:**
+```
+Create a Lakebase database called app-backend in the
+production catalog for serving our web application
+```
+
+**Related skills:** [Lakebase Autoscale](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/), [Lakebase Provisioned](/aidevkit.github.io/skills/apps-databases/lakebase-provisioned/)
+
+---
+
+## get_lakebase_database
+
+**Description:** Retrieves the status, configuration, and connection details of a Lakebase database.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Database name to look up |
+
+**Example prompt:**
+```
+Show me the connection details and status of the app-backend
+Lakebase database
+```
+
+**Related skills:** [Lakebase Autoscale](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/)
+
+---
+
+## delete_lakebase_database
+
+**Description:** Deletes a Lakebase database and all its data. This operation is irreversible.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Database name to delete |
+
+**Example prompt:**
+```
+Delete the test Lakebase database we no longer need
+```
+
+**Related skills:** [Lakebase Autoscale](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/)
+
+---
+
+## generate_lakebase_credential
+
+**Description:** Generates a temporary credential (username and password) for connecting to a Lakebase database via standard PostgreSQL clients and drivers.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| database_name | string | Yes | The Lakebase database to generate credentials for |
+
+**Example prompt:**
+```
+Generate connection credentials for my app-backend Lakebase
+database so I can connect from my application
+```
+
+**Related skills:** [Lakebase Autoscale - Connection Patterns](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/connection-patterns/)
+
+---
+
+## create_or_update_lakebase_branch
+
+**Description:** Creates or updates a Lakebase branch — an isolated copy of the database for development or testing. Branches share storage with the parent but have independent schemas.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| database_name | string | Yes | Parent database name |
+| branch_name | string | Yes | Branch name to create or update |
+
+**Example prompt:**
+```
+Create a dev branch of the app-backend database for testing
+schema migrations
+```
+
+**Related skills:** [Lakebase Autoscale - Branches](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/branches/)
+
+---
+
+## delete_lakebase_branch
+
+**Description:** Deletes a Lakebase branch. The parent database is not affected.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| database_name | string | Yes | Parent database name |
+| branch_name | string | Yes | Branch to delete |
+
+**Example prompt:**
+```
+Delete the dev branch now that migrations have been tested
+```
+
+**Related skills:** [Lakebase Autoscale - Branches](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/branches/)
+
+---
+
+## create_or_update_lakebase_sync
+
+**Description:** Creates or updates a sync between a lakehouse Delta table and a Lakebase database table. Syncs keep the Lakebase table up to date as the source Delta table changes.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| database_name | string | Yes | Target Lakebase database |
+| source_table | string | Yes | Full Unity Catalog table name to sync from |
+| target_table | string | No | Table name in Lakebase (defaults to source table name) |
+| sync_mode | string | No | Sync mode: `SNAPSHOT` or `INCREMENTAL` |
+
+**Example prompt:**
+```
+Set up an incremental sync from production.sales.orders
+to the app-backend Lakebase database
+```
+
+**Related skills:** [Lakebase Autoscale - Reverse ETL](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/reverse-etl/)
+
+---
+
+## delete_lakebase_sync
+
+**Description:** Deletes a sync between a lakehouse table and a Lakebase table. The data already synced to Lakebase is preserved.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| database_name | string | Yes | Lakebase database name |
+| source_table | string | Yes | The synced source table identifier |
+
+**Example prompt:**
+```
+Remove the sync for the orders table from the app-backend database
+```
+
+**Related skills:** [Lakebase Autoscale - Reverse ETL](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/reverse-etl/)

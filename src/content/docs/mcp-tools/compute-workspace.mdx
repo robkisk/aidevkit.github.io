@@ -1,0 +1,333 @@
+---
+title: Compute & Workspace
+description: MCP tools for managing clusters, volumes, file uploads, and workspace resources.
+sidebar:
+  order: 8
+---
+
+These tools manage Databricks compute resources (clusters), Unity Catalog volumes (file storage), workspace files, and resource tracking. They handle the infrastructure layer that other tools depend on.
+
+## list_clusters
+
+**Description:** Lists all clusters in the workspace with their current state, configuration, creator, and runtime version.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| — | — | — | No parameters required |
+
+**Example prompt:**
+```
+Show me all the clusters in my workspace and their status
+```
+
+**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
+
+---
+
+## get_cluster_status
+
+**Description:** Retrieves the detailed status of a specific cluster including its state, driver/worker configuration, libraries, Spark version, and auto-termination settings.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| cluster_id | string | Yes | Cluster ID to look up |
+
+**Example prompt:**
+```
+Check the status and configuration of my dev cluster
+```
+
+**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
+
+---
+
+## start_cluster
+
+**Description:** Starts a terminated cluster. The cluster will be available for command execution once it reaches the RUNNING state (typically 3-5 minutes).
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| cluster_id | string | Yes | Cluster ID to start |
+
+**Example prompt:**
+```
+Start my dev cluster so I can run some PySpark jobs
+```
+
+**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
+
+---
+
+## get_best_cluster
+
+**Description:** Finds the most suitable running all-purpose cluster in the workspace. Prefers clusters that are already running and have available capacity.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| — | — | — | No parameters required |
+
+**Example prompt:**
+```
+Find me an available cluster to run my notebook on
+```
+
+**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
+
+---
+
+## get_current_user
+
+**Description:** Returns information about the authenticated user including username, display name, and group memberships. Useful for verifying authentication and checking permissions.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| — | — | — | No parameters required |
+
+**Example prompt:**
+```
+Who am I authenticated as in this workspace?
+```
+
+---
+
+## manage_workspace
+
+**Description:** Multi-action tool for managing workspace objects — notebooks, folders, files, and repos. Supports listing, importing, exporting, creating, and deleting workspace items.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| action | string | Yes | The operation: `list`, `get_status`, `import`, `export`, `delete`, `mkdirs` |
+| path | string | Yes | Workspace path (e.g., `/Workspace/Users/me/notebook`) |
+| content | string | No | Base64-encoded content for import |
+| format | string | No | Import/export format: `SOURCE`, `HTML`, `JUPYTER`, `DBC` |
+| language | string | No | Language for imports: `PYTHON`, `SQL`, `SCALA`, `R` |
+| overwrite | boolean | No | Whether to overwrite existing objects |
+
+**Example prompt:**
+```
+List all notebooks in my workspace home folder
+```
+
+**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
+
+---
+
+## upload_file
+
+**Description:** Uploads a local file to the Databricks workspace. The file is placed at the specified workspace path.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| local_path | string | Yes | Path to the local file |
+| remote_path | string | Yes | Destination workspace path |
+| overwrite | boolean | No | Whether to overwrite an existing file |
+
+**Example prompt:**
+```
+Upload my local pipeline.py to /Workspace/Shared/pipelines/
+```
+
+---
+
+## upload_folder
+
+**Description:** Uploads an entire local directory to the Databricks workspace, preserving the folder structure.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| local_path | string | Yes | Path to the local directory |
+| remote_path | string | Yes | Destination workspace path |
+| overwrite | boolean | No | Whether to overwrite existing files |
+
+**Example prompt:**
+```
+Upload my entire project folder to /Workspace/Shared/my-project/
+```
+
+---
+
+## upload_to_volume
+
+**Description:** Uploads a local file to a Unity Catalog volume. Volumes provide managed cloud storage integrated with UC governance.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| local_path | string | Yes | Path to the local file |
+| volume_path | string | Yes | Destination volume path (e.g., `/Volumes/catalog/schema/volume/file.csv`) |
+| overwrite | boolean | No | Whether to overwrite an existing file |
+
+**Example prompt:**
+```
+Upload the sample_data.csv file to the raw-data volume
+in the analytics catalog
+```
+
+**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
+
+---
+
+## download_from_volume
+
+**Description:** Downloads a file from a Unity Catalog volume to the local filesystem.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| volume_path | string | Yes | Source volume path |
+| local_path | string | Yes | Destination local path |
+
+**Example prompt:**
+```
+Download the model_config.json from my models volume
+```
+
+**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
+
+---
+
+## list_volume_files
+
+**Description:** Lists files and directories in a Unity Catalog volume path.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| volume_path | string | Yes | Volume path to list (e.g., `/Volumes/catalog/schema/volume/`) |
+
+**Example prompt:**
+```
+Show me what files are in the raw-data volume
+```
+
+**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
+
+---
+
+## get_volume_file_info
+
+**Description:** Returns metadata about a specific file in a volume including size, modification time, and path.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| volume_path | string | Yes | Full path to the file in the volume |
+
+**Example prompt:**
+```
+How large is the events.parquet file in my raw-data volume?
+```
+
+**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
+
+---
+
+## create_volume_directory
+
+**Description:** Creates a directory inside a Unity Catalog volume.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| volume_path | string | Yes | Directory path to create |
+
+**Example prompt:**
+```
+Create a /2025/01/ directory structure in my raw-data volume
+```
+
+**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
+
+---
+
+## delete_volume_file
+
+**Description:** Deletes a file from a Unity Catalog volume.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| volume_path | string | Yes | Path to the file to delete |
+
+**Example prompt:**
+```
+Delete the old backup.csv from the raw-data volume
+```
+
+**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
+
+---
+
+## delete_volume_directory
+
+**Description:** Deletes a directory and its contents from a Unity Catalog volume.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| volume_path | string | Yes | Directory path to delete |
+
+**Example prompt:**
+```
+Remove the /tmp/ directory from the staging volume
+```
+
+**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
+
+---
+
+## delete_tracked_resource
+
+**Description:** Deletes a resource that was created and tracked by the MCP server during the current session. The tracking system keeps a record of resources created so they can be cleaned up.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| resource_type | string | Yes | Type of resource: `pipeline`, `dashboard`, `app`, `job`, etc. |
+| resource_id | string | Yes | ID of the resource to delete |
+
+**Example prompt:**
+```
+Clean up the test pipeline I created earlier in this session
+```
+
+---
+
+## list_tracked_resources
+
+**Description:** Lists all resources created by the MCP server during the current session. Useful for reviewing what was created and cleaning up test resources.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| — | — | — | No parameters required |
+
+**Example prompt:**
+```
+What resources have been created during this session?
+```

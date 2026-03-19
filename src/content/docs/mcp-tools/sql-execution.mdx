@@ -1,0 +1,150 @@
+---
+title: SQL & Execution
+description: MCP tools for running SQL queries, executing Python code, and managing compute resources.
+sidebar:
+  order: 1
+---
+
+These tools handle direct code execution on your Databricks workspace — SQL queries against warehouses, Python commands on clusters, and compute resource discovery.
+
+## execute_sql
+
+**Description:** Runs a single SQL statement on a Databricks SQL warehouse and returns the results. Automatically selects an available warehouse if none is specified.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| query | string | Yes | The SQL statement to execute |
+| warehouse_id | string | No | Target SQL warehouse ID. Auto-selected if omitted |
+| catalog | string | No | Default catalog for the session |
+| schema | string | No | Default schema for the session |
+
+**Example prompt:**
+```
+Show me the top 10 customers by revenue from the sales.orders table
+```
+
+**Related skills:** [Databricks SQL](/aidevkit.github.io/skills/sql-analytics/databricks-sql/), [AI Functions](/aidevkit.github.io/skills/sql-analytics/ai-functions/)
+
+---
+
+## execute_sql_multi
+
+**Description:** Executes multiple SQL statements in sequence on a SQL warehouse. Useful for multi-step operations like creating tables, inserting data, and querying results in a single workflow.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| queries | string[] | Yes | Array of SQL statements to execute in order |
+| warehouse_id | string | No | Target SQL warehouse ID. Auto-selected if omitted |
+| catalog | string | No | Default catalog for the session |
+| schema | string | No | Default schema for the session |
+
+**Example prompt:**
+```
+Create a temporary view from the raw events table, aggregate it
+by day, and insert the results into the daily_summary table
+```
+
+**Related skills:** [Databricks SQL](/aidevkit.github.io/skills/sql-analytics/databricks-sql/), [SQL Scripting](/aidevkit.github.io/skills/sql-analytics/databricks-sql/sql-scripting/)
+
+---
+
+## execute_databricks_command
+
+**Description:** Executes a command (Python, SQL, or Scala) on a Databricks cluster using the command execution API. Best for operations that require a Spark context or cluster libraries.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| command | string | Yes | The code to execute |
+| language | string | No | Language: `python`, `sql`, or `scala`. Defaults to `python` |
+| cluster_id | string | No | Target cluster ID. Auto-selected if omitted |
+
+**Example prompt:**
+```
+Run a PySpark job on my cluster that reads the events table
+and computes a rolling 7-day average
+```
+
+**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
+
+---
+
+## run_python_file_on_databricks
+
+**Description:** Uploads and executes a local Python file on a Databricks cluster. The file is transferred to the cluster and run as a script, making it easy to test local code against remote Spark.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| file_path | string | Yes | Local path to the Python file |
+| cluster_id | string | No | Target cluster ID. Auto-selected if omitted |
+
+**Example prompt:**
+```
+Run my local script etl_pipeline.py on the dev cluster
+```
+
+**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
+
+---
+
+## get_best_warehouse
+
+**Description:** Finds the most suitable running SQL warehouse in the workspace. Returns warehouse details including ID, name, size, and status. Used internally by other tools when no warehouse is specified.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| — | — | — | No parameters required |
+
+**Example prompt:**
+```
+Which SQL warehouse should I use for my queries?
+```
+
+**Related skills:** [Databricks SQL](/aidevkit.github.io/skills/sql-analytics/databricks-sql/)
+
+---
+
+## list_warehouses
+
+**Description:** Lists all SQL warehouses in the workspace with their current status, size, and configuration details.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| — | — | — | No parameters required |
+
+**Example prompt:**
+```
+Show me all the SQL warehouses in my workspace and their status
+```
+
+**Related skills:** [Databricks SQL](/aidevkit.github.io/skills/sql-analytics/databricks-sql/)
+
+---
+
+## get_best_cluster
+
+**Description:** Finds the most suitable running all-purpose cluster in the workspace. Prefers clusters that are already running and have available capacity. Used internally when no cluster is specified for command execution.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| — | — | — | No parameters required |
+
+**Example prompt:**
+```
+What cluster is available for running my PySpark code?
+```
+
+**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)

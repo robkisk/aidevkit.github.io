@@ -1,0 +1,181 @@
+---
+title: Vector Search
+description: MCP tools for creating endpoints and indexes, querying vectors, and managing embeddings.
+sidebar:
+  order: 5
+---
+
+These tools manage Databricks Vector Search — creating endpoints, building indexes, querying for similarity matches, and managing vector data for RAG and semantic search applications.
+
+## create_or_update_vs_endpoint
+
+**Description:** Creates a new Vector Search endpoint or updates an existing one. Endpoints host vector indexes and handle query traffic. Choose between Standard (low-latency) and Storage-Optimized (high-capacity) types.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Endpoint name |
+| endpoint_type | string | No | `STANDARD` (default) or `STORAGE_OPTIMIZED` |
+
+**Example prompt:**
+```
+Create a storage-optimized vector search endpoint called
+docs-search for my document retrieval application
+```
+
+**Related skills:** [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/)
+
+---
+
+## get_vs_endpoint
+
+**Description:** Retrieves the status and configuration of a Vector Search endpoint including its type, state, creation time, and the indexes it hosts.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Endpoint name to look up |
+
+**Example prompt:**
+```
+Check the status of my docs-search vector endpoint
+```
+
+**Related skills:** [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/)
+
+---
+
+## delete_vs_endpoint
+
+**Description:** Deletes a Vector Search endpoint. All indexes on the endpoint must be removed before the endpoint can be deleted.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Endpoint name to delete |
+
+**Example prompt:**
+```
+Delete the old test-endpoint vector search endpoint
+```
+
+**Related skills:** [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/)
+
+---
+
+## create_or_update_vs_index
+
+**Description:** Creates a new Vector Search index or updates an existing one. Supports Delta Sync indexes (managed or self-managed embeddings) and Direct Access indexes for real-time CRUD.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Full index name (`catalog.schema.index_name`) |
+| endpoint_name | string | Yes | The endpoint to host this index |
+| index_type | string | Yes | `DELTA_SYNC` or `DIRECT_ACCESS` |
+| primary_key | string | Yes | Column to use as the unique key |
+| source_table | string | No | Source Delta table (required for `DELTA_SYNC`) |
+| embedding_source_column | string | No | Text column to embed (managed embeddings) |
+| embedding_model_endpoint | string | No | Model endpoint for computing embeddings |
+| embedding_vector_column | string | No | Pre-computed vector column (self-managed) |
+| embedding_dimension | number | No | Vector dimensions (required for self-managed and Direct Access) |
+
+**Example prompt:**
+```
+Create a Delta Sync index on catalog.docs.articles using the
+content column with databricks-gte-large-en for managed embeddings
+```
+
+**Related skills:** [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/), [Index Types](/aidevkit.github.io/skills/ai-ml/vector-search/index-types/)
+
+---
+
+## get_vs_index
+
+**Description:** Retrieves the status and metadata of a Vector Search index including row count, sync status, embedding configuration, and endpoint details.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Full index name (`catalog.schema.index_name`) |
+
+**Example prompt:**
+```
+Show me the sync status and row count for my articles index
+```
+
+**Related skills:** [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/)
+
+---
+
+## delete_vs_index
+
+**Description:** Deletes a Vector Search index from its endpoint. The source table is not affected.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Full index name to delete |
+
+**Example prompt:**
+```
+Delete the old test-articles vector index
+```
+
+**Related skills:** [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/)
+
+---
+
+## query_vs_index
+
+**Description:** Queries a Vector Search index for similar results. Supports text queries (with managed embeddings), vector queries, and hybrid search combining semantic and keyword matching.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| index_name | string | Yes | Full index name to query |
+| query_text | string | No | Natural language query (for managed embedding indexes) |
+| query_vector | number[] | No | Vector to search for (for self-managed indexes) |
+| columns | string[] | No | Columns to return in results |
+| num_results | number | No | Number of results to return (default: 10) |
+| filters_json | object | No | Filter dictionary for Standard endpoints |
+| filter_string | string | No | SQL-like filter for Storage-Optimized endpoints |
+| query_type | string | No | `ANN` (approximate) or `HYBRID` (semantic + keyword) |
+
+**Example prompt:**
+```
+Search my articles index for documents about "machine learning
+best practices" and return the top 5 results with title and content
+```
+
+**Related skills:** [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/), [End-to-End RAG](/aidevkit.github.io/skills/ai-ml/vector-search/end-to-end-rag/)
+
+---
+
+## manage_vs_data
+
+**Description:** Manages data in a Direct Access Vector Search index. Supports upserting (inserting or updating) vectors and deleting entries by primary key.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| index_name | string | Yes | Full index name |
+| action | string | Yes | `upsert` or `delete` |
+| inputs_json | object | No | Data to upsert (column-name to value mappings) |
+| primary_keys | string[] | No | Keys to delete |
+
+**Example prompt:**
+```
+Add three new document vectors to my knowledge-base index
+with their embeddings and metadata
+```
+
+**Related skills:** [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/)
