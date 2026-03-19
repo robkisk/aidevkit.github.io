@@ -5,6 +5,8 @@ sidebar:
   order: 3
 ---
 
+Connecting to Lakebase Autoscaling requires choosing between OAuth tokens (short-lived, interactive) and native Postgres passwords (persistent, long-running). This page covers both authentication methods along with psycopg, SQLAlchemy, and production token-refresh patterns for reliable connectivity.
+
 ## Authentication Methods
 
 | Method | Token Lifetime | Best For |

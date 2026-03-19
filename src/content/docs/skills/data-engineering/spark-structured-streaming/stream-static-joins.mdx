@@ -5,6 +5,8 @@ sidebar:
   order: 6
 ---
 
+Stream-static joins enrich streaming events with dimension data from Delta tables. The static side is re-read each microbatch, so dimension updates propagate automatically without managing state. Use this pattern for lookups like device metadata, user profiles, or product catalogs.
+
 ## Quick Start
 
 ```python

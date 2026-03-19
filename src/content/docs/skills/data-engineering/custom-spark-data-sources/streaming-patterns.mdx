@@ -5,6 +5,8 @@ sidebar:
   order: 5
 ---
 
+Streaming data sources need offset tracking to remember where they left off between microbatches. This page covers offset serialization, non-overlapping partition generation, watermarking for late-data handling, and exactly-once write semantics for custom stream readers and writers.
+
 ## Basic Offset Implementation
 
 ```python

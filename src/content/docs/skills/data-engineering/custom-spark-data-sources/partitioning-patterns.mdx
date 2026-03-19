@@ -5,6 +5,8 @@ sidebar:
   order: 2
 ---
 
+Partitioning determines how Spark distributes reads across executors, directly impacting throughput and parallelism. This page covers three strategies -- time-based, token-range, and ID-range partitioning -- with implementation patterns for APIs that support temporal queries, cursor-based pagination, or numeric range filters.
+
 ## Time-Based Partitioning
 
 For APIs with temporal data or streaming sources:

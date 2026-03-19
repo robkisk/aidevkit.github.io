@@ -5,6 +5,8 @@ sidebar:
   order: 2
 ---
 
+Materialized views precompute and store query results for fast reads, while pipe syntax makes multi-step SQL transformations more readable. This page covers MV creation with scheduled refresh, temporary tables and views for session-scoped work, and the pipe operator for chaining filters, aggregations, and joins.
+
 ## Materialized Views
 
 Materialized views (MVs) physically store precomputed query results as Delta tables. They update automatically via schedule, event trigger, or on-demand refresh.

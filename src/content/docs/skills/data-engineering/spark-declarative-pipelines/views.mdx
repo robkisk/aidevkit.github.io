@@ -7,6 +7,8 @@ sidebar:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
+Views in SDP pipelines come in two flavors: temporary views that exist only during pipeline execution for intermediate logic, and persistent views published to Unity Catalog for downstream consumers. Use temporary views for shared filtering and preprocessing; use persistent views when other queries or dashboards need to reference the result.
+
 ## Temporary Views (Pipeline-Private)
 
 Not persisted, not published to catalog. Use for intermediate preprocessing, shared logic, or filtering before Auto CDC.

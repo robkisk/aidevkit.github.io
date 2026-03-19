@@ -5,6 +5,8 @@ sidebar:
   order: 3
 ---
 
+Delta MERGE operations turn a streaming append into an upsert, letting you maintain slowly changing dimensions or deduplicate event streams. This page covers MERGE with Liquid Clustering for automatic file optimization, parallel merges to multiple target tables, and CDC-style patterns inside `foreachBatch`.
+
 ## Basic MERGE with Liquid Clustering
 
 ```sql
