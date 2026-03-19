@@ -1,0 +1,69 @@
+---
+title: Authentication Patterns
+description: Multi-method authentication strategies with priority ordering — Unity Catalog credentials, managed identity, service principals, API keys, and OAuth2.
+sidebar:
+  order: 3
+---
+
+## Priority-Based Authentication
+
+```python
+class AuthenticatedDataSource(DataSource):
+    def __init__(self, options):
+        # Priority 1: Databricks Unity Catalog credential
+        # Priority 2: Cloud default credential (managed identity)
+        # Priority 3: Service principal (tenant_id/client_id/client_secret)
+        # Priority 4: API key
+        # Priority 5: Username/password
+        self._validate_auth()
+```
+
+## Authentication Factory
+
+```python
+def get_credential(options):
+    if options.get("databricks_credential"):
+        import databricks.service_credentials
+        return databricks.service_credentials.getServiceCredentialsProvider(
+            options["databricks_credential"])
+
+    if options.get("default_credential", "false").lower() == "true":
+        from azure.identity import DefaultAzureCredential
+        return DefaultAzureCredential()
+
+    if all(k in options for k in ["tenant_id", "client_id", "client_secret"]):
+        from azure.identity import ClientSecretCredential
+        return ClientSecretCredential(**{k: options[k] for k in
+            ["tenant_id", "client_id", "client_secret"]})
+
+    if "api_key" in options:
+        return {"Authorization": f"Bearer {options['api_key']}"}
+
+    if "username" in options and "password" in options:
+        from requests.auth import HTTPBasicAuth
+        return HTTPBasicAuth(options["username"], options["password"])
+
+    raise ValueError("No valid authentication method configured")
+```
+
+## OAuth2 Client Credentials
+
+```python
+class OAuth2Writer:
+    def _get_valid_token(self):
+        if not self._token or datetime.now() >= self._token_expiry:
+            response = requests.post(self.token_url, data={
+                "grant_type": "client_credentials",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "scope": self.scope})
+            self._token = response.json()["access_token"]
+            self._token_expiry = datetime.now() + timedelta(hours=1)
+        return self._token
+```
+
+## Security Best Practices
+
+- Never log sensitive values -- mask in `__repr__` and logging
+- Use Databricks secrets for credential storage
+- Support multi-cloud configurations (Azure public, government, China)

@@ -1,0 +1,84 @@
+---
+title: Materialized Views
+description: Physically stored query results with incremental refresh — aggregations, gold-layer tables, and batch transformations.
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Materialized views recompute their full result set on each refresh. Use them for aggregations, joins, and gold-layer tables. On serverless pipelines, they support automatic incremental refresh.
+
+## Basic Materialized View
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.materialized_view()
+def daily_revenue():
+    return spark.read.table("silver.orders") \
+        .groupBy("order_date") \
+        .agg(sum("amount").alias("total_revenue"), count("*").alias("order_count"))
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE OR REFRESH MATERIALIZED VIEW daily_revenue
+AS SELECT order_date, SUM(amount) AS total_revenue, COUNT(*) AS order_count
+FROM silver.orders
+GROUP BY order_date;
+```
+  </TabItem>
+</Tabs>
+
+## Gold Layer from Streaming Table
+
+Read a streaming table in batch mode for aggregation:
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.materialized_view()
+def customer_summary():
+    return spark.read.table("silver.transactions") \
+        .groupBy("customer_id") \
+        .agg(sum("amount").alias("total_spend"), count("*").alias("transaction_count"))
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE OR REFRESH MATERIALIZED VIEW customer_summary
+AS SELECT customer_id, SUM(amount) AS total_spend, COUNT(*) AS transaction_count
+FROM silver.transactions
+GROUP BY customer_id;
+```
+  </TabItem>
+</Tabs>
+
+## With Liquid Clustering
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.materialized_view(cluster_by=["customer_id"])
+def customer_summary():
+    return spark.read.table("silver.transactions") \
+        .groupBy("customer_id").agg(sum("amount").alias("total"))
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE OR REFRESH MATERIALIZED VIEW customer_summary
+CLUSTER BY (customer_id)
+AS SELECT customer_id, SUM(amount) AS total
+FROM silver.transactions GROUP BY customer_id;
+```
+  </TabItem>
+</Tabs>
+
+## Key Rules
+
+- Materialized views use `spark.read` (Python) or `SELECT ... FROM table` without `STREAM()` (SQL)
+- Never use `spark.readStream` in a materialized view -- that creates a streaming table
+- Gold layer aggregation from a streaming table must use batch reads
+- Incremental refresh is automatic on serverless pipelines

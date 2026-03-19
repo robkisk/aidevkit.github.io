@@ -1,0 +1,110 @@
+---
+title: Implementation Template
+description: Full annotated skeleton for a Python data source covering batch read, batch write, stream read, and stream write modes.
+sidebar:
+  order: 1
+---
+
+## Complete Skeleton
+
+```python
+from pyspark.sql.datasource import (
+    DataSource, DataSourceReader, DataSourceWriter,
+    DataSourceStreamReader, DataSourceStreamWriter
+)
+
+# 1. Entry point
+class YourDataSource(DataSource):
+    @classmethod
+    def name(cls):
+        return "your-format"
+
+    def schema(self):
+        return self._infer_or_return_schema()
+
+    def reader(self, schema):
+        return YourBatchReader(self.options, schema)
+
+    def streamReader(self, schema):
+        return YourStreamReader(self.options, schema)
+
+    def writer(self, schema, overwrite):
+        return YourBatchWriter(self.options, schema)
+
+    def streamWriter(self, schema, overwrite):
+        return YourStreamWriter(self.options, schema)
+
+# 2. Shared writer logic
+class YourWriter:
+    def __init__(self, options, schema=None):
+        self.url = options.get("url")
+        assert self.url, "url is required"
+        self.batch_size = int(options.get("batch_size", "50"))
+
+    def write(self, iterator):
+        import requests  # Import here -- runs on executors
+        from pyspark import TaskContext
+        context = TaskContext.get()
+        msgs, cnt = [], 0
+        for row in iterator:
+            cnt += 1
+            msgs.append(row.asDict())
+            if len(msgs) >= self.batch_size:
+                self._send_batch(msgs)
+                msgs = []
+        if msgs:
+            self._send_batch(msgs)
+        return SimpleCommitMessage(partition_id=context.partitionId(), count=cnt)
+
+# 3. Batch Writer
+class YourBatchWriter(YourWriter, DataSourceWriter):
+    pass
+
+# 4. Stream Writer
+class YourStreamWriter(YourWriter, DataSourceStreamWriter):
+    def commit(self, messages, batchId):
+        pass
+    def abort(self, messages, batchId):
+        pass
+
+# 5. Shared reader logic
+class YourReader:
+    def __init__(self, options, schema):
+        self.url = options.get("url")
+        assert self.url, "url is required"
+
+    def read(self, partition):
+        import requests  # Import here -- runs on executors
+        response = requests.get(f"{self.url}?start={partition.start}")
+        for item in response.json():
+            yield tuple(item.values())
+
+# 6. Batch Reader
+class YourBatchReader(YourReader, DataSourceReader):
+    pass
+
+# 7. Stream Reader
+class YourStreamReader(YourReader, DataSourceStreamReader):
+    def initialOffset(self):
+        return {"offset": "0"}
+    def latestOffset(self):
+        return {"offset": str(self._get_latest())}
+    def partitions(self, start, end):
+        return [YourPartition(0, start["offset"], end["offset"])]
+    def commit(self, end):
+        pass
+```
+
+## Registration and Usage
+
+```python
+spark.dataSource.register(YourDataSource)
+
+# Batch
+df = spark.read.format("your-format").option("url", "...").load()
+df.write.format("your-format").option("url", "...").save()
+
+# Streaming
+df = spark.readStream.format("your-format").option("url", "...").load()
+df.writeStream.format("your-format").option("url", "...").start()
+```

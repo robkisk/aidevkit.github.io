@@ -1,0 +1,82 @@
+---
+title: Type Conversion
+description: Bidirectional mapping between Spark types and external system types — conversion helpers, schema inference, and JSON encoding.
+sidebar:
+  order: 4
+---
+
+## External to Spark
+
+```python
+def convert_external_to_spark(value, spark_type):
+    from pyspark.sql.types import (StringType, IntegerType, LongType,
+        FloatType, DoubleType, BooleanType, TimestampType, DateType)
+
+    if value is None:
+        return None
+    if isinstance(spark_type, StringType):
+        return str(value)
+    if isinstance(spark_type, BooleanType):
+        return value.lower() in ("true", "1") if isinstance(value, str) else bool(value)
+    if isinstance(spark_type, (IntegerType, LongType)):
+        return int(value)
+    if isinstance(spark_type, (FloatType, DoubleType)):
+        return float(value)
+    if isinstance(spark_type, TimestampType):
+        return datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else value
+    return value
+```
+
+## Spark to External
+
+Handle UUIDs, timestamps, IP addresses, decimals, and collections:
+
+```python
+def convert_spark_to_external(value, external_type):
+    if value is None:
+        return None
+    if "uuid" in external_type.lower():
+        return uuid.UUID(str(value))
+    if "timestamp" in external_type.lower():
+        return datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else value
+    if "decimal" in external_type.lower():
+        return Decimal(str(value))
+    return value
+```
+
+## External Type to Spark Type Mapping
+
+| External Type | Spark Type |
+|---------------|------------|
+| varchar, text, char, uuid | StringType |
+| int (not bigint) | IntegerType |
+| bigint, long | LongType |
+| float | FloatType |
+| double, decimal | DoubleType |
+| bool | BooleanType |
+| timestamp | TimestampType |
+| date | DateType |
+| blob, binary | BinaryType |
+
+## Schema Inference
+
+```python
+def infer_spark_type(value):
+    if isinstance(value, bool): return BooleanType()
+    if isinstance(value, int): return LongType()
+    if isinstance(value, float): return DoubleType()
+    if isinstance(value, datetime): return TimestampType()
+    return StringType()
+```
+
+## JSON Encoding
+
+```python
+class ExtendedJsonEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        if isinstance(o, Decimal):
+            return float(o)
+        return super().default(o)
+```

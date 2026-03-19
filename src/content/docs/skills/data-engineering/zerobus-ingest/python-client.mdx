@@ -1,0 +1,115 @@
+---
+title: Python Client
+description: Python SDK patterns for Zerobus Ingest — sync and async APIs, JSON and Protobuf flows, ACK callbacks, batch ingestion, and a reusable client class.
+sidebar:
+  order: 2
+---
+
+## Protobuf Ingestion (Recommended)
+
+```python
+import os
+from zerobus.sdk.sync import ZerobusSdk
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+import record_pb2
+
+sdk = ZerobusSdk(os.environ["ZEROBUS_SERVER_ENDPOINT"],
+                 os.environ["DATABRICKS_WORKSPACE_URL"])
+options = StreamConfigurationOptions(record_type=RecordType.PROTO)
+table_props = TableProperties(os.environ["ZEROBUS_TABLE_NAME"],
+                               record_pb2.AirQuality.DESCRIPTOR)
+
+stream = sdk.create_stream(os.environ["DATABRICKS_CLIENT_ID"],
+    os.environ["DATABRICKS_CLIENT_SECRET"], table_props, options)
+try:
+    for i in range(100):
+        record = record_pb2.AirQuality(device_name=f"sensor-{i}", temp=22, humidity=55)
+        offset = stream.ingest_record_offset(record)
+        stream.wait_for_offset(offset)
+finally:
+    stream.close()
+```
+
+## ACK Callback (Async Acknowledgment)
+
+```python
+from zerobus.sdk.shared import AckCallback
+
+class MyAckHandler(AckCallback):
+    def on_ack(self, offset: int) -> None:
+        print(f"Durable up to offset: {offset}")
+    def on_error(self, offset: int, message: str) -> None:
+        print(f"Error at offset {offset}: {message}")
+
+options = StreamConfigurationOptions(
+    record_type=RecordType.JSON, ack_callback=MyAckHandler())
+```
+
+## Reusable Client Class
+
+A production-ready wrapper with retry logic and reconnection:
+
+```python
+class ZerobusClient:
+    def __init__(self, server_endpoint, workspace_url, table_name,
+                 client_id, client_secret, record_type=RecordType.JSON,
+                 ack_callback=None, proto_descriptor=None):
+        self.sdk = ZerobusSdk(server_endpoint, workspace_url)
+        self.stream = None
+        # ... store all params
+
+    def ingest(self, payload, max_retries=3):
+        for attempt in range(max_retries):
+            try:
+                if self.stream is None:
+                    self.init_stream()
+                offset = self.stream.ingest_record_offset(payload)
+                self.stream.wait_for_offset(offset)
+                return True
+            except Exception as e:
+                if "closed" in str(e).lower() or "connection" in str(e).lower():
+                    self.close()
+                    self.init_stream()
+                if attempt < max_retries - 1:
+                    time.sleep(2**attempt)
+        return False
+```
+
+## Async Python API
+
+```python
+import asyncio
+from zerobus.sdk.aio import ZerobusSdk as AsyncZerobusSdk
+
+async def ingest_async():
+    sdk = AsyncZerobusSdk(server_endpoint, workspace_url)
+    options = StreamConfigurationOptions(record_type=RecordType.JSON)
+    stream = await sdk.create_stream(client_id, client_secret,
+        TableProperties(table_name), options)
+    try:
+        for i in range(100):
+            offset = await stream.ingest_record_offset(
+                {"device_name": f"sensor-{i}", "temp": 22})
+            await stream.wait_for_offset(offset)
+    finally:
+        await stream.close()
+```
+
+## Batch Ingestion
+
+```python
+records = [{"device_name": f"sensor-{i}", "temp": 22} for i in range(10_000)]
+stream.ingest_records_nowait(records)
+stream.flush()
+```
+
+## Ingestion Method Comparison
+
+| Method | Returns | Blocks? | Best For |
+|--------|---------|---------|----------|
+| `ingest_record_offset` | offset | No (enqueues) | Single record with tracking |
+| `ingest_record_nowait` | None | No | Max throughput |
+| `ingest_records_offset` | last offset | No | Batch with tracking |
+| `ingest_records_nowait` | None | No | Max batch throughput |
+| `wait_for_offset` | None | Yes | Durability confirmation |
+| `flush` | None | Yes | Ensure buffered records sent |

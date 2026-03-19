@@ -21,6 +21,7 @@ The Spark Declarative Pipelines (SDP) skill teaches Claude Code how to create, c
 - Configure Liquid Clustering for optimized query performance
 - Set up multi-environment deployments (dev/staging/prod)
 - Handle schema evolution, expectations (data quality rules), and error handling
+- Write to external systems with Sinks and ForEachBatch Sinks (Python only)
 - Migrate legacy DLT pipelines to the modern SDP API
 
 ## Related MCP Tools
@@ -36,8 +37,6 @@ The Spark Declarative Pipelines (SDP) skill teaches Claude Code how to create, c
 | `execute_sql` | Run SQL queries against pipeline output tables |
 
 ## Example Prompts
-
-Use these prompts with Claude Code to build pipelines:
 
 ```
 Create a Python streaming pipeline that ingests JSON files from
@@ -72,15 +71,11 @@ Create an Asset Bundle project for a streaming pipeline with
 separate dev and prod targets using different catalogs
 ```
 
-```
-Show me the pipeline events and errors for my failed pipeline run
-```
-
 ## Key Concepts
 
 ### Streaming Tables vs Materialized Views
 
-**Streaming tables** process data incrementally — each run picks up only new records from the source. Best for append-only ingestion from files, Kafka, or Kinesis.
+**Streaming tables** process data incrementally -- each run picks up only new records from the source. Best for append-only ingestion from files, Kafka, or Kinesis.
 
 **Materialized views** recompute their full result set on each refresh. Best for aggregations, joins, and any transformation where the output depends on the entire input dataset.
 
@@ -91,9 +86,9 @@ Auto Loader (`read_files` in SQL, `cloudFiles` in Python) incrementally ingests 
 ### Medallion Architecture
 
 A layered data design pattern:
-- **Bronze** — Raw ingestion, minimal transformation, append-only
-- **Silver** — Cleaned and validated, business logic applied, deduplication
-- **Gold** — Aggregated and denormalized, optimized for BI and reporting
+- **Bronze** -- Raw ingestion, minimal transformation, append-only
+- **Silver** -- Cleaned and validated, business logic applied, deduplication
+- **Gold** -- Aggregated and denormalized, optimized for BI and reporting
 
 ### AUTO CDC and SCD Type 2
 
@@ -102,6 +97,44 @@ AUTO CDC applies change data capture operations (inserts, updates, deletes) from
 ### Liquid Clustering
 
 Replaces traditional `PARTITION BY` with dynamic `CLUSTER BY` that automatically optimizes data layout. Use it on columns frequently used in filters and joins.
+
+### Decision Tree
+
+```
+User request -> What kind of output?
+├── Intermediate logic (not persisted) -> Temporary View
+├── Persisted dataset
+│   ├── Source is streaming/incremental -> Streaming Table
+│   │   ├── File ingestion -> Auto Loader
+│   │   ├── CDC / upserts / SCD -> Auto CDC
+│   │   └── Multiple sources into one table -> Append Flows
+│   └── Source is batch/full scan -> Materialized View
+│       ├── Aggregation/join across full dataset
+│       └── Gold layer from streaming table (batch read)
+├── Output to external system (Python only) -> Sink
+└── Data quality constraints -> Expectations (any dataset)
+```
+
+## Pipeline Structure
+
+```
+my-pipeline-project/
+├── databricks.yml
+├── resources/
+│   ├── my_pipeline.pipeline.yml
+│   └── my_pipeline_job.job.yml
+└── src/
+    ├── bronze.py (or .sql)
+    ├── silver.py (or .sql)
+    └── gold.py (or .sql)
+```
+
+## Import Reference
+
+| Current | Deprecated | Notes |
+|---------|-----------|-------|
+| `from pyspark import pipelines as dp` | `import dlt` | Both work. Prefer `dp`. |
+| `spark.read.table()` / `spark.readStream.table()` | `dp.read()` / `dp.read_stream()` | Prefer `spark.*` |
 
 ## References
 

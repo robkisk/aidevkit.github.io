@@ -1,0 +1,68 @@
+---
+title: Streaming Best Practices
+description: Production-proven best practices for Spark Streaming — trigger intervals, partitioning, checkpoint management, cluster configuration, and monitoring.
+sidebar:
+  order: 8
+---
+
+## Essential Practices
+
+1. **Always set a trigger interval** -- no trigger means continuous microbatches with excessive listing costs
+2. **Use Auto Loader notification mode** for file ingestion (`cloudFiles.useNotifications=true`)
+3. **Co-locate compute and storage** in the same region
+4. **Partition on low-cardinality columns** (date, region) -- never high-cardinality (user_id)
+5. **Name your streaming query** for easy identification in Spark UI
+6. **One checkpoint per stream** -- never share checkpoints
+7. **Don't multiplex streams** on the same driver unless benchmarked
+8. **Target 100-200MB per partition** in memory
+9. **Prefer broadcast hash joins** for dimension lookups
+
+## Trigger Selection
+
+| Latency Requirement | Trigger |
+|---------------------|---------|
+| < 1 second | Real-Time Mode (RTM) |
+| 1-10 seconds | `processingTime('5 seconds')` |
+| 1-60 minutes | `processingTime` based on SLA/3 |
+| Batch-like | `availableNow=True` |
+
+## Cluster Configuration
+
+- **Fixed-size cluster** -- no autoscaling for streaming workloads
+- Shuffle partitions equal to total worker cores
+- Disable S3 versioning (Delta has time travel)
+
+## Advanced Practices
+
+- **RocksDB** for stateful operations with large state stores
+- **Delta merge** over `dropDuplicates` at trillion-record scale
+- **Event Hubs** via Kafka connector for more flexible partition handling
+- **Watermarks** on every stateful operation to prevent infinite state growth
+
+## Azure Instance Selection
+
+| Workload | Instance Family |
+|----------|----------------|
+| Map-heavy (parsing, JSON) | F-series |
+| Multiple streams from same source | Fsv2-series |
+| Joins/aggregations/optimize | DS_v2-series |
+| Delta caching | L-series (SSD) |
+
+## Monitoring Checklist
+
+- Input rate vs processing rate (processing > input)
+- Max offsets behind latest (should decrease over time)
+- Batch duration vs trigger interval (headroom exists)
+- State store size (if using stateful ops)
+- Shuffle spill = 0
+- Null rate in left joins (data quality)
+
+## Common Mistakes
+
+| Mistake | Impact | Fix |
+|---------|--------|-----|
+| Shared checkpoint | Data loss/corruption | Separate checkpoints |
+| No watermark | State explosion | Add watermark |
+| S3 versioning | Latency | Disable versioning |
+| Autoscaling clusters | Unpredictable latency | Fixed-size clusters |
+| High-cardinality partitions | Small files | Partition by date |

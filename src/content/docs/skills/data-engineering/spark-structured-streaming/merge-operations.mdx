@@ -1,0 +1,117 @@
+---
+title: Merge Operations
+description: Delta MERGE in streaming — performance optimization with Liquid Clustering, parallel merges to multiple tables, and CDC patterns.
+sidebar:
+  order: 3
+---
+
+## Basic MERGE with Liquid Clustering
+
+```sql
+ALTER TABLE target_table SET TBLPROPERTIES (
+    'delta.enableDeletionVectors' = true,
+    'delta.enableRowLevelConcurrency' = true,
+    'delta.liquid.clustering' = true
+);
+```
+
+```python
+def upsert_batch(batch_df, batch_id):
+    batch_df.createOrReplaceTempView("updates")
+    spark.sql("""
+        MERGE INTO target_table t
+        USING updates s ON t.id = s.id
+        WHEN MATCHED THEN UPDATE SET *
+        WHEN NOT MATCHED THEN INSERT *
+    """)
+    # No optimize needed -- Liquid Clustering handles it automatically
+
+stream.writeStream \
+    .foreachBatch(upsert_batch) \
+    .option("checkpointLocation", "/checkpoints/merge") \
+    .start()
+```
+
+## Parallel MERGE to Multiple Tables
+
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def parallel_merge(batch_df, batch_id):
+    batch_df.cache()
+
+    def merge_one_table(table_name, merge_key):
+        target = DeltaTable.forName(spark, table_name)
+        source = batch_df.alias("source")
+        (target.alias("target")
+            .merge(source, f"target.{merge_key} = source.{merge_key}")
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute())
+        return table_name
+
+    tables = [
+        ("silver.customers", "customer_id"),
+        ("silver.orders", "order_id"),
+        ("silver.products", "product_id")
+    ]
+
+    max_workers = min(len(tables), max(2, total_cores // 2))
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(merge_one_table, t, k): t
+            for t, k in tables
+        }
+        errors = []
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                errors.append((futures[future], str(e)))
+
+    batch_df.unpersist()
+    if errors:
+        raise Exception(f"Merge failures: {errors}")
+```
+
+## MERGE with Partition Pruning
+
+Include partition columns in the merge condition for faster execution:
+
+```python
+spark.sql("""
+    MERGE INTO target_table t
+    USING updates s
+    ON t.id = s.id AND t.date = s.date  -- partition column
+    WHEN MATCHED THEN UPDATE SET *
+    WHEN NOT MATCHED THEN INSERT *
+""")
+```
+
+## Performance Optimization
+
+```sql
+-- Create table with Liquid Clustering
+CREATE TABLE target_table (id STRING, name STRING, updated_at TIMESTAMP)
+USING DELTA
+CLUSTER BY (id)
+TBLPROPERTIES (
+    'delta.enableDeletionVectors' = true,
+    'delta.enableRowLevelConcurrency' = true
+);
+
+-- Target file size for optimal merge
+ALTER TABLE target_table SET TBLPROPERTIES ('delta.targetFileSize' = '128mb');
+```
+
+**Optimal thread count formula:** `min(number_of_tables, cluster_cores / 2)`
+
+## Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| High P99 latency | OPTIMIZE pauses | Enable Liquid Clustering |
+| Merge conflicts | Concurrent updates to same rows | Enable Row-Level Concurrency |
+| Slow merges | Large files, no optimization | Enable Liquid Clustering; Z-Order on merge key |
+| Too many threads | Resource contention | Reduce max_workers |

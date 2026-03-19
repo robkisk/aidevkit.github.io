@@ -1,0 +1,45 @@
+---
+title: Views
+description: Temporary views for pipeline-private logic and persistent views published to Unity Catalog.
+sidebar:
+  order: 6
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Temporary Views (Pipeline-Private)
+
+Not persisted, not published to catalog. Use for intermediate preprocessing, shared logic, or filtering before Auto CDC.
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.temporary_view()
+def filtered_source():
+    return spark.readStream.table("raw_events") \
+        .filter("event_type != 'test'")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE TEMPORARY VIEW filtered_source
+AS SELECT * FROM STREAM(raw_events) WHERE event_type != 'test';
+```
+  </TabItem>
+</Tabs>
+
+## Persistent Views (SQL Only)
+
+Published to Unity Catalog for external queries. Not materialized -- runs the query on each read.
+
+```sql
+CREATE VIEW catalog.schema.active_customers
+AS SELECT * FROM customers WHERE status = 'active';
+```
+
+## When to Use Which
+
+- **Temporary View**: intermediate/preprocessing logic, pipeline-private helpers
+- **Persistent View**: reusable SQL published to Unity Catalog for external consumption
+- **Materialized View**: expensive computation that should be stored physically
+- Only consider a Private MV/ST (`private=True` / `CREATE PRIVATE ...`) when computation is expensive and materializing once saves significant reprocessing

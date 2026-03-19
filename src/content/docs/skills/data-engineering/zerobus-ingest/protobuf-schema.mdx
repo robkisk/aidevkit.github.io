@@ -1,0 +1,75 @@
+---
+title: Protobuf Schema
+description: Generate .proto schemas from Unity Catalog tables, compile language bindings, and understand Delta-to-Protobuf type mappings.
+sidebar:
+  order: 4
+---
+
+## Generate .proto from UC Table
+
+```bash
+# Python
+python -m zerobus.tools.generate_proto \
+    --uc-endpoint "https://dbc-xxx.cloud.databricks.com" \
+    --client-id "$DATABRICKS_CLIENT_ID" \
+    --client-secret "$DATABRICKS_CLIENT_SECRET" \
+    --table "catalog.schema.table_name" \
+    --output record.proto
+
+# Java
+java -jar zerobus-ingest-sdk-0.1.0-jar-with-dependencies.jar \
+    --uc-endpoint "..." --table "..." --output record.proto
+```
+
+## Compile Language Bindings
+
+```bash
+# Python
+python -m grpc_tools.protoc -I. --python_out=. record.proto
+
+# Java
+protoc --java_out=src/main/java record.proto
+
+# Go
+protoc --go_out=. record.proto
+```
+
+## Delta-to-Protobuf Type Mappings
+
+| Delta Type | Protobuf Type | Notes |
+|------------|---------------|-------|
+| STRING | string | |
+| INT | int32 | |
+| LONG / BIGINT | int64 | |
+| FLOAT | float | |
+| DOUBLE | double | |
+| BOOLEAN | bool | |
+| BINARY | bytes | |
+| ARRAY\<T\> | repeated T | Recursive |
+| MAP\<K,V\> | map\<K,V\> | Key must be string or integer |
+| STRUCT | nested message | Recursive |
+| DATE | int32 | Epoch days |
+| TIMESTAMP | int64 | **Epoch microseconds** |
+| DECIMAL | bytes or string | Check generated .proto |
+| VARIANT | string | JSON-encoded |
+
+## Schema Evolution Workflow
+
+1. Alter the table in Unity Catalog
+2. Regenerate the `.proto` file
+3. Recompile language bindings
+4. Update producer code to populate new fields
+5. Redeploy
+
+Zerobus does not support automatic schema evolution. Max 2000 columns, 10 MB per message.
+
+## Using the Descriptor
+
+```python
+# Python
+table_props = TableProperties("catalog.schema.table", record_pb2.AirQuality.DESCRIPTOR)
+
+# Java
+TableProperties<AirQuality> tp = new TableProperties<>(tableName,
+    AirQuality.getDefaultInstance());
+```

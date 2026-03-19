@@ -1,0 +1,109 @@
+---
+title: Trigger & Cost Optimization
+description: Select and tune triggers to balance latency with cost — processingTime, availableNow, Real-Time Mode, and cluster right-sizing strategies.
+sidebar:
+  order: 9
+---
+
+## Trigger Types
+
+### ProcessingTime
+
+```python
+.trigger(processingTime="30 seconds")
+# Latency: trigger interval + processing time
+# Cost: continuous cluster
+```
+
+### AvailableNow (Scheduled)
+
+```python
+.trigger(availableNow=True)
+# Schedule via Databricks Jobs: every 15 min or 4 hours
+# Cost: cluster runs only during processing
+```
+
+### Real-Time Mode
+
+```python
+.trigger(realTime=True)
+# Latency: < 800ms. Requires Photon + fixed-size cluster.
+# Cost: continuous cluster with Photon
+```
+
+## Trigger Selection Guide
+
+| Latency | Trigger | Cost |
+|---------|---------|------|
+| < 800ms | RTM | $$$ |
+| 1-30 seconds | `processingTime` | $$ |
+| 15-60 minutes | `availableNow` (scheduled) | $ |
+| > 1 hour | `availableNow` (scheduled) | $ |
+
+## Trigger Interval Calculation
+
+**Rule of thumb: SLA / 3** -- provides buffer for processing time, recovery time, and safety margin.
+
+```python
+business_sla_minutes = 60
+trigger_interval_minutes = business_sla_minutes / 3  # 20 minutes
+```
+
+## Cost Optimization Strategies
+
+### Convert Continuous to Scheduled
+
+```python
+# Before: continuous (expensive)
+.trigger(processingTime="30 seconds")
+
+# After: scheduled (cost-effective)
+.trigger(availableNow=True)  # Schedule via Jobs: every 15 min
+```
+
+### Multi-Stream Clusters
+
+Run multiple streams on one cluster -- tested up to 100 streams on an 8-core single-node cluster (~$20/day).
+
+### Cluster Right-Sizing
+
+Target 60-80% CPU utilization. Start small, monitor lag, and scale based on steady state.
+
+### Storage Optimization
+
+```sql
+VACUUM table RETAIN 24 HOURS;
+
+ALTER TABLE table SET TBLPROPERTIES (
+    'delta.autoOptimize.optimizeWrite' = true,
+    'delta.autoOptimize.autoCompact' = true
+);
+```
+
+## Cost Formula
+
+```
+Daily Cost =
+    (Cluster DBU/hour x Hours running) +
+    (Storage GB x Storage rate) +
+    (Network egress if applicable)
+```
+
+Levers: reduce hours (scheduled triggers), reduce cluster size (right-sizing), reduce storage (VACUUM, compression).
+
+## Quick Wins
+
+1. Change from continuous to 15-minute schedule
+2. Run multiple streams per cluster
+3. Enable auto-optimize to reduce storage costs
+4. Use Spot instances for non-critical streams
+5. Archive old data to cheaper storage tiers
+
+## Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| High latency | Trigger interval too long | Decrease interval or use RTM |
+| High cost | Continuous processing | Use scheduled `availableNow` |
+| Batch duration > trigger | Processing too slow | Optimize processing or increase trigger |
+| RTM not working | Photon not enabled | Enable Photon and configure cluster |

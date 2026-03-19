@@ -1,0 +1,138 @@
+---
+title: Auto CDC
+description: Process Change Data Capture feeds with SCD Type 1 and Type 2 support — streaming sources, snapshot sources, and multi-column sequencing.
+sidebar:
+  order: 4
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+AUTO CDC applies change data capture operations (inserts, updates, deletes) from a source to a target streaming table. Supports SCD Type 1 (latest values) and Type 2 (full history).
+
+## Basic CDC Flow
+
+<Tabs>
+  <TabItem label="Python">
+```python
+dp.create_streaming_table(name="users")
+
+dp.create_auto_cdc_flow(
+    target="users",
+    source="user_changes",
+    keys=["user_id"],
+    sequence_by="updated_at"
+)
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE OR REFRESH STREAMING TABLE users;
+
+CREATE FLOW user_flow AS AUTO CDC INTO users
+FROM STREAM(user_changes)
+KEYS (user_id)
+SEQUENCE BY updated_at;
+```
+  </TabItem>
+</Tabs>
+
+## SCD Type 2 (History Tracking)
+
+<Tabs>
+  <TabItem label="Python">
+```python
+dp.create_streaming_table(name="customers_history")
+
+dp.create_auto_cdc_flow(
+    target="customers_history",
+    source="customer_changes",
+    keys=["customer_id"],
+    sequence_by="updated_at",
+    stored_as_scd_type=2
+)
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE OR REFRESH STREAMING TABLE customers_history;
+
+CREATE FLOW customer_history_flow AS AUTO CDC INTO customers_history
+FROM STREAM(customer_changes)
+KEYS (customer_id)
+SEQUENCE BY updated_at
+STORED AS SCD TYPE 2;
+```
+  </TabItem>
+</Tabs>
+
+SCD Type 2 adds `__START_AT` and `__END_AT` columns automatically.
+
+## With Delete and Truncate Handling
+
+<Tabs>
+  <TabItem label="Python">
+```python
+dp.create_auto_cdc_flow(
+    target="orders",
+    source="order_changes",
+    keys=["order_id"],
+    sequence_by="event_time",
+    apply_as_deletes=expr("op = 'DELETE'"),
+    apply_as_truncates=expr("op = 'TRUNCATE'"),  # SCD Type 1 only
+    ignore_null_updates=True
+)
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE FLOW order_flow AS AUTO CDC INTO orders
+FROM STREAM(order_changes)
+KEYS (order_id)
+SEQUENCE BY event_time
+APPLY AS DELETE WHEN op = 'DELETE'
+APPLY AS TRUNCATE WHEN op = 'TRUNCATE'
+IGNORE NULL UPDATES;
+```
+  </TabItem>
+</Tabs>
+
+## Multi-Column Sequencing
+
+<Tabs>
+  <TabItem label="Python">
+```python
+dp.create_auto_cdc_flow(
+    target="events",
+    source="event_changes",
+    keys=["event_id"],
+    sequence_by=struct("timestamp_col", "id_col")
+)
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE FLOW event_flow AS AUTO CDC INTO events
+FROM STREAM(event_changes)
+KEYS (event_id)
+SEQUENCE BY STRUCT(timestamp_col, id_col);
+```
+  </TabItem>
+</Tabs>
+
+## CDC from Snapshots (Python Only)
+
+```python
+dp.create_auto_cdc_from_snapshot_flow(
+    target="snapshot_target",
+    source="source_snapshots",
+    keys=["id"],
+    stored_as_scd_type=2
+)
+```
+
+## Key Rules
+
+- Target table must be created first with `dp.create_streaming_table()` or `CREATE STREAMING TABLE`
+- Preprocessing before CDC: use a Temporary View to filter/transform the source
+- TRUNCATE is supported only for SCD Type 1
+- CDC from snapshots is Python-only

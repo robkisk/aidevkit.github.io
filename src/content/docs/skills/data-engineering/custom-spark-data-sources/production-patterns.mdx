@@ -1,0 +1,104 @@
+---
+title: Production Patterns
+description: Observability, security validation, resource cleanup, and health checks for production Spark data sources.
+sidebar:
+  order: 8
+---
+
+## Observability and Metrics
+
+```python
+class ObservableWriter:
+    def write(self, iterator):
+        metrics = {"rows_processed": 0, "rows_failed": 0,
+                   "start_time": time.time()}
+        for row in iterator:
+            try:
+                self._send_row(row)
+                metrics["rows_processed"] += 1
+            except Exception as e:
+                metrics["rows_failed"] += 1
+                if not self.continue_on_error:
+                    raise
+        metrics["duration_seconds"] = time.time() - metrics["start_time"]
+        self._report_metrics(metrics)
+```
+
+## Security Validation
+
+```python
+class SecureDataSource:
+    def _validate_options(self, options):
+        required = ["host", "database", "table"]
+        missing = [opt for opt in required if opt not in options]
+        if missing:
+            raise ValueError(f"Missing: {', '.join(missing)}")
+        self._validate_host(options["host"])
+
+    def _validate_identifier(self, identifier, name):
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', identifier):
+            raise ValueError(f"Invalid {name}: {identifier}")
+```
+
+## Resource Cleanup
+
+```python
+class ManagedResourceWriter:
+    def write(self, iterator):
+        try:
+            connection = self._get_connection()
+            for row in iterator:
+                self._send_data(connection, row)
+        finally:
+            self._cleanup()
+
+    def _cleanup(self):
+        if self._session:
+            self._session.close()
+        if self._connection:
+            self._connection.close()
+```
+
+## Health Checks
+
+```python
+class HealthCheckMixin:
+    def check_health(self):
+        checks = {
+            "connection": self._check_connection(),
+            "authentication": self._check_authentication(),
+            "rate_limit": self._check_rate_limit(),
+        }
+        failed = [n for n, ok in checks.items() if not ok]
+        if failed:
+            raise Exception(f"Health check failed: {', '.join(failed)}")
+```
+
+## Configuration Validation
+
+```python
+class ConfigValidator:
+    @classmethod
+    def validate(cls, options):
+        errors = []
+        if "timeout" in options:
+            t = int(options["timeout"])
+            if t < 0 or t > 300:
+                errors.append(f"timeout must be 0-300, got {t}")
+        if "batch_size" in options:
+            b = int(options["batch_size"])
+            if b < 1 or b > 10000:
+                errors.append(f"batch_size must be 1-10000, got {b}")
+        if errors:
+            raise ValueError("Config errors:\n" + "\n".join(f"- {e}" for e in errors))
+```
+
+## Best Practices
+
+1. Track throughput, latency, and error rates
+2. Use structured logging with correlation IDs
+3. Never log sensitive values
+4. Validate all inputs at system boundary
+5. Always close connections in `finally` blocks
+6. Verify system health before operations
+7. Set up alerts for error rate anomalies

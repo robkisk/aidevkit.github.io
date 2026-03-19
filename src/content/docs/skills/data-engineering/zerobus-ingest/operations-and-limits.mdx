@@ -1,0 +1,85 @@
+---
+title: Operations & Limits
+description: ACK handling strategies, retry and reconnection patterns, throughput limits, delivery semantics, and operational constraints.
+sidebar:
+  order: 5
+---
+
+## ACK Strategies
+
+| Strategy | When to Use | Trade-off |
+|----------|-------------|-----------|
+| `ingest_record_offset` + `wait_for_offset` | Low-volume, strict ordering | Simplest; lower throughput |
+| `ingest_record_nowait` + `AckCallback` | High-volume producers | Higher throughput; more complex |
+| `ingest_record_nowait` + periodic `flush` | Batch-oriented | Best throughput; eventual consistency |
+
+## Retry and Reconnection
+
+Always reinitialize the stream on connection errors:
+
+```python
+def ingest_with_retry(stream_factory, record, max_retries=5):
+    stream = stream_factory()
+    for attempt in range(max_retries):
+        try:
+            offset = stream.ingest_record_offset(record)
+            stream.wait_for_offset(offset)
+            return stream
+        except Exception as e:
+            if "closed" in str(e).lower() or "connection" in str(e).lower():
+                stream.close()
+                backoff = min(2 ** attempt, 30)
+                time.sleep(backoff)
+                stream = stream_factory()
+            elif attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            else:
+                raise
+    return stream
+```
+
+## Throughput Limits
+
+| Limit | Value |
+|-------|-------|
+| Throughput per stream | 100 MB/s |
+| Rows per stream | 15,000 rows/s |
+| Max message size | 10 MB |
+| Max columns | 2,000 |
+
+Scale beyond one stream by opening multiple streams to the same table from different clients.
+
+## Delivery Semantics
+
+**At-least-once** -- records may be delivered more than once. Design downstream consumers to handle duplicates.
+
+## Durability and Availability
+
+- Single-AZ only -- plan for zone outages in retry logic
+- Server may close streams during maintenance -- handle reconnection gracefully
+
+## Target Table Constraints
+
+| Constraint | Details |
+|------------|---------|
+| Table type | Managed Delta only |
+| Table names | ASCII letters, digits, underscores |
+| Schema changes | No auto-evolution; regenerate proto |
+| Table creation | Must pre-create via SQL DDL |
+
+## Monitoring
+
+Zerobus does not expose built-in dashboards. Monitor with:
+- Application-level logging (ACK offsets, retry counts, error rates)
+- Periodic target table row count queries
+- Health checks via lightweight stream creation
+
+```python
+def check_health(sdk, client_id, client_secret, table_props, options):
+    try:
+        stream = sdk.create_stream(client_id, client_secret, table_props, options)
+        stream.close()
+        return True
+    except Exception:
+        return False
+```

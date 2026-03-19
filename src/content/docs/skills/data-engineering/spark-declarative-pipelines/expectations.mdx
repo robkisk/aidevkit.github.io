@@ -1,0 +1,113 @@
+---
+title: Expectations
+description: Define and enforce data quality constraints — warn, drop invalid rows, or fail the pipeline on violations.
+sidebar:
+  order: 5
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Expectations define data quality constraints on pipeline tables. Three enforcement levels are available.
+
+## Expect (Warn)
+
+Records violating the constraint are included but flagged in monitoring.
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.expect("valid_timestamp", "col('timestamp') IS NOT NULL")
+@dp.table()
+def silver_events():
+    return spark.readStream.table("bronze_events")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE STREAMING TABLE silver_events (
+  CONSTRAINT valid_timestamp EXPECT (timestamp IS NOT NULL)
+)
+AS SELECT * FROM STREAM(bronze_events);
+```
+  </TabItem>
+</Tabs>
+
+## Expect or Drop
+
+Invalid rows are silently dropped from the output.
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.expect_or_drop("valid_amount", "amount > 0")
+@dp.table()
+def silver_orders():
+    return spark.readStream.table("bronze_orders")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE STREAMING TABLE silver_orders (
+  CONSTRAINT valid_amount EXPECT (amount > 0) ON VIOLATION DROP ROW
+)
+AS SELECT * FROM STREAM(bronze_orders);
+```
+  </TabItem>
+</Tabs>
+
+## Expect or Fail
+
+Pipeline fails immediately when a violation is detected.
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.expect_or_fail("unique_id", "id IS NOT NULL")
+@dp.table()
+def critical_data():
+    return spark.readStream.table("source")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE STREAMING TABLE critical_data (
+  CONSTRAINT unique_id EXPECT (id IS NOT NULL) ON VIOLATION FAIL UPDATE
+)
+AS SELECT * FROM STREAM(source);
+```
+  </TabItem>
+</Tabs>
+
+## Multiple Expectations
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.expect_all_or_drop({
+    "valid_amount": "amount > 0",
+    "valid_customer": "customer_id IS NOT NULL",
+    "valid_date": "order_date >= '2020-01-01'"
+})
+@dp.table()
+def clean_orders():
+    return spark.readStream.table("bronze_orders")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE STREAMING TABLE clean_orders (
+  CONSTRAINT valid_amount EXPECT (amount > 0) ON VIOLATION DROP ROW,
+  CONSTRAINT valid_customer EXPECT (customer_id IS NOT NULL) ON VIOLATION DROP ROW,
+  CONSTRAINT valid_date EXPECT (order_date >= '2020-01-01') ON VIOLATION DROP ROW
+)
+AS SELECT * FROM STREAM(bronze_orders);
+```
+  </TabItem>
+</Tabs>
+
+## Key Rules
+
+- Expectations can be applied to both streaming tables and materialized views
+- Multiple expectations can be combined on the same table
+- Use `expect_all` variants for bulk constraint definitions in Python
+- Expectation results are visible in the pipeline UI monitoring

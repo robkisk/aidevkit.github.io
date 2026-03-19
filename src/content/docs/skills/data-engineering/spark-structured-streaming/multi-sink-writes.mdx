@@ -1,0 +1,126 @@
+---
+title: Multi-Sink Writes
+description: Write a single Spark stream to multiple Delta tables or Kafka topics using ForEachBatch — medallion architecture, conditional routing, and parallel fan-out.
+sidebar:
+  order: 4
+---
+
+## Core Pattern
+
+Use a single checkpoint for the entire multi-sink stream. All writes within a `foreachBatch` call see the same input data and share the same `batch_id`.
+
+```python
+def write_multiple_tables(batch_df, batch_id):
+    batch_df.write.format("delta").mode("append") \
+        .option("txnVersion", batch_id) \
+        .option("txnAppId", "multi_sink_bronze") \
+        .save("/delta/bronze_events")
+
+    cleansed = batch_df.dropDuplicates(["event_id"])
+    cleansed.write.format("delta").mode("append") \
+        .option("txnVersion", batch_id) \
+        .option("txnAppId", "multi_sink_silver") \
+        .save("/delta/silver_events")
+
+stream.writeStream \
+    .foreachBatch(write_multiple_tables) \
+    .option("checkpointLocation", "/checkpoints/multi_sink") \
+    .start()
+```
+
+## Medallion Architecture
+
+```python
+def medallion_architecture(batch_df, batch_id):
+    batch_df.write.format("delta").mode("append") \
+        .option("txnVersion", batch_id).option("txnAppId", "medallion_bronze") \
+        .saveAsTable("bronze.events")
+
+    silver_df = (batch_df
+        .dropDuplicates(["event_id"])
+        .filter(col("status").isin(["active", "pending"]))
+        .withColumn("processed_at", current_timestamp()))
+    silver_df.write.format("delta").mode("append") \
+        .option("txnVersion", batch_id).option("txnAppId", "medallion_silver") \
+        .saveAsTable("silver.events")
+
+    gold_df = (silver_df
+        .groupBy(window(col("timestamp"), "5 minutes"), "category")
+        .agg(count("*").alias("event_count"), sum("amount").alias("total_amount")))
+    gold_df.write.format("delta").mode("append") \
+        .option("txnVersion", batch_id).option("txnAppId", "medallion_gold") \
+        .saveAsTable("gold.category_metrics")
+```
+
+## Parallel Fan-Out
+
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def parallel_write(batch_df, batch_id):
+    batch_df.cache()
+
+    def write_table(table_name, filter_expr=None):
+        df = batch_df.filter(filter_expr) if filter_expr else batch_df
+        df.write.format("delta").mode("append") \
+            .option("txnVersion", batch_id) \
+            .option("txnAppId", f"parallel_{table_name}") \
+            .saveAsTable(table_name)
+
+    tables = [
+        ("bronze.all_events", None),
+        ("silver.errors", col("level") == "ERROR"),
+        ("silver.warnings", col("level") == "WARN"),
+    ]
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(write_table, t, f): t for t, f in tables
+        }
+        errors = []
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                errors.append((futures[future], str(e)))
+
+    batch_df.unpersist()
+    if errors:
+        raise Exception(f"Write failures: {errors}")
+```
+
+## Error Handling with Dead Letter Queue
+
+```python
+def write_with_dlq(batch_df, batch_id):
+    valid = batch_df.filter(col("required_field").isNotNull())
+    invalid = batch_df.filter(col("required_field").isNull())
+
+    if valid.count() > 0:
+        valid.write.format("delta").mode("append") \
+            .option("txnVersion", batch_id) \
+            .option("txnAppId", "multi_sink_valid") \
+            .saveAsTable("silver.valid_events")
+
+    if invalid.count() > 0:
+        (invalid
+            .withColumn("_error_reason", lit("missing_required_field"))
+            .withColumn("_batch_id", lit(batch_id))
+            .write.format("delta").mode("append")
+            .saveAsTable("errors.dead_letter_queue"))
+```
+
+## Best Practices
+
+- **Cache** the batch DataFrame to avoid recomputation across sinks
+- **Unpersist** after all writes complete
+- Use `txnVersion`/`txnAppId` for idempotent writes (unique per table)
+- Keep batch processing fast -- move expensive aggregations to the stream definition
+
+## Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Slow writes | Sequential processing | Use parallel `ThreadPoolExecutor` |
+| Recomputation | Multiple actions on same DataFrame | Cache the batch DataFrame |
+| Partial failures | One sink fails | Use idempotent writes; Spark retries entire batch |

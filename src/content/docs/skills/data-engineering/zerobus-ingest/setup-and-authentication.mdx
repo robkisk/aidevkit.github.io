@@ -1,0 +1,64 @@
+---
+title: Setup & Authentication
+description: Zerobus Ingest setup — server endpoints, service principals, table preparation, SDK installation, and firewall requirements.
+sidebar:
+  order: 1
+---
+
+## Server Endpoint
+
+| Cloud | Format |
+|-------|--------|
+| **AWS** | `<workspace-id>.zerobus.<region>.cloud.databricks.com` |
+| **Azure** | `<workspace-id>.zerobus.<region>.azuredatabricks.net` |
+
+## Create the Target Table
+
+Zerobus does not create or alter tables. Pre-create a managed Delta table:
+
+```sql
+CREATE TABLE catalog.schema.my_events (
+    event_id STRING, device_name STRING,
+    temp INT, humidity LONG, event_time TIMESTAMP
+);
+```
+
+Constraints: managed Delta only, ASCII names, max 2000 columns, supported region.
+
+## Service Principal Setup
+
+```sql
+GRANT USE CATALOG ON CATALOG my_catalog TO `<sp-uuid>`;
+GRANT USE SCHEMA ON SCHEMA my_catalog.my_schema TO `<sp-uuid>`;
+GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.my_events TO `<sp-uuid>`;
+```
+
+Always grant explicit table-level `MODIFY` and `SELECT` -- schema-level inherited grants may not suffice for the OAuth `authorization_details` flow.
+
+## SDK Installation
+
+| Language | Package |
+|----------|---------|
+| Python 3.9+ | `pip install databricks-zerobus-ingest-sdk>=1.0.0` |
+| Java 8+ | `com.databricks:zerobus-ingest-sdk:0.1.0` |
+| Go 1.21+ | `go get github.com/databricks/zerobus-sdk-go` |
+| Node.js 16+ | `npm install @databricks/zerobus-ingest-sdk` |
+| Rust 1.70+ | `cargo add databricks-zerobus-ingest-sdk` |
+
+## Environment Variables
+
+```bash
+export ZEROBUS_SERVER_ENDPOINT="<workspace-id>.zerobus.<region>.cloud.databricks.com"
+export DATABRICKS_WORKSPACE_URL="https://<instance>.cloud.databricks.com"
+export ZEROBUS_TABLE_NAME="my_catalog.my_schema.my_events"
+export DATABRICKS_CLIENT_ID="<client-id>"
+export DATABRICKS_CLIENT_SECRET="<client-secret>"
+```
+
+## Supported Regions
+
+### AWS
+us-east-1, us-east-2, us-west-2, eu-central-1, eu-west-1, ap-southeast-1, ap-southeast-2, ap-northeast-1, ca-central-1
+
+### Azure
+canadacentral, westus, eastus, eastus2, centralus, northcentralus, swedencentral, westeurope, northeurope, australiaeast, southeastasia

@@ -1,0 +1,66 @@
+---
+title: Sinks
+description: Write pipeline data to external targets — Kafka, Event Hubs, external Delta tables, and custom data sources (Python only).
+sidebar:
+  order: 7
+---
+
+Sinks enable writing pipeline data to targets beyond Databricks-managed Delta tables. Available in Python only.
+
+## Delta Sink (External Table)
+
+```python
+dp.create_sink(
+    name="external_orders",
+    format="delta",
+    options={"path": "/mnt/external/orders"}
+)
+
+@dp.append_flow(target="external_orders")
+def external_orders_flow():
+    return spark.readStream.table("silver.orders")
+```
+
+## Kafka Sink
+
+```python
+dp.create_sink(
+    name="kafka_events",
+    format="kafka",
+    options={
+        "kafka.bootstrap.servers": "broker:9092",
+        "topic": "output-events"
+    }
+)
+
+@dp.append_flow(target="kafka_events")
+def kafka_flow():
+    return spark.readStream.table("silver.events") \
+        .select(to_json(struct("*")).alias("value"))
+```
+
+The `value` column is mandatory for Kafka sinks. Use `to_json(struct(*)) AS value` to serialize.
+
+## ForEachBatch Sink
+
+Custom streaming sink with per-batch Python logic:
+
+```python
+@dp.foreach_batch_sink(name="custom_sink")
+def my_custom_sink(batch_df, batch_id):
+    # Custom logic per micro-batch
+    batch_df.write.format("jdbc") \
+        .option("url", "jdbc:postgresql://host/db") \
+        .option("dbtable", "target_table") \
+        .mode("append").save()
+
+@dp.append_flow(target="custom_sink")
+def custom_flow():
+    return spark.readStream.table("silver.data")
+```
+
+## Key Rules
+
+- Sinks, ForEachBatch Sinks, and CDC from snapshots are Python-only
+- Sinks work exclusively with streaming queries and append flows
+- For Kafka sinks, the `value` column is mandatory

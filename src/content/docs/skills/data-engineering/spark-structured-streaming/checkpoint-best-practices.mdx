@@ -1,0 +1,104 @@
+---
+title: Checkpoint Best Practices
+description: Configure and manage checkpoint locations for reliable Spark Structured Streaming with exactly-once semantics.
+sidebar:
+  order: 2
+---
+
+## Checkpoint Storage
+
+```python
+# DO: Use Unity Catalog volumes (S3/ADLS-backed)
+checkpoint_path = "/Volumes/catalog/checkpoints/stream_name"
+
+# DON'T: Use DBFS (ephemeral, workspace-local)
+# checkpoint_path = "/dbfs/checkpoints/stream_name"  # Avoid
+```
+
+## Target-Tied Organization
+
+```python
+def get_checkpoint_location(table_name):
+    """Checkpoint should be tied to TARGET, not source."""
+    return f"/Volumes/catalog/checkpoints/{table_name}"
+```
+
+Checkpoint already contains source information. Target-tied naming gives systematic organization, easy backup, and clear ownership.
+
+## One Checkpoint Per Stream
+
+```python
+# CORRECT: Each stream has its own checkpoint
+stream1.writeStream.option("checkpointLocation", "/checkpoints/stream1").start()
+stream2.writeStream.option("checkpointLocation", "/checkpoints/stream2").start()
+
+# WRONG: Never share checkpoints between streams -- causes data loss
+```
+
+## Checkpoint Structure
+
+```
+checkpoint_location/
+├── metadata/      # Query ID
+├── offsets/       # What to process (intent)
+├── commits/       # What completed (confirmation)
+├── sources/       # Source metadata
+└── state/         # Stateful operations (if any)
+```
+
+## Reading Checkpoint Contents
+
+```python
+import json
+
+offset_file = "/checkpoints/stream/offsets/223"
+content = dbutils.fs.head(offset_file)
+offset_data = json.loads(content)
+
+# Key fields: batchWatermarkMs, batchTimestampMs,
+# source[0].startOffset, source[0].endOffset, source[0].latestOffset
+```
+
+## Reading State Store
+
+```python
+state_df = spark.read.format("statestore").load("/checkpoints/stream/state")
+state_df.show()
+
+state_metadata = spark.read.format("state-metadata").load("/checkpoints/stream")
+state_metadata.show()
+```
+
+## Recovery Scenarios
+
+**Lost or corrupted checkpoint:** delete the folder, restart with `startingOffsets=earliest`. Delta sink handles deduplication if idempotent writes are configured.
+
+```python
+dbutils.fs.rm("/checkpoints/stream", recurse=True)
+```
+
+**Backup before major changes:**
+
+```python
+dbutils.fs.cp("/checkpoints/stream", "/checkpoints/stream_backup_20240101", recurse=True)
+```
+
+## Monitoring
+
+```python
+# Track checkpoint folder size
+checkpoint_size = dbutils.fs.ls("/checkpoints/stream")
+total_size = sum([f.size for f in checkpoint_size if f.isFile()])
+
+# Monitor state store partition balance (stateful jobs)
+state_df = spark.read.format("statestore").load("/checkpoints/stream/state")
+state_df.groupBy("partitionId").count().orderBy(desc("count")).show()
+```
+
+## Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| State growing too large | Long watermark or high cardinality keys | Reduce watermark duration |
+| Checkpoint corruption | File system issues | Delete and restart; restore from backup |
+| Can't find commit file | Normal if job crashed | Spark will reprocess on restart |

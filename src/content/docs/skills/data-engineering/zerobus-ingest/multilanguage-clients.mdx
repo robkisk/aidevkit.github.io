@@ -1,0 +1,95 @@
+---
+title: Multi-Language Clients
+description: Zerobus Ingest SDK examples for Java, Go, TypeScript, and Rust — all following the same core pattern.
+sidebar:
+  order: 3
+---
+
+All languages follow the same core pattern: **SDK init -> create stream -> ingest records -> ACK -> flush -> close**.
+
+## Java
+
+```java
+ZerobusSdk sdk = new ZerobusSdk(serverEndpoint, workspaceUrl);
+TableProperties<AirQuality> tableProperties = new TableProperties<>(
+    tableName, AirQuality.getDefaultInstance());
+
+ZerobusStream<AirQuality> stream = sdk.createStream(
+    tableProperties, clientId, clientSecret).join();
+
+try {
+    for (int i = 0; i < 100; i++) {
+        AirQuality record = AirQuality.newBuilder()
+            .setDeviceName("sensor-" + i).setTemp(22).setHumidity(55).build();
+        long offset = stream.ingestRecordOffset(record);
+        stream.waitForOffset(offset);
+    }
+} finally {
+    stream.close();
+}
+```
+
+## Go
+
+```go
+sdk, _ := zerobus.NewZerobusSdk(serverEndpoint, workspaceURL)
+defer sdk.Free()
+
+options := zerobus.DefaultStreamConfigurationOptions()
+options.RecordType = zerobus.RecordTypeJson
+
+stream, _ := sdk.CreateStream(
+    zerobus.TableProperties{TableName: tableName},
+    clientID, clientSecret, options)
+defer stream.Close()
+
+for i := 0; i < 100; i++ {
+    record := fmt.Sprintf(`{"device_name": "sensor-%d", "temp": 22}`, i)
+    offset, _ := stream.IngestRecordOffset(record)
+    stream.WaitForOffset(offset)
+}
+stream.Flush()
+```
+
+## TypeScript
+
+```typescript
+const sdk = new ZerobusSdk(serverEndpoint, workspaceUrl);
+const stream = await sdk.createStream(
+  { tableName }, clientId, clientSecret, { recordType: RecordType.Json });
+
+try {
+  for (let i = 0; i < 100; i++) {
+    const offset = await stream.ingestRecordOffset(
+      { device_name: `sensor-${i}`, temp: 22 });
+    await stream.waitForOffset(offset);
+  }
+  await stream.flush();
+} finally {
+  await stream.close();
+}
+```
+
+## Rust
+
+```rust
+let sdk = ZerobusSdk::new(server_endpoint, workspace_url)?;
+let mut stream = sdk
+    .create_stream(table_properties, client_id, client_secret, Some(options))
+    .await?;
+
+for i in 0..100 {
+    let record = format!(r#"{{"device_name": "sensor-{}", "temp": 22}}"#, i);
+    let offset = stream.ingest_record_offset(record.into_bytes()).await?;
+    stream.wait_for_offset(offset).await?;
+}
+stream.close().await?;
+```
+
+## Language Comparison
+
+| Feature | Python | Java | Go | TypeScript | Rust |
+|---------|--------|------|----|------------|------|
+| Min version | 3.9+ | 8+ | 1.21+ | Node 16+ | 1.70+ |
+| Default serialization | JSON | Protobuf | JSON | JSON | JSON |
+| Async API | Yes | CompletableFuture | Goroutines | Native async | Tokio |

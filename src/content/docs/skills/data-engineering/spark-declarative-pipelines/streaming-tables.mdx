@@ -1,0 +1,128 @@
+---
+title: Streaming Tables
+description: Create streaming tables that process data incrementally with exactly-once semantics — append flows, backfill, and multi-source patterns.
+sidebar:
+  order: 1
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Streaming tables process data continuously as it arrives, providing exactly-once guarantees with automatic checkpointing.
+
+## Basic Streaming Table
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.table()
+def bronze():
+    return spark.readStream.format("cloudFiles") \
+        .option("cloudFiles.format", "json") \
+        .load("/path/to/data")
+
+@dp.table()
+def silver():
+    return spark.readStream.table("bronze").filter("id IS NOT NULL")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE STREAMING TABLE bronze
+AS SELECT * FROM STREAM(read_files('/path/to/data', format => 'json'));
+
+CREATE STREAMING TABLE silver
+AS SELECT * FROM STREAM(bronze) WHERE id IS NOT NULL;
+```
+  </TabItem>
+</Tabs>
+
+## Multi-Source Aggregation (Append Flows)
+
+<Tabs>
+  <TabItem label="Python">
+```python
+dp.create_streaming_table(name="all_events")
+
+@dp.append_flow(target="all_events", name="mobile")
+def mobile():
+    return spark.readStream.table("mobile.events")
+
+@dp.append_flow(target="all_events", name="web")
+def web():
+    return spark.readStream.table("web.events")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE STREAMING TABLE all_events (
+  event_id STRING, event_type STRING, event_timestamp TIMESTAMP, source STRING
+);
+
+CREATE FLOW mobile_flow AS INSERT INTO all_events BY NAME
+SELECT *, 'mobile' as source FROM STREAM(mobile.events);
+
+CREATE FLOW web_flow AS INSERT INTO all_events BY NAME
+SELECT *, 'web' as source FROM STREAM(web.events);
+```
+  </TabItem>
+</Tabs>
+
+## One-Time Backfill
+
+<Tabs>
+  <TabItem label="Python">
+```python
+dp.create_streaming_table(name="transactions")
+
+@dp.append_flow(target="transactions", name="live_stream")
+def live():
+    return spark.readStream.table("source.transactions")
+
+@dp.append_flow(target="transactions", name="backfill", once=True)
+def backfill():
+    return spark.read.table("archive.historical_transactions")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE STREAMING TABLE transactions;
+
+CREATE FLOW live_stream AS INSERT INTO transactions
+SELECT * FROM STREAM(source.transactions);
+
+CREATE FLOW backfill AS INSERT INTO ONCE transactions
+SELECT * FROM archive.historical_transactions;
+```
+  </TabItem>
+</Tabs>
+
+## Stream-Static Join
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.table()
+def enriched_transactions():
+    transactions = spark.readStream.table("transactions")
+    customers = spark.read.table("customers")
+    return transactions.join(customers, transactions.customer_id == customers.id)
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE OR REFRESH STREAMING TABLE enriched_transactions
+AS SELECT t.*, c.name, c.email
+FROM STREAM(transactions) t
+JOIN customers c ON t.customer_id = c.id;
+```
+  </TabItem>
+</Tabs>
+
+## Key Rules
+
+- Streaming tables use `spark.readStream` (Python) or `STREAM()` (SQL)
+- Never use `.writeStream`, `.start()`, or checkpoint options -- Databricks manages these
+- For streaming flows (`once=False`): use streaming reads
+- For one-time flows (`once=True`): use batch reads
+- Use `skipChangeCommits` when reading from STs with updates/deletes
+- `CLUSTER BY` is recommended over `PARTITIONED BY`

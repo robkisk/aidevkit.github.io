@@ -1,0 +1,91 @@
+---
+title: Testing Patterns
+description: Unit, integration, and performance testing strategies for custom Spark data sources — fixtures, mocking, and test organization.
+sidebar:
+  order: 7
+---
+
+## Basic Unit Tests
+
+```python
+import pytest
+from pyspark.sql import SparkSession
+
+@pytest.fixture(scope="session")
+def spark():
+    return SparkSession.builder.master("local[2]") \
+        .config("spark.sql.shuffle.partitions", "2").getOrCreate()
+
+def test_data_source_name():
+    assert YourDataSource.name() == "your-format"
+
+def test_missing_required_option():
+    with pytest.raises(AssertionError, match="url is required"):
+        YourDataSource({})
+```
+
+## Mocking HTTP Requests
+
+```python
+def test_writer_sends_batch(spark):
+    with patch('requests.post') as mock_post:
+        mock_post.return_value = Mock(status_code=200)
+        df = spark.createDataFrame([(1, "Alice"), (2, "Bob")], ["id", "name"])
+        df.write.format("your-format").option("url", "http://api").save()
+        assert mock_post.called
+```
+
+## Testing Streaming
+
+```python
+def test_initial_offset():
+    reader = YourStreamReader(options, schema)
+    initial = reader.initialOffset()
+    offset_dict = json.loads(initial)
+    assert "timestamp" in offset_dict
+
+def test_partitions_non_overlapping():
+    reader = YourStreamReader(options, schema)
+    partitions = reader.partitions(start, end)
+    for i in range(len(partitions) - 1):
+        assert partitions[i].end_time < partitions[i + 1].start_time
+```
+
+## Integration Tests with Testcontainers
+
+```python
+@pytest.fixture(scope="session")
+def postgres_container():
+    with PostgresContainer("postgres:15") as container:
+        yield container
+
+def test_write_integration(spark, postgres_container):
+    df = spark.createDataFrame([(1, "Alice")], ["id", "name"])
+    df.write.format("your-format") \
+        .option("url", postgres_container.get_connection_url()).save()
+```
+
+## Test Organization
+
+```
+tests/
+├── unit/
+│   ├── test_datasource.py
+│   ├── test_reader.py
+│   ├── test_writer.py
+│   └── test_type_conversion.py
+├── integration/
+│   ├── test_read_integration.py
+│   └── test_streaming.py
+├── performance/
+│   └── test_performance.py
+└── conftest.py
+```
+
+## Running Tests
+
+```bash
+uv run pytest                          # All tests
+uv run pytest tests/unit/              # Unit only
+uv run pytest --cov=your_package       # With coverage
+```

@@ -1,0 +1,71 @@
+---
+title: Auto Loader
+description: Incrementally ingest files from cloud storage into Delta tables — automatic file discovery, schema inference, and format-specific options.
+sidebar:
+  order: 3
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Auto Loader tracks which files have been processed and only reads new arrivals, making it ideal for landing zones and raw data volumes.
+
+## Basic Ingestion
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.table()
+def bronze_events():
+    return spark.readStream.format("cloudFiles") \
+        .option("cloudFiles.format", "json") \
+        .option("cloudFiles.inferColumnTypes", "true") \
+        .load("/Volumes/catalog/raw/events/")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE STREAMING TABLE bronze_events
+AS SELECT * FROM STREAM(read_files(
+  '/Volumes/catalog/raw/events/',
+  format => 'json',
+  inferColumnTypes => true
+));
+```
+  </TabItem>
+</Tabs>
+
+## With Schema Definition
+
+<Tabs>
+  <TabItem label="Python">
+```python
+@dp.table(schema="id STRING, name STRING, created_at TIMESTAMP")
+def bronze():
+    return spark.readStream.format("cloudFiles") \
+        .option("cloudFiles.format", "csv") \
+        .option("header", "true") \
+        .load("/path/to/data")
+```
+  </TabItem>
+  <TabItem label="SQL">
+```sql
+CREATE STREAMING TABLE bronze (
+  id STRING, name STRING, created_at TIMESTAMP
+)
+AS SELECT * FROM STREAM(read_files(
+  '/path/to/data', format => 'csv', header => true
+));
+```
+  </TabItem>
+</Tabs>
+
+## Supported Formats
+
+JSON, CSV, Parquet, Avro, ORC, XML, Text. Each format has specific options (e.g., `multiLine` for JSON, `header`/`delimiter` for CSV, `rowTag` for XML).
+
+## Key Points
+
+- Auto Loader always produces a streaming DataFrame, so the target is a streaming table
+- Use `cloudFiles.inferColumnTypes` for automatic schema inference
+- Use notification mode (`cloudFiles.useNotifications=true`) for better performance at scale
+- Combine with expectations for data quality checks on ingestion

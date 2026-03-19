@@ -1,0 +1,79 @@
+---
+title: Partitioning Patterns
+description: Strategies for distributing reads across Spark executors — time-based, token-range, and ID-range partitioning.
+sidebar:
+  order: 2
+---
+
+## Time-Based Partitioning
+
+For APIs with temporal data or streaming sources:
+
+```python
+class TimeRangePartition(InputPartition):
+    def __init__(self, start_time, end_time):
+        self.start_time = start_time
+        self.end_time = end_time
+
+class TimeBasedReader:
+    def partitions(self):
+        partitions = []
+        current = self.start_time
+        delta = timedelta(seconds=self.partition_duration)
+        while current < self.end_time:
+            next_time = min(current + delta, self.end_time)
+            partitions.append(TimeRangePartition(current, next_time))
+            current = next_time
+        return partitions
+```
+
+### Auto-Subdividing for Large Results
+
+Handle APIs with result size limits by recursively splitting:
+
+```python
+def _read_with_subdivision(self, partition):
+    duration = (partition.end_time - partition.start_time).total_seconds()
+    if duration <= self.min_partition_seconds:
+        raise Exception("Cannot subdivide further")
+    midpoint = partition.start_time + timedelta(seconds=duration / 2)
+    yield from self.read(TimeRangePartition(partition.start_time, midpoint))
+    yield from self.read(TimeRangePartition(midpoint, partition.end_time))
+```
+
+## Token-Range Partitioning
+
+For distributed databases using consistent hashing (Cassandra, ScyllaDB). One partition per token range, naturally distributed based on data distribution.
+
+```python
+class TokenRangePartition(InputPartition):
+    def __init__(self, partition_id, start_token, end_token, pk_columns):
+        self.partition_id = partition_id
+        self.start_token = start_token
+        self.end_token = end_token
+        self.pk_columns = pk_columns
+```
+
+## ID-Range Partitioning
+
+For APIs with pagination or sequential IDs:
+
+```python
+class IdRangeReader:
+    def partitions(self):
+        total = self._get_total_count()
+        partition_size = total // self.num_partitions
+        return [
+            IdRangePartition(i, i * partition_size,
+                (i + 1) * partition_size if i < self.num_partitions - 1 else total)
+            for i in range(self.num_partitions)
+        ]
+```
+
+## Guidelines
+
+**Batch reads:** Start with 2-4x executor cores. Target 128MB-1GB per partition.
+
+**Streaming reads:** Use fixed-duration partitions. Let Spark handle parallelism across micro-batches.
+
+**Token-range:** One partition per token range (determined by cluster topology).

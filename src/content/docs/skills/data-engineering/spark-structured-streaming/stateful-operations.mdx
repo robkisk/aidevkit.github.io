@@ -1,0 +1,100 @@
+---
+title: Stateful Operations
+description: Configure watermarks and manage state stores for Spark Structured Streaming — deduplication, windowed aggregations, and RocksDB.
+sidebar:
+  order: 5
+---
+
+## Watermarks
+
+Watermarks control state cleanup and late-data handling. Events older than `latest_event_time - delay_threshold` are considered too late.
+
+```python
+df = (spark.readStream.format("kafka")
+    .option("subscribe", "events").load()
+    .select(from_json(col("value").cast("string"), schema).alias("data"))
+    .select("data.*")
+    .withWatermark("event_time", "10 minutes")
+    .dropDuplicates(["event_id"]))
+```
+
+### Watermark Duration Selection
+
+| Setting | Effect | Use Case |
+|---------|--------|----------|
+| 5 minutes | Low latency, smaller state | Real-time analytics |
+| 10 minutes | Moderate | General streaming |
+| 1 hour | High completeness | Financial transactions |
+| 24 hours | Batch-like | Backfill scenarios |
+
+**Rule of thumb:** Start with 2-3x your p95 latency.
+
+## RocksDB State Store
+
+Use RocksDB for state stores exceeding memory capacity (> 100M keys or > 10GB state):
+
+```python
+spark.conf.set(
+    "spark.sql.streaming.stateStore.providerClass",
+    "com.databricks.sql.streaming.state.RocksDBStateProvider"
+)
+```
+
+## Windowed Aggregations
+
+```python
+windowed = (df
+    .withWatermark("event_time", "10 minutes")
+    .groupBy(window(col("event_time"), "5 minutes"), col("user_id"))
+    .agg(count("*").alias("event_count"), sum("value").alias("total_value"))
+)
+
+windowed.writeStream \
+    .outputMode("update") \
+    .format("delta") \
+    .option("checkpointLocation", "/checkpoints/windowed") \
+    .start("/delta/windowed_metrics")
+```
+
+## Monitoring State
+
+```python
+for stream in spark.streams.active:
+    progress = stream.lastProgress
+    if progress and "stateOperators" in progress:
+        for op in progress["stateOperators"]:
+            print(f"State rows: {op.get('numRowsTotal', 0)}")
+            print(f"State memory: {op.get('memoryUsedBytes', 0)}")
+            print(f"State on disk: {op.get('diskBytesUsed', 0)}")
+```
+
+## Partition Balance Check
+
+```python
+def check_state_balance(checkpoint_path):
+    state_df = spark.read.format("statestore").load(f"{checkpoint_path}/state")
+    partition_counts = state_df.groupBy("partitionId").count().orderBy(desc("count"))
+    partition_counts.show()
+
+    counts = [row['count'] for row in partition_counts.collect()]
+    if counts:
+        skew_ratio = max(counts) / min(counts) if min(counts) > 0 else float('inf')
+        if skew_ratio > 10:
+            print("WARNING: High state skew detected")
+```
+
+## State Size Control
+
+- **Use watermarks** -- state automatically expires after watermark duration
+- **Reduce key cardinality** -- prefer session_id over user_id when possible
+- **RocksDB** -- enable for state exceeding memory capacity
+
+## Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| State store explosion | Watermark too long | Reduce watermark |
+| Late data dropped | Watermark too short | Increase watermark |
+| OOM errors | State exceeds memory | Enable RocksDB |
+| State partition skew | Uneven key distribution | Salt keys |
+| State not expiring | Watermark not configured | Add watermark |

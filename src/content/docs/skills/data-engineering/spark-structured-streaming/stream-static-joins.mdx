@@ -1,0 +1,103 @@
+---
+title: Stream-Static Joins
+description: Enrich streaming data with Delta dimension tables — stateless joins that refresh automatically each microbatch.
+sidebar:
+  order: 6
+---
+
+## Quick Start
+
+```python
+iot_stream = (spark.readStream.format("kafka")
+    .option("subscribe", "iot-events").load()
+    .select(from_json(col("value").cast("string"), event_schema).alias("data"))
+    .select("data.*"))
+
+device_dim = spark.table("device_dimensions")
+
+enriched = iot_stream.join(device_dim, "device_id", "left") \
+    .select(iot_stream["*"], device_dim["device_type"], device_dim["location"])
+
+enriched.writeStream.format("delta") \
+    .option("checkpointLocation", "/Volumes/catalog/checkpoints/enriched") \
+    .trigger(processingTime="30 seconds") \
+    .start("/delta/enriched_iot_events")
+```
+
+## Always Use Left Join
+
+```python
+# CORRECT: Preserves all streaming events
+enriched = iot_stream.join(device_dim, "device_id", "left")
+
+# WRONG: Inner join drops unmatched events -- data loss risk
+# enriched = iot_stream.join(device_dim, "device_id", "inner")
+```
+
+New devices may send data before the dimension table is updated. Left joins preserve events; backfill dimensions later.
+
+## Why Delta Tables Matter
+
+Delta tables enable automatic version checking each microbatch. Non-Delta formats (Parquet) are read once at startup -- truly static.
+
+## Multi-Table Enrichment
+
+```python
+devices = spark.table("device_dimensions")
+locations = spark.table("location_dimensions")
+
+enriched = (iot_stream
+    .join(devices, "device_id", "left")
+    .join(locations, "location_id", "left"))
+```
+
+## Broadcast Hash Join Optimization
+
+```python
+from pyspark.sql.functions import broadcast
+
+small_dim = device_dim.select("device_id", "device_type", "location")
+active_dim = small_dim.filter(col("status") == "active")
+
+enriched = iot_stream.join(broadcast(active_dim), "device_id", "left")
+```
+
+Verify in Spark UI: look for "BroadcastHashJoin" (not "SortMergeJoin").
+
+## Dimension Freshness Audit
+
+```python
+enriched = (iot_stream
+    .join(device_dim, "device_id", "left")
+    .withColumn("dim_lag_seconds",
+        unix_timestamp(current_timestamp()) - unix_timestamp(col("dim_updated_at")))
+    .withColumn("dim_fresh", col("dim_lag_seconds") < 3600))
+```
+
+## Backfill Missing Dimensions
+
+```sql
+MERGE INTO enriched_events target
+USING device_dimensions source
+ON target.device_id = source.device_id AND target.device_type IS NULL
+WHEN MATCHED THEN UPDATE SET
+    device_type = source.device_type,
+    location = source.location
+```
+
+## Performance Configuration
+
+```python
+spark.conf.set("spark.sql.autoBroadcastJoinThreshold", "1g")
+```
+
+Target: dimension table < 100MB for broadcast. Select only needed columns. Filter to active records.
+
+## Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Data loss | Inner join | Switch to left join |
+| Slow joins | Shuffle join | Reduce dimension size; force broadcast |
+| Stale data | Non-Delta format | Convert dimension to Delta |
+| High null rate | Dimension updates lagging | Monitor freshness; backfill job |

@@ -1,0 +1,75 @@
+---
+title: Streaming Patterns
+description: Offset management, watermarking, stateful streaming, and exactly-once semantics for custom Spark data source stream readers and writers.
+sidebar:
+  order: 5
+---
+
+## Basic Offset Implementation
+
+```python
+class SimpleOffset:
+    def __init__(self, timestamp):
+        self.timestamp = timestamp
+    def json(self):
+        return json.dumps({"timestamp": self.timestamp})
+    @staticmethod
+    def from_json(json_str):
+        return SimpleOffset(json.loads(json_str)["timestamp"])
+```
+
+## Stream Reader with Non-Overlapping Partitions
+
+```python
+class YourStreamReader(DataSourceStreamReader):
+    def initialOffset(self):
+        # Subtract 1us to compensate for +1us in partitions()
+        adjusted = start_dt - timedelta(microseconds=1)
+        return SimpleOffset(adjusted.isoformat()).json()
+
+    def latestOffset(self):
+        return SimpleOffset(datetime.now(timezone.utc).isoformat()).json()
+
+    def partitions(self, start, end):
+        start_time = parse(start) + timedelta(microseconds=1)  # No overlap
+        partitions = []
+        current = start_time
+        while current < end_time:
+            next_time = min(current + delta, end_time)
+            partitions.append(TimeRangePartition(current, next_time))
+            current = next_time + timedelta(microseconds=1)
+        return partitions
+
+    def commit(self, end):
+        pass  # Spark handles checkpointing
+```
+
+## Exactly-Once Writer
+
+```python
+class ExactlyOnceWriter(DataSourceStreamWriter):
+    def write(self, iterator):
+        context = TaskContext.get()
+        batch_id = getattr(context, 'batchId', lambda: 0)()
+        for row in iterator:
+            idempotency_key = hashlib.sha256(
+                json.dumps({"batch_id": batch_id,
+                    "partition_id": context.partitionId(),
+                    "row": row.asDict()}, sort_keys=True).encode()
+            ).hexdigest()
+            self._write_with_idempotency_check(row.asDict(), idempotency_key)
+
+    def commit(self, messages, batchId):
+        pass
+    def abort(self, messages, batchId):
+        pass
+```
+
+## Best Practices
+
+1. **Non-overlapping partitions** -- use microsecond adjustments
+2. **Idempotency** -- generate deterministic keys for exactly-once
+3. **State management** -- store offsets in Spark checkpoints
+4. **Watermarking** -- support event-time processing for late data
+5. **Error handling** -- use retry with exponential backoff in `write()` methods
+6. **Backpressure** -- respect rate limits with appropriate partition sizing
