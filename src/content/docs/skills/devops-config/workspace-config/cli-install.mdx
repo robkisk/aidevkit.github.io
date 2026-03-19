@@ -1,54 +1,99 @@
 ---
 title: CLI Installation
-description: Install the Databricks CLI on macOS, Windows, or Linux with verification and troubleshooting.
+description: Install the Databricks CLI on macOS, Windows, or Linux and verify it meets the minimum version for bundle deployments.
 sidebar:
   order: 2
 ---
 
-The Databricks CLI is a prerequisite for bundle deployments, OAuth authentication, and workspace administration from the terminal. This page covers installation on macOS, Windows, and Linux along with version verification and common troubleshooting steps.
+## What You Can Build
 
-## Installation Methods
+The Databricks CLI is the prerequisite for bundle deployments, OAuth authentication, workspace administration from the terminal, and most AI Dev Kit workflows. You'll install it on your platform, verify it meets the minimum version, and handle sandboxed environments where Homebrew isn't available.
 
-### macOS (Homebrew)
+## In Action
+
+> "Install the Databricks CLI on macOS using Homebrew and verify the version meets the minimum for bundle support."
 
 ```bash
+# Install via Homebrew
 brew tap databricks/tap
 brew install databricks
+
+# Verify version (must be >= 0.292.0)
+databricks --version
 ```
 
-### Linux (curl)
+**Key decisions:**
+- **Homebrew on macOS** is the recommended install method -- it handles PATH configuration and makes upgrades a single `brew upgrade databricks` command
+- **v0.292.0 or later** is the minimum version for bundle features, OAuth login, and the full CLI command surface
+- After installation, run `databricks --version` before anything else to confirm the binary is in your PATH and meets the version floor
+
+## More Patterns
+
+### Linux Installation
+
+> "Install the Databricks CLI on a Linux machine or CI runner using the official install script."
 
 ```bash
+# System-wide install (requires sudo)
 curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+# Verify
+databricks --version
 ```
 
-### Windows (WinGet)
+The install script detects your architecture (amd64/arm64) and downloads the correct binary. On headless CI runners, this is the fastest path to a working CLI.
+
+### User-Directory Install (No Sudo)
+
+> "Install the CLI in my home directory on a sandboxed environment where I don't have admin access."
+
+```bash
+# Install to ~/.local/bin (no sudo required)
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh \
+  | sh -s -- --install-dir ~/.local/bin
+
+# Make sure ~/.local/bin is in your PATH
+export PATH="$HOME/.local/bin:$PATH"
+
+# Verify
+databricks --version
+```
+
+This is the right approach for IDE containers, Codespaces, or shared servers where you don't have root access. Add the `export PATH` line to your `~/.bashrc` or `~/.zshrc` so it persists.
+
+### Windows Installation
+
+> "Install the Databricks CLI on Windows using WinGet."
 
 ```powershell
 winget install Databricks.DatabricksCLI
-```
 
-## Verification
-
-```bash
+# Verify
 databricks --version
-# Expected: Databricks CLI v0.292.0 or later
 ```
 
-## Sandboxed Environments
+WinGet handles PATH registration automatically. After installation, open a new terminal window for the `databricks` command to be recognized.
 
-For IDE containers or sandboxed environments without Homebrew:
+### Upgrading to the Latest Version
+
+> "Upgrade the CLI to the latest version to pick up new bundle features."
 
 ```bash
-# User directory install (no sudo)
-curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh -s -- --install-dir ~/.local/bin
+# macOS
+brew upgrade databricks
+
+# Linux (re-run the install script)
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+# Verify the upgrade
+databricks --version
 ```
 
-## Minimum Version
+New CLI releases ship roughly every two weeks. If a bundle feature isn't available or a command returns an unexpected error, upgrading the CLI is the first troubleshooting step.
 
-Many features require Databricks CLI >= v0.292.0. Update with:
+## Watch Out For
 
-```bash
-brew upgrade databricks  # macOS
-# or re-run the install script for Linux
-```
+- **Running an old CLI version** -- Bundle features require v0.292.0 or later. If `databricks bundle validate` returns "unknown command," you're on an outdated version. Upgrade first.
+- **Forgetting to re-run the install script on Linux** -- Unlike Homebrew, the Linux install script doesn't auto-update. You get whatever version was current when you last ran it. Re-run the script periodically or pin it in your CI setup.
+- **PATH conflicts with older installations** -- If you previously installed via `pip install databricks-cli` (the old Python-based CLI), the old binary may shadow the new one. Run `which databricks` to confirm you're using the Go-based CLI at the expected path.
+- **Missing PATH entry in containers** -- The `--install-dir` flag puts the binary where you ask, but doesn't modify your shell profile. If `databricks --version` returns "command not found" after installation, add the install directory to `$PATH` in your shell config.

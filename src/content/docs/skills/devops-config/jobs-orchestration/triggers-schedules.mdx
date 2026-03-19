@@ -1,71 +1,148 @@
 ---
 title: Triggers and Schedules
-description: Configure cron schedules, periodic triggers, file arrival triggers, and table/storage change triggers for Databricks jobs.
+description: Configure cron schedules, periodic intervals, file arrival triggers, and table change triggers for Databricks jobs.
 sidebar:
   order: 2
 ---
 
-Jobs can be triggered on a cron schedule, at fixed intervals, or in response to events like file arrivals and table changes. This page covers each trigger type with SDK examples so you can configure the right execution cadence for your pipeline.
+## What You Can Build
 
-## Cron Schedule
+Every production pipeline needs an execution cadence. You can configure Databricks jobs to run on cron schedules, at fixed intervals, or in response to events like new files landing in cloud storage or Delta tables being updated. Each trigger type solves a different timing problem -- scheduled ETL, periodic syncs, event-driven ingestion, or always-on streaming.
 
-Standard cron expressions with timezone support:
+## In Action
+
+> "Create a DABs job that runs daily at 6 AM Eastern, with a cron schedule that auto-unpauses in production but stays paused in dev."
+
+```yaml
+resources:
+  jobs:
+    daily_etl:
+      name: "[${bundle.target}] Daily ETL Pipeline"
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: "America/New_York"
+        pause_status: ${if(bundle.target == "prod", "UNPAUSED", "PAUSED")}
+      tasks:
+        - task_key: etl
+          notebook_task:
+            notebook_path: ../src/etl.py
+```
+
+**Key decisions:**
+- Quartz cron format is `seconds minutes hours day-of-month month day-of-week` -- the leading seconds field is what trips people up compared to standard Unix cron
+- `timezone_id` uses IANA time zones (e.g., `America/New_York`), so your schedule respects daylight saving time transitions automatically
+- The `${if(...)}` expression keeps dev jobs paused by default, preventing accidental scheduled runs against dev data
+- `pause_status: UNPAUSED` activates the schedule immediately on deployment -- no manual step needed
+
+## More Patterns
+
+### Periodic Trigger
+
+> "Set up a job that runs every 4 hours using a periodic trigger instead of cron, in Python."
 
 ```python
-from databricks.sdk.service.jobs import CronSchedule
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.jobs import (
+    TriggerSettings, Periodic,
+    PeriodicTriggerConfigurationTimeUnit, PauseStatus,
+)
 
-schedule = CronSchedule(
-    quartz_cron_expression="0 0 6 * * ?",  # Daily at 6am
-    timezone_id="America/New_York",
-    pause_status="UNPAUSED"
+w = WorkspaceClient()
+
+job = w.jobs.create(
+    name="four-hour-sync",
+    trigger=TriggerSettings(
+        pause_status=PauseStatus.UNPAUSED,
+        periodic=Periodic(
+            interval=4,
+            unit=PeriodicTriggerConfigurationTimeUnit.HOURS,
+        ),
+    ),
+    tasks=[...],
 )
 ```
 
-Common patterns:
-- `0 0 6 * * ?` -- Daily at 6am
-- `0 0 */2 * * ?` -- Every 2 hours
-- `0 0 9 ? * MON-FRI` -- Weekdays at 9am
-- `0 30 8 1 * ?` -- First of month at 8:30am
+Periodic triggers are simpler than cron when you just need "every N hours/days/weeks." The minimum interval is 1 hour -- for anything more frequent, use cron.
 
-## Periodic Trigger
+### File Arrival Trigger
 
-Run every N time units:
+> "Create a job that processes new uploads whenever files land in an S3 bucket, with a 5-minute cooldown between runs."
+
+```yaml
+resources:
+  jobs:
+    process_uploads:
+      name: "[${bundle.target}] Process Uploads"
+      trigger:
+        pause_status: UNPAUSED
+        file_arrival:
+          url: "s3://data-lake/incoming/orders/"
+          min_time_between_triggers_seconds: 300
+          wait_after_last_change_seconds: 60
+      tasks:
+        - task_key: process
+          notebook_task:
+            notebook_path: ../src/process_files.py
+```
+
+`min_time_between_triggers_seconds` prevents rapid-fire triggering when many files arrive in bursts. `wait_after_last_change_seconds` adds a settling period -- the job waits 60 seconds after the last file change before triggering, so you process complete batches rather than partial uploads.
+
+### Table Update Trigger
+
+> "Trigger a downstream job automatically when two source tables in Unity Catalog are updated."
 
 ```python
-from databricks.sdk.service.jobs import PeriodicTriggerConfiguration
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.jobs import (
+    TriggerSettings, TableUpdateTriggerConfiguration,
+    Condition, PauseStatus,
+)
 
-trigger = PeriodicTriggerConfiguration(
-    interval=2,
-    unit="HOURS"
+w = WorkspaceClient()
+
+job = w.jobs.create(
+    name="table-change-handler",
+    trigger=TriggerSettings(
+        pause_status=PauseStatus.UNPAUSED,
+        table_update=TableUpdateTriggerConfiguration(
+            table_names=[
+                "main.bronze.raw_orders",
+                "main.bronze.raw_inventory",
+            ],
+            condition=Condition.ANY_UPDATED,
+            min_time_between_triggers_seconds=600,
+            wait_after_last_change_seconds=120,
+        ),
+    ),
+    tasks=[...],
 )
 ```
 
-Units: `HOURS`, `DAYS`, `WEEKS`.
+Table update triggers watch Unity Catalog Delta tables for changes. `ANY_UPDATED` fires when any monitored table changes -- use this when your transform depends on at least one source being fresh. The job identity needs `SELECT` permission on the monitored tables.
 
-## File Arrival Trigger
+### Continuous Job (Always-On)
 
-Trigger when new files appear in cloud storage:
+> "Configure a streaming processor that runs continuously and auto-restarts after failures."
 
-```python
-from databricks.sdk.service.jobs import FileArrivalTriggerConfiguration
-
-trigger = FileArrivalTriggerConfiguration(
-    url="s3://my-bucket/incoming/",
-    min_time_between_triggers_seconds=300,
-    wait_after_last_change_seconds=60
-)
+```yaml
+resources:
+  jobs:
+    streaming_processor:
+      name: "[${bundle.target}] Streaming Processor"
+      continuous:
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: stream
+          notebook_task:
+            notebook_path: ../src/streaming_processor.py
 ```
 
-## Table Update Trigger
+Continuous jobs start immediately and restart automatically after completion or failure. They maintain exactly one active run at a time. Pause with `pause_status: PAUSED` to stop the loop. This is the right choice for Structured Streaming workloads that need sub-second latency.
 
-Trigger when a Delta table is updated:
+## Watch Out For
 
-```python
-from databricks.sdk.service.jobs import TableUpdateTriggerConfiguration
-
-trigger = TableUpdateTriggerConfiguration(
-    table_names=["main.bronze.raw_events"],
-    condition="ALL_UPDATED",
-    min_time_between_triggers_seconds=600
-)
-```
+- **Using Unix cron format instead of Quartz** -- Quartz cron has six fields (starting with seconds), not five. `0 6 * * *` is valid Unix cron but invalid here. The correct equivalent is `0 0 6 * * ?`.
+- **Forgetting the `?` in day-of-week** -- Quartz cron requires either day-of-month or day-of-week to be `?` (unspecified). Using `*` in both positions causes a validation error.
+- **Setting `min_time_between_triggers_seconds` too low on file arrival** -- A zero-second cooldown means every single file triggers a new run. For bursty uploads, set this to at least 60-300 seconds to batch files into a single run.
+- **Skipping `wait_after_last_change_seconds`** -- Without a settling period, the job triggers mid-upload when a multi-file batch is still arriving. The result: partial processing and a confusing incomplete dataset.
+- **Running continuous jobs for batch workloads** -- Continuous mode keeps your cluster running 24/7. If your data arrives on a schedule, use a cron trigger instead and save the idle compute cost.

@@ -1,27 +1,34 @@
 ---
 title: SQL Alerts
-description: Configure SQL alert resources in Databricks Asset Bundles with schema validation and notification channels.
+description: Define threshold-based SQL alerts in Databricks Asset Bundles with notification routing and schema validation.
 sidebar:
   order: 2
 ---
 
-SQL alerts in Databricks Asset Bundles let you define threshold-based monitors on query results and route notifications to email, Slack, or webhooks. Always validate the alert schema first to ensure your YAML matches the current API surface before deploying.
+## What You Can Build
 
-## Schema Validation First
+You can define SQL alerts as bundle resources that monitor query results and fire notifications when thresholds are breached. This turns your data quality checks into version-controlled, deployable infrastructure -- same repo, same `databricks bundle deploy`, same promotion path from dev to prod.
 
-Always inspect the schema before creating alert resources:
+## In Action
 
-```bash
-databricks bundle schema | jq '.properties.resources.properties.alerts'
-```
-
-## Alert Resource
+> "Create a bundle resource for a SQL alert that monitors data freshness. It should fire when a table hasn't been updated in more than 24 hours and send notifications on both alert and recovery."
 
 ```yaml
 resources:
+  queries:
+    freshness_check:
+      display_name: "Data Freshness Check"
+      query_text: |
+        SELECT ROUND(
+          (UNIX_TIMESTAMP(CURRENT_TIMESTAMP()) -
+           UNIX_TIMESTAMP(MAX(updated_at))) / 3600, 1
+        ) AS hours_since_update
+        FROM prod_catalog.bronze.raw_events
+      warehouse_id: ${var.warehouse_id}
+
   alerts:
     data_freshness_alert:
-      display_name: "Data Freshness Check"
+      display_name: "Data Freshness Alert"
       query_id: ${resources.queries.freshness_check.id}
       condition:
         op: GREATER_THAN
@@ -32,16 +39,102 @@ resources:
           value:
             double_value: 24.0
       custom_subject: "Data Freshness Alert: {{ALERT_STATUS}}"
-      custom_body: "Hours since last update: {{QUERY_RESULT_VALUE}}"
+      custom_body: |
+        Hours since last update: {{QUERY_RESULT_VALUE}}
+        Threshold: 24 hours
+        Status: {{ALERT_STATUS}}
       notify_on_ok: true
 ```
 
-## Notification Channels
+**Key decisions:**
+- The alert references its query via `${resources.queries.freshness_check.id}`, keeping both resources portable across environments
+- `notify_on_ok: true` sends a recovery notification when the alert clears -- without it, you only hear about problems, never resolutions
+- `GREATER_THAN` with a `double_value` threshold works for numeric comparisons; the alert evaluates on each scheduled query execution
+- Custom subject and body use `{{ALERT_STATUS}}` and `{{QUERY_RESULT_VALUE}}` template variables to include runtime context in notifications
 
-Alerts support email and webhook destinations. Configure in the `notifications` section of the alert resource.
+## More Patterns
 
-## Best Practices
+### Validate the Alert Schema First
 
-- Always reference queries via `${resources.queries.name.id}` for portability
-- Use `notify_on_ok: true` to confirm recovery
-- Test alerts in dev target before deploying to prod
+> "Check the current alert schema before writing YAML to make sure my fields match the API surface."
+
+```bash
+databricks bundle schema | jq '.properties.resources.properties.alerts'
+```
+
+The alert API surface evolves between CLI versions. Running this command before you write YAML prevents deployment failures from stale field names or missing required properties.
+
+### Row Count Anomaly Alert
+
+> "Create an alert that fires when a table's row count drops below a minimum threshold, indicating a potential ingestion failure."
+
+```yaml
+resources:
+  queries:
+    row_count_check:
+      display_name: "Orders Row Count Check"
+      query_text: |
+        SELECT COUNT(*) AS row_count
+        FROM prod_catalog.silver.orders
+        WHERE order_date = CURRENT_DATE()
+      warehouse_id: ${var.warehouse_id}
+
+  alerts:
+    low_row_count:
+      display_name: "Low Order Count Alert"
+      query_id: ${resources.queries.row_count_check.id}
+      condition:
+        op: LESS_THAN
+        operand:
+          column:
+            name: row_count
+        threshold:
+          value:
+            double_value: 1000.0
+      custom_subject: "Low Row Count: {{ALERT_STATUS}}"
+      custom_body: "Today's order count: {{QUERY_RESULT_VALUE}} (expected >= 1000)"
+      notify_on_ok: true
+```
+
+This catches silent ingestion failures -- the pipeline runs successfully but processes zero or very few records. Set the threshold based on your historical minimum daily volume.
+
+### Environment-Specific Alert Thresholds
+
+> "Configure different freshness thresholds for dev and prod so dev alerts don't wake anyone up."
+
+```yaml
+variables:
+  freshness_threshold:
+    default: "48.0"
+
+targets:
+  dev:
+    variables:
+      freshness_threshold: "48.0"
+  prod:
+    variables:
+      freshness_threshold: "24.0"
+
+resources:
+  alerts:
+    data_freshness_alert:
+      display_name: "[${bundle.target}] Data Freshness"
+      query_id: ${resources.queries.freshness_check.id}
+      condition:
+        op: GREATER_THAN
+        operand:
+          column:
+            name: hours_since_update
+        threshold:
+          value:
+            double_value: ${var.freshness_threshold}
+```
+
+Dev environments get a relaxed 48-hour threshold so test data staleness doesn't generate noise. Prod gets the tight 24-hour window that matters.
+
+## Watch Out For
+
+- **Skipping schema validation** -- The alert resource schema changes between CLI versions. Run `databricks bundle schema | jq` before writing YAML to avoid cryptic deployment errors from renamed or removed fields.
+- **Hardcoding `query_id` instead of using resource references** -- A hardcoded query ID breaks when you deploy to a different workspace. Use `${resources.queries.name.id}` to keep alerts portable.
+- **Forgetting `notify_on_ok`** -- Without recovery notifications, you get paged when things break but never learn when they heal. Your on-call team ends up manually checking resolved alerts.
+- **Setting thresholds too tight in dev** -- Dev data is often stale or incomplete. Use bundle variables to set environment-appropriate thresholds, or your dev alerts become background noise that everyone ignores.

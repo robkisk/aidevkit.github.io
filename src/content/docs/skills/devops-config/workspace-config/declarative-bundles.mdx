@@ -1,56 +1,44 @@
 ---
 title: Declarative Automation Bundles
-description: Infrastructure-as-Code for Databricks resources with version control, automated deployments, and environment management.
+description: Define Databricks resources as Infrastructure-as-Code with version control, multi-environment targets, and automated deployments.
 sidebar:
   order: 4
 ---
 
-Declarative Automation Bundles (DABs, formerly Databricks Asset Bundles) provide Infrastructure-as-Code for Databricks resources.
+## What You Can Build
 
-## Project Structure
+Declarative Automation Bundles (DABs) let you define all your Databricks resources -- jobs, pipelines, alerts, queries, permissions -- as YAML files in a Git repository. You deploy them with a single `databricks bundle deploy` command, and the same definitions work across dev, staging, and production through target overrides. This is Infrastructure-as-Code for your data platform.
 
-```
-my-project/
-├── databricks.yml          # Bundle configuration
-├── resources/
-│   ├── my_job.yml          # Job definitions
-│   └── my_pipeline.yml     # Pipeline definitions
-├── src/
-│   ├── notebook.py         # Source code
-│   └── main.py
-└── tests/
-```
+## In Action
 
-## Bundle Lifecycle
-
-```bash
-# Initialize a new project
-databricks bundle init default-python --profile <PROFILE>
-
-# Validate configuration
-databricks bundle validate -t dev
-
-# Deploy to workspace
-databricks bundle deploy -t dev
-
-# Run a specific resource
-databricks bundle run my_job -t dev
-
-# Destroy deployed resources
-databricks bundle destroy -t dev
-```
-
-## Multi-Environment Configuration
+> "Initialize a new DABs project, set up dev and prod targets with different catalogs and compute, and deploy to dev for testing."
 
 ```yaml
+# databricks.yml
+bundle:
+  name: data-pipeline
+
+include:
+  - resources/*.yml
+
+variables:
+  warehouse_id:
+    lookup:
+      warehouse: "Shared SQL Warehouse"
+  catalog:
+    default: dev_catalog
+
 targets:
   dev:
     default: true
+    mode: development
     workspace:
       host: https://dev.cloud.databricks.com
     variables:
       catalog: dev_catalog
+
   prod:
+    mode: production
     workspace:
       host: https://prod.cloud.databricks.com
     run_as:
@@ -59,10 +47,154 @@ targets:
       catalog: prod_catalog
 ```
 
-## Best Practices
+**Key decisions:**
+- **`mode: development`** prefixes resource names with `[dev your.name]` and adjusts permissions for safe iteration -- flip to `production` for prod targets
+- **`run_as`** with a service principal ensures production deployments run under a controlled identity, not your personal account
+- **`variables`** with `lookup` resolve resource IDs at deploy time -- the warehouse ID is discovered dynamically, so you don't hardcode environment-specific IDs
+- **`include: resources/*.yml`** splits resource definitions across files, keeping your `databricks.yml` lean and your job/pipeline configs modular
 
-- Validate before every deployment
-- Use `run_as` with service principals in production
-- Keep secrets in environment variables, not in YAML
-- Use the Direct Deployment Engine for faster deploys
-- Reference resources across files with `${resources.jobs.name.id}`
+## More Patterns
+
+### Bundle Lifecycle Commands
+
+> "Walk me through the full deploy-test-destroy cycle for a bundle project."
+
+```bash
+# Initialize from a template
+databricks bundle init default-python --profile dev
+
+# Validate YAML before deploying
+databricks bundle validate -t dev
+
+# Deploy resources to the workspace
+databricks bundle deploy -t dev
+
+# Run a specific job
+databricks bundle run daily_etl -t dev
+
+# Tear down all deployed resources
+databricks bundle destroy -t dev
+```
+
+Always run `validate` before `deploy`. It catches YAML syntax errors, missing variable references, and schema violations before anything touches your workspace.
+
+### Project Structure
+
+> "Show me the recommended file layout for a DABs project with jobs and pipelines."
+
+```
+my-project/
+├── databricks.yml
+├── resources/
+│   ├── etl_job.yml
+│   ├── transform_pipeline.yml
+│   └── alerts.yml
+├── src/
+│   ├── extract.py
+│   ├── transform.py
+│   └── load.py
+├── tests/
+│   └── test_transform.py
+└── .gitignore
+```
+
+Keep resource definitions in `resources/`, source code in `src/`, and reference source files with relative paths (`../src/extract.py`). This structure scales cleanly from a single job to a multi-team monorepo.
+
+### Multi-Environment Job with Conditional Sizing
+
+> "Define a job that uses small clusters in dev and large clusters in prod, with the schedule only active in prod."
+
+```yaml
+# resources/etl_job.yml
+resources:
+  jobs:
+    daily_etl:
+      name: "[${bundle.target}] Daily ETL"
+
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: "UTC"
+        pause_status: ${if(bundle.target == "prod", "UNPAUSED", "PAUSED")}
+
+      job_clusters:
+        - job_cluster_key: main
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: ${if(bundle.target == "prod", "i3.2xlarge", "i3.xlarge")}
+            num_workers: ${if(bundle.target == "prod", 8, 2)}
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      tasks:
+        - task_key: etl
+          job_cluster_key: main
+          notebook_task:
+            notebook_path: ../src/etl.py
+            base_parameters:
+              catalog: "${var.catalog}"
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: "data-analysts"
+        - level: CAN_MANAGE_RUN
+          group_name: "data-engineers"
+```
+
+The `${if(...)}` expressions adapt compute sizing and scheduling per target without duplicating the entire job definition. Permissions are set declaratively so they're consistent across deployments.
+
+### Cross-Resource References
+
+> "Wire a pipeline, a job, and an alert together using resource references so they stay portable across environments."
+
+```yaml
+resources:
+  pipelines:
+    transform:
+      name: "[${bundle.target}] Transform Pipeline"
+      catalog: ${var.catalog}
+      target: silver
+      libraries:
+        - notebook:
+            path: ../src/transform.py
+
+  queries:
+    freshness_check:
+      display_name: "Freshness Check"
+      query_text: |
+        SELECT MAX(updated_at) AS last_update
+        FROM ${var.catalog}.silver.orders
+      warehouse_id: ${var.warehouse_id}
+
+  alerts:
+    stale_data:
+      display_name: "[${bundle.target}] Stale Data Alert"
+      query_id: ${resources.queries.freshness_check.id}
+      condition:
+        op: LESS_THAN
+        operand:
+          column:
+            name: last_update
+        threshold:
+          value:
+            string_value: "2024-01-01"
+
+  jobs:
+    orchestrator:
+      name: "[${bundle.target}] ETL Orchestrator"
+      tasks:
+        - task_key: transform
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.transform.id}
+```
+
+`${resources.pipelines.transform.id}` and `${resources.queries.freshness_check.id}` resolve at deploy time to the actual resource IDs in the target workspace. This keeps your definitions portable -- the same YAML works in dev and prod without hardcoded IDs.
+
+## Watch Out For
+
+- **Skipping `bundle validate` before deploy** -- Validation catches missing variables, broken references, and schema errors locally. Without it, you discover these problems mid-deploy when the workspace is in a partially updated state.
+- **Hardcoding resource IDs** -- A hardcoded `pipeline_id: "abc123"` works in one workspace and breaks in every other. Use `${resources.pipelines.name.id}` or `${var.name}` with lookups.
+- **Running production jobs as your personal user** -- Without `run_as: service_principal_name`, production jobs run under the deployer's identity. When that person leaves the company, every job they deployed breaks. Always use a service principal in prod targets.
+- **Storing secrets in YAML** -- Never put tokens, passwords, or API keys in `databricks.yml` or resource files. Use `${var.secret}` with environment variables or Databricks secrets instead.
+- **Forgetting `mode: development` in dev targets** -- Without it, your dev deployments create production-named resources that clash with actual prod. Development mode prefixes names and adjusts permissions automatically.

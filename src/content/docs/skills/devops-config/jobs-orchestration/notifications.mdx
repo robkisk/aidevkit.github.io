@@ -1,72 +1,210 @@
 ---
 title: Notifications and Monitoring
-description: Configure email, webhook, PagerDuty, and Slack notifications with health rules and SLA monitoring for Databricks jobs.
+description: Configure email, webhook, and PagerDuty notifications with health rules and SLA monitoring for Databricks jobs.
 sidebar:
   order: 3
 ---
 
-Job notifications ensure the right people know when pipelines fail, succeed, or violate SLA thresholds. This page covers email, webhook, PagerDuty, and Slack notification configuration along with health rules for duration and retry monitoring.
+## What You Can Build
 
-## Email Notifications
+You can wire up job notifications so the right people know when pipelines fail, exceed SLA thresholds, or recover. This covers email routing, webhook integrations (Slack, PagerDuty, Teams), health rules for duration and streaming backlog monitoring, and retry/timeout configuration. The goal: production jobs that tell you what went wrong before your stakeholders do.
+
+## In Action
+
+> "Create a DABs job with comprehensive monitoring: email the team on success and failure, page on-call via webhook when duration exceeds 2 hours, and retry failed tasks up to 3 times."
+
+```yaml
+resources:
+  jobs:
+    monitored_etl:
+      name: "[${bundle.target}] Monitored ETL"
+      timeout_seconds: 14400
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 7200
+
+      email_notifications:
+        on_success:
+          - "data-team@example.com"
+        on_failure:
+          - "data-team@example.com"
+          - "oncall@example.com"
+        on_duration_warning_threshold_exceeded:
+          - "oncall@example.com"
+
+      webhook_notifications:
+        on_failure:
+          - id: "pagerduty-destination-uuid"
+        on_duration_warning_threshold_exceeded:
+          - id: "slack-alerts-uuid"
+
+      notification_settings:
+        no_alert_for_skipped_runs: true
+        no_alert_for_canceled_runs: true
+
+      tasks:
+        - task_key: extract
+          max_retries: 3
+          min_retry_interval_millis: 60000
+          timeout_seconds: 3600
+          notebook_task:
+            notebook_path: ../src/extract.py
+
+        - task_key: transform
+          depends_on:
+            - task_key: extract
+          max_retries: 1
+          timeout_seconds: 3600
+          notebook_task:
+            notebook_path: ../src/transform.py
+```
+
+**Key decisions:**
+- **Health rules** with `RUN_DURATION_SECONDS > 7200` trigger the `on_duration_warning_threshold_exceeded` notification -- this is your SLA breach detector
+- **Task-level retries** (`max_retries: 3`) handle transient failures automatically; `min_retry_interval_millis` adds a cooldown between attempts so you don't hammer a recovering upstream system
+- **`queue.enabled: true`** with `max_concurrent_runs: 1` queues overlapping runs instead of silently skipping them -- you don't lose data when a run takes longer than the schedule interval
+- **`no_alert_for_skipped_runs: true`** suppresses noise from concurrent run limits so your notification channels stay meaningful
+
+## More Patterns
+
+### Email Notifications with the Python SDK
+
+> "Create a job with email notifications for all lifecycle events, in Python."
 
 ```python
-from databricks.sdk.service.jobs import JobEmailNotifications
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.jobs import (
+    JobEmailNotifications, JobNotificationSettings,
+)
 
-notifications = JobEmailNotifications(
-    on_failure=["team@example.com"],
-    on_success=["team@example.com"],
-    on_start=["oncall@example.com"],
-    on_duration_warning_threshold_exceeded=["oncall@example.com"],
-    no_alert_for_skipped_runs=True
+w = WorkspaceClient()
+
+job = w.jobs.create(
+    name="fully-notified-job",
+    email_notifications=JobEmailNotifications(
+        on_start=["team@example.com"],
+        on_success=["team@example.com"],
+        on_failure=["oncall@example.com", "team@example.com"],
+        on_duration_warning_threshold_exceeded=["oncall@example.com"],
+        no_alert_for_skipped_runs=True,
+    ),
+    notification_settings=JobNotificationSettings(
+        no_alert_for_skipped_runs=True,
+        no_alert_for_canceled_runs=True,
+    ),
+    tasks=[...],
 )
 ```
 
-## Webhook Notifications
+`on_start` notifications are useful for long-running jobs where you want confirmation the pipeline kicked off. For most jobs, `on_failure` and `on_duration_warning_threshold_exceeded` are the two that matter.
+
+### Webhook Notifications (Slack/PagerDuty)
+
+> "Set up a Slack notification destination and wire it to job failure events, in Python."
 
 ```python
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.settings import (
+    CreateNotificationDestinationRequest,
+    SlackConfig,
+)
 from databricks.sdk.service.jobs import WebhookNotifications, Webhook
 
-notifications = WebhookNotifications(
-    on_failure=[Webhook(id="webhook-id-123")],
-    on_success=[Webhook(id="webhook-id-456")]
+w = WorkspaceClient()
+
+# Step 1: Create the Slack notification destination
+destination = w.notification_destinations.create(
+    display_name="Pipeline Alerts",
+    config=SlackConfig(
+        url="https://hooks.slack.com/services/XXX/YYY/ZZZ",
+    ),
+)
+
+# Step 2: Reference it in a job
+job = w.jobs.create(
+    name="slack-notified-job",
+    webhook_notifications=WebhookNotifications(
+        on_failure=[Webhook(id=destination.id)],
+        on_duration_warning_threshold_exceeded=[Webhook(id=destination.id)],
+    ),
+    tasks=[...],
 )
 ```
 
-Webhook destinations are configured at the workspace level.
+Notification destinations are workspace-level resources created once and referenced by ID. You can reuse the same destination across multiple jobs.
 
-## Health Rules
+### Streaming Health Monitoring
 
-Monitor job duration and set SLAs:
+> "Configure health rules for a streaming job that alerts when the backlog exceeds 5 minutes or 1 million records."
 
-```python
-from databricks.sdk.service.jobs import JobsHealthRule, JobsHealthMetric, JobsHealthOperator
+```yaml
+resources:
+  jobs:
+    streaming_monitor:
+      name: "[${bundle.target}] Streaming Processor"
+      continuous:
+        pause_status: UNPAUSED
 
-health = {
-    "rules": [
-        JobsHealthRule(
-            metric=JobsHealthMetric.RUN_DURATION_SECONDS,
-            op=JobsHealthOperator.GREATER_THAN,
-            value=7200  # 2 hours
-        )
-    ]
-}
+      health:
+        rules:
+          - metric: STREAMING_BACKLOG_SECONDS
+            op: GREATER_THAN
+            value: 300
+          - metric: STREAMING_BACKLOG_RECORDS
+            op: GREATER_THAN
+            value: 1000000
+
+      email_notifications:
+        on_streaming_backlog_exceeded:
+          - "streaming-oncall@example.com"
+
+      webhook_notifications:
+        on_streaming_backlog_exceeded:
+          - id: "pagerduty-streaming-uuid"
+
+      tasks:
+        - task_key: stream
+          notebook_task:
+            notebook_path: ../src/stream_processor.py
 ```
 
-When exceeded, triggers `on_duration_warning_threshold_exceeded` notifications.
+Streaming health metrics (`STREAMING_BACKLOG_SECONDS`, `STREAMING_BACKLOG_RECORDS`, `STREAMING_BACKLOG_BYTES`, `STREAMING_BACKLOG_FILES`) fire the `on_streaming_backlog_exceeded` event. Use multiple rules to catch different failure modes -- a byte-based backlog catches large records while a record-count backlog catches high-volume bursts.
 
-## Budget Policies
+### Task-Level Notifications
 
-Control job costs with budget enforcement:
+> "Send task-specific failure alerts to different teams based on which task fails."
 
-```python
-budget_policy_id = "policy-id-123"
+```yaml
+tasks:
+  - task_key: ingest
+    email_notifications:
+      on_failure:
+        - "platform-team@example.com"
+    notebook_task:
+      notebook_path: ../src/ingest.py
+
+  - task_key: transform
+    depends_on:
+      - task_key: ingest
+    email_notifications:
+      on_failure:
+        - "analytics-team@example.com"
+    notebook_task:
+      notebook_path: ../src/transform.py
 ```
 
-Budget policies are configured at the workspace level and referenced by ID.
+Task-level notifications override job-level ones for that specific task. Route ingestion failures to the platform team and transform failures to the analytics team so the right people investigate.
 
-## Monitoring Best Practices
+## Watch Out For
 
-- Set health rules for all production jobs
-- Use `on_failure` notifications for immediate alerting
-- Configure `on_duration_warning_threshold_exceeded` for SLA breaches
-- Use `no_alert_for_skipped_runs=True` to reduce noise from concurrent run limits
+- **Not setting any health rules** -- Without `RUN_DURATION_SECONDS` health rules, a stuck job runs silently until timeout (or forever if no timeout is set). Always set a duration threshold for production jobs.
+- **Confusing health rules and timeouts** -- Health rules trigger _notifications_; timeouts _cancel the job_. A health rule with `value: 7200` warns you at 2 hours. A `timeout_seconds: 7200` kills the job at 2 hours. You typically want the health rule threshold lower than the timeout.
+- **Missing `no_alert_for_skipped_runs`** -- When `max_concurrent_runs: 1` and a new trigger fires while a run is active, the run is skipped. Without this flag, you get a failure alert for every skip -- pure noise.
+- **Setting `max_retries` too high without a retry interval** -- Three retries with no cooldown means three back-to-back attempts in seconds. If the failure is a transient upstream issue, this just fails three times faster. Set `min_retry_interval_millis` to at least 30000 (30 seconds).
+- **Using `on_start` notifications on frequently scheduled jobs** -- An hourly job with `on_start` means 24 emails a day. Reserve start notifications for long-running jobs or jobs where you need audit confirmation of execution.

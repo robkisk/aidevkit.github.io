@@ -1,61 +1,146 @@
 ---
 title: SDP Pipeline Configuration
-description: Configure Spark Declarative Pipeline resources in Databricks Asset Bundles with streaming and batch patterns.
+description: Define streaming and batch Spark Declarative Pipelines as version-controlled bundle resources with environment-specific overrides.
 sidebar:
   order: 1
 ---
 
-SDP pipelines defined in Databricks Asset Bundles let you version-control your pipeline configuration alongside your source code. This page covers the key design decisions -- streaming vs. batch, continuous vs. triggered, serverless vs. classic compute -- and provides YAML templates for common pipeline configurations.
+## What You Can Build
 
-## Key Decisions
+You can define Spark Declarative Pipeline (SDP) resources entirely in YAML, version-controlled alongside your pipeline source code. This means your pipeline configuration -- streaming vs. batch, continuous vs. triggered, dev vs. prod catalog -- lives in the same repo as the notebooks that power it, and deploys through the same `databricks bundle deploy` workflow as everything else.
 
-When configuring SDP pipelines in bundles, determine:
+## In Action
 
-1. Streaming or batch oriented?
-2. Continuous or triggered execution?
-3. Which catalog/schema for output tables?
-4. Serverless or classic compute?
-
-## Pipeline Resource
+> "Create a bundle resource for an SDP pipeline that reads from a bronze schema and writes to silver. Use triggered mode for batch ETL, target the `analytics` catalog, and include both a dev and prod configuration."
 
 ```yaml
 resources:
   pipelines:
-    my_pipeline:
-      name: my-etl-pipeline
-      catalog: my_catalog
-      target: my_schema
+    bronze_to_silver:
+      name: "[${bundle.target}] Bronze to Silver ETL"
+      catalog: ${var.catalog}
+      target: silver
       libraries:
         - notebook:
-            path: ./src/pipeline.py
+            path: ./src/bronze_to_silver.py
       continuous: false
       development: true
       channel: CURRENT
-```
+      clusters:
+        - label: default
+          autoscale:
+            min_workers: 1
+            max_workers: 4
 
-## Execution Modes
-
-| Mode | Setting | Use Case |
-|------|---------|----------|
-| **Triggered** | `continuous: false` | Batch ETL, scheduled runs |
-| **Continuous** | `continuous: true` | Real-time streaming |
-| **Development** | `development: true` | Testing (no production retries) |
-
-## Environment Overrides
-
-```yaml
 targets:
   dev:
+    variables:
+      catalog: dev_catalog
     resources:
       pipelines:
-        my_pipeline:
+        bronze_to_silver:
           development: true
-          catalog: dev_catalog
+
   prod:
+    variables:
+      catalog: prod_catalog
     resources:
       pipelines:
-        my_pipeline:
+        bronze_to_silver:
           development: false
           continuous: true
-          catalog: prod_catalog
 ```
+
+**Key decisions:**
+- `continuous: false` runs the pipeline on-demand or via a job trigger -- the standard choice for batch ETL that runs on a schedule
+- `development: true` disables production retries and lets you iterate faster; flip it to `false` in prod via target overrides
+- `catalog` and `target` pin your output tables to a specific Unity Catalog location, so dev and prod never collide
+- `channel: CURRENT` uses the latest SDP runtime; switch to `PREVIEW` only when you need to test unreleased features
+
+## More Patterns
+
+### Continuous Streaming Pipeline
+
+> "Configure an SDP pipeline for real-time streaming that auto-restarts and writes to a production catalog."
+
+```yaml
+resources:
+  pipelines:
+    realtime_ingest:
+      name: "[${bundle.target}] Realtime Ingest"
+      catalog: prod_catalog
+      target: streaming
+      libraries:
+        - notebook:
+            path: ./src/streaming_ingest.py
+      continuous: true
+      development: false
+      channel: CURRENT
+      clusters:
+        - label: default
+          autoscale:
+            min_workers: 2
+            max_workers: 8
+```
+
+With `continuous: true`, the pipeline runs perpetually and automatically restarts after failures. This is the right mode when you're consuming from Kafka, Kinesis, or Auto Loader and need sub-minute latency.
+
+### Serverless Pipeline
+
+> "Define a serverless SDP pipeline that eliminates cluster management overhead."
+
+```yaml
+resources:
+  pipelines:
+    serverless_etl:
+      name: "[${bundle.target}] Serverless ETL"
+      catalog: ${var.catalog}
+      target: silver
+      libraries:
+        - notebook:
+            path: ./src/transform.py
+      continuous: false
+      development: true
+      serverless: true
+```
+
+Setting `serverless: true` removes the need for cluster configuration entirely. You trade fine-grained compute control for zero cluster management -- a good fit for pipelines where time-to-deploy matters more than per-node tuning.
+
+### Pipeline Orchestrated by a Job
+
+> "Wire an SDP pipeline into a multi-task job so it runs after an extract step completes."
+
+```yaml
+resources:
+  pipelines:
+    transform_pipeline:
+      name: "[${bundle.target}] Transform Pipeline"
+      catalog: ${var.catalog}
+      target: silver
+      libraries:
+        - notebook:
+            path: ./src/transform.py
+
+  jobs:
+    daily_etl:
+      name: "[${bundle.target}] Daily ETL"
+      tasks:
+        - task_key: extract
+          notebook_task:
+            notebook_path: ./src/extract.py
+        - task_key: transform
+          depends_on:
+            - task_key: extract
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.transform_pipeline.id}
+            full_refresh: false
+```
+
+Referencing the pipeline with `${resources.pipelines.transform_pipeline.id}` keeps the job and pipeline definitions portable across environments. The `full_refresh: false` flag runs an incremental update -- use `true` only when you need to reprocess all source data.
+
+## Watch Out For
+
+- **Forgetting `development: false` in prod** -- Development mode skips retries and publishes to a temporary schema. If your prod target override doesn't set this to `false`, your production pipeline silently runs in dev mode with no error recovery.
+- **Mixing up `target` and `catalog`** -- `catalog` sets the Unity Catalog catalog; `target` sets the schema within it. Confusing the two puts tables in the wrong namespace.
+- **Using `continuous: true` for batch workloads** -- Continuous pipelines never stop, which means you pay for idle compute between data arrivals. Use triggered mode with a job schedule instead.
+- **Hardcoding catalog names instead of using variables** -- When you hardcode `catalog: prod_catalog` in the base config, every target gets prod tables. Use `${var.catalog}` and set it per target.

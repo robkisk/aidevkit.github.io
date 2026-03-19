@@ -1,359 +1,76 @@
 ---
 title: Python SDK
-description: Automate Databricks operations with the Python SDK — clusters, jobs, SQL execution, Unity Catalog, serving endpoints, vector search, and REST API access.
+description: Automate Databricks operations programmatically -- clusters, jobs, SQL execution, Unity Catalog, serving endpoints, and vector search.
 sidebar:
   order: 0
 ---
 
-The Databricks Python SDK (`databricks-sdk`) provides programmatic access to workspace and account APIs from any Python environment. Use it when automating infrastructure, running SQL against warehouses, managing Unity Catalog objects, querying model serving endpoints, or building applications that integrate with the Databricks platform.
+## What You Can Build
 
-## Overview
+The `databricks-sdk` package gives you programmatic access to every Databricks workspace API from any Python environment. You can automate cluster management, create and trigger jobs, execute SQL against warehouses, manage Unity Catalog objects, query model serving endpoints, and build applications that integrate with the platform. Your AI coding assistant uses this skill to generate SDK code that handles authentication, pagination, long-running operations, and error handling correctly.
 
-The Python SDK skill teaches Claude Code how to use the `databricks-sdk` package to interact with Databricks workspace and account APIs programmatically. Use it when automating infrastructure management, running SQL queries, managing Unity Catalog objects, querying model serving endpoints, or building applications that integrate with Databricks. It covers authentication patterns, all major API surfaces, and async usage for web frameworks.
+## In Action
 
-## Capabilities
-
-- Authenticate using environment variables, profiles, tokens, or Azure service principals
-- Manage clusters (create, start, stop, resize, autoscale)
-- Create and run jobs with notebook, Python, and SQL tasks
-- Execute SQL statements against warehouses with parameterized queries
-- Manage Unity Catalog objects (catalogs, schemas, tables, volumes)
-- Upload and download files to/from Unity Catalog Volumes
-- Query and manage model serving endpoints (LLMs, custom models, embeddings)
-- Work with vector search endpoints and indexes
-- Manage SDP pipelines (create, start, stop, monitor)
-- Access secrets and DBUtils from local development
-- Make direct REST API calls for unsupported endpoints
-- Use the SDK safely in async applications (FastAPI, asyncio)
-
-## Related MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `execute_sql` | Run SQL queries against a warehouse |
-| `get_best_warehouse` | Find an available SQL warehouse |
-| `get_best_cluster` | Find an available compute cluster |
-| `list_clusters` | List all clusters in the workspace |
-| `list_warehouses` | List all SQL warehouses |
-| `get_table_details` | Get Unity Catalog table schema and metadata |
-| `manage_uc_objects` | Create, update, and delete Unity Catalog objects |
-| `manage_jobs` | Create and manage Databricks jobs |
-| `manage_job_runs` | Trigger and monitor job runs |
-| `list_serving_endpoints` | List model serving endpoints |
-| `query_serving_endpoint` | Query a model serving endpoint |
-
-## Example Prompts
-
-Use these prompts with Claude Code to work with the Databricks SDK:
-
-```
-Create a Python script that lists all running clusters and
-stops any that have been idle for more than 2 hours
-```
-
-```
-Write a job that runs my notebook at /Users/me/etl-pipeline
-on a new ephemeral cluster with autoscaling from 1 to 4 workers
-```
-
-```
-Execute a parameterized SQL query against my warehouse that
-counts events by type for a given date range
-```
-
-```
-List all tables in the analytics schema and print their
-column names and types
-```
-
-```
-Upload a local CSV file to /Volumes/main/raw/uploads/ and
-verify the upload succeeded
-```
-
-```
-Query my LLM serving endpoint with a chat completion request
-and print the response
-```
-
-```
-Create a FastAPI endpoint that queries Databricks SQL safely
-using asyncio.to_thread to avoid blocking
-```
-
-```
-Authenticate using a named profile from ~/.databrickscfg and
-verify the connection by printing the current user
-```
-
-## Key Concepts
-
-### Authentication
-
-The SDK supports multiple authentication methods. Environment variables are recommended for most cases:
-
-| Method | When to Use |
-|--------|-------------|
-| Environment variables (`DATABRICKS_HOST`, `DATABRICKS_TOKEN`) | Default for local development and CI/CD |
-| Named profile (`~/.databrickscfg`) | Multiple workspaces on one machine |
-| Explicit token | Programmatic configuration |
-| Azure service principal | Azure deployments and automation |
-| Notebook context | Auto-detected inside Databricks notebooks |
-
-### Async Safety
-
-The Databricks SDK is fully synchronous. In async applications (FastAPI, asyncio), wrap all SDK calls with `asyncio.to_thread()` to avoid blocking the event loop. Property access like `w.config.host` is safe without wrapping.
-
-### Long-Running Operations
-
-Many SDK methods return `Wait` objects for operations that take time (cluster creation, job runs). Use the `*_and_wait()` convenience methods for blocking calls, or call `.result()` on the `Wait` object to block until completion.
-
-### Pagination
-
-All `list` methods return iterators that handle pagination automatically. Simply iterate with a `for` loop to fetch all pages transparently.
-
-### Error Handling
-
-Import specific exception types from `databricks.sdk.errors`:
-- `NotFound` — Resource does not exist
-- `PermissionDenied` — Insufficient permissions
-- `ResourceAlreadyExists` — Duplicate creation attempt
-
-### Direct REST API Access
-
-For operations not yet in the SDK, use `w.api_client.do()` with the HTTP method and API path. Prefer SDK methods when available.
-
-## SDK Documentation Index
-
-The SDK documentation follows a predictable URL pattern: `https://databricks-sdk-py.readthedocs.io/en/latest/workspace/{category}/{service}.html`
-
-### Workspace API Categories
-
-| Category | Services |
-|----------|----------|
-| `compute` | clusters, cluster\_policies, command\_execution, instance\_pools, libraries |
-| `catalog` | catalogs, schemas, tables, volumes, functions, storage\_credentials, external\_locations |
-| `jobs` | jobs |
-| `sql` | warehouses, statement\_execution, queries, alerts, dashboards |
-| `serving` | serving\_endpoints |
-| `vectorsearch` | vector\_search\_indexes, vector\_search\_endpoints |
-| `pipelines` | pipelines |
-| `workspace` | repos, secrets, workspace, git\_credentials |
-| `files` | files, dbfs |
-| `ml` | experiments, model\_registry |
-
-### API Method Quick Reference
-
-| API | Key Methods |
-|-----|------------|
-| Clusters | `list()`, `get()`, `create_and_wait()`, `start()`, `stop()`, `delete()`, `select_spark_version()`, `select_node_type()` |
-| Jobs | `list()`, `get()`, `create()`, `run_now_and_wait()`, `submit_and_wait()`, `cancel_run()`, `list_runs()`, `get_run_output()` |
-| Warehouses | `list()`, `get()`, `create_and_wait()`, `start()`, `stop()`, `delete()` |
-| Statement Execution | `execute_statement()`, `get_statement()`, `get_statement_result_chunk_n()`, `cancel_execution()` |
-| Tables | `list()`, `get()`, `exists()`, `create()`, `delete()` |
-| Catalogs | `list()`, `get()`, `create()`, `update()`, `delete()` |
-| Schemas | `list()`, `get()`, `create()`, `update()`, `delete()` |
-| Volumes | `list()`, `read()`, `create()`, `update()`, `delete()` |
-| Files | `upload()`, `download()`, `list_directory_contents()`, `upload_from()`, `download_to()` |
-| Serving Endpoints | `list()`, `get()`, `create_and_wait()`, `query()`, `get_open_ai_client()`, `delete()` |
-| Vector Search | `list_indexes()`, `get_index()`, `query_index()`, `upsert_data_vector_index()`, `sync_index()` |
-| Pipelines | `list_pipelines()`, `get()`, `start_update()`, `stop_and_wait()` |
-| Secrets | `list_scopes()`, `create_scope()`, `put_secret()`, `get_secret()`, `list_secrets()` |
-
-## Code Examples
-
-### Authentication
+> "Write a Python script that authenticates with a named profile, lists all running clusters, and stops any that have been idle for more than 2 hours."
 
 ```python
-"""
-Databricks SDK Authentication Examples
+from datetime import datetime, timezone
+from databricks.sdk import WorkspaceClient
 
-Documentation: https://databricks-sdk-py.readthedocs.io/en/latest/authentication.html
-"""
-
-from databricks.sdk import WorkspaceClient, AccountClient
-
-# Pattern 1: Environment Variables (Recommended)
-# Set DATABRICKS_HOST and DATABRICKS_TOKEN, then:
-w = WorkspaceClient()
+w = WorkspaceClient(profile="my-workspace")
 
 # Verify connection
 me = w.current_user.me()
 print(f"Authenticated as: {me.user_name}")
 
-
-# Pattern 2: Explicit Token Authentication
-w = WorkspaceClient(
-    host="https://your-workspace.cloud.databricks.com",
-    token="dapi..."
-)
-
-
-# Pattern 3: Named Profile from ~/.databrickscfg
-w = WorkspaceClient(profile="MY_PROFILE")
-
-
-# Pattern 4: Azure Service Principal
-w = WorkspaceClient(
-    host="https://adb-123456789.azuredatabricks.net",
-    azure_workspace_resource_id="/subscriptions/xxx/resourceGroups/xxx/...",
-    azure_tenant_id="your-tenant-id",
-    azure_client_id="your-client-id",
-    azure_client_secret="your-client-secret"
-)
-
-
-# Pattern 5: Account-Level Client (users, workspaces, billing)
-a = AccountClient(
-    host="https://accounts.cloud.databricks.com",
-    account_id="your-account-id",
-    token="dapi..."
-)
-
-for workspace in a.workspaces.list():
-    print(f"Workspace: {workspace.workspace_name}")
-
-
-# Pattern 6: Auto-detected inside Databricks Notebooks
-# from databricks.sdk import WorkspaceClient
-# w = WorkspaceClient()  # Works automatically with notebook context
-```
-
-### Clusters and Jobs
-
-```python
-"""
-Databricks SDK - Clusters and Jobs Examples
-
-Clusters API: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/compute/clusters.html
-Jobs API: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/jobs/jobs.html
-"""
-
-from datetime import timedelta
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.compute import AutoScale
-from databricks.sdk.service.jobs import Task, NotebookTask, JobCluster, ClusterSpec
-
-w = WorkspaceClient()
-
-# --- Clusters ---
-
-# List all clusters
+# Find and stop idle clusters
 for cluster in w.clusters.list():
-    print(f"{cluster.cluster_name}: {cluster.state}")
-
-# Select best Spark version and node type automatically
-spark_version = w.clusters.select_spark_version(latest=True, long_term_support=True)
-node_type = w.clusters.select_node_type(local_disk=True, min_memory_gb=16)
-
-# Create cluster with autoscaling (blocking)
-cluster = w.clusters.create_and_wait(
-    cluster_name="autoscale-cluster",
-    spark_version=spark_version,
-    node_type_id=node_type,
-    autoscale=AutoScale(min_workers=1, max_workers=4),
-    timeout=timedelta(minutes=30)
-)
-
-# Start / stop / delete
-w.clusters.start(cluster_id="...").result()
-w.clusters.stop(cluster_id="...")
-w.clusters.delete(cluster_id="...")
-w.clusters.ensure_cluster_is_running(cluster_id="...")
-
-
-# --- Jobs ---
-
-# List all jobs
-for job in w.jobs.list():
-    print(f"{job.job_id}: {job.settings.name}")
-
-# Create a job with notebook task
-created = w.jobs.create(
-    name="my-notebook-job",
-    tasks=[
-        Task(
-            task_key="main",
-            notebook_task=NotebookTask(
-                notebook_path="/Users/me/my-notebook",
-                base_parameters={"param1": "value1"}
-            ),
-            existing_cluster_id="0123-456789-abcdef"
-        )
-    ]
-)
-
-# Run job and wait for completion
-run = w.jobs.run_now_and_wait(
-    job_id=created.job_id,
-    notebook_params={"date": "2024-01-01"},
-    timeout=timedelta(hours=1)
-)
-print(f"Run {run.run_id} finished: {run.state.result_state}")
-
-# Submit one-time run (without creating a persistent job)
-run = w.jobs.submit_and_wait(
-    run_name="one-time-run",
-    tasks=[
-        Task(
-            task_key="main",
-            existing_cluster_id="...",
-            notebook_task=NotebookTask(notebook_path="/Users/me/notebook")
-        )
-    ],
-    timeout=timedelta(hours=1)
-)
+    if cluster.state.value != "RUNNING":
+        continue
+    idle_minutes = (
+        datetime.now(timezone.utc) - cluster.last_activity_time
+    ).total_seconds() / 60
+    if idle_minutes > 120:
+        print(f"Stopping {cluster.cluster_name} (idle {idle_minutes:.0f}m)")
+        w.clusters.stop(cluster_id=cluster.cluster_id)
 ```
 
-### SQL and Warehouses
+**Key decisions:**
+- **Named profile authentication** (`profile="my-workspace"`) reads credentials from `~/.databrickscfg` -- cleaner than environment variables when working with multiple workspaces
+- **`w.clusters.list()`** returns an iterator that handles pagination automatically, so you get all clusters without managing page tokens
+- **`w.clusters.stop()`** returns a `Wait` object; the stop is initiated but not blocking. Call `.result()` if you need to wait for the cluster to fully terminate
+
+## More Patterns
+
+### Execute Parameterized SQL
+
+> "Run a parameterized SQL query against a warehouse and process the results, in Python."
 
 ```python
-"""
-Databricks SDK - SQL Warehouses and Statement Execution Examples
-
-Warehouses API: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/sql/warehouses.html
-Statement Execution: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/sql/statement_execution.html
-"""
-
-from datetime import timedelta
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import (
-    StatementState,
-    Disposition,
-    Format,
-    StatementParameterListItem,
+    StatementState, StatementParameterListItem,
 )
 
 w = WorkspaceClient()
 
-# --- Warehouses ---
-
-# List all warehouses
-for warehouse in w.warehouses.list():
-    print(f"{warehouse.name}: {warehouse.state} (id: {warehouse.id})")
-
-# Create a serverless SQL warehouse
-created = w.warehouses.create_and_wait(
-    name="my-warehouse",
-    cluster_size="Small",
-    max_num_clusters=1,
-    auto_stop_mins=15,
-    enable_serverless_compute=True,
-    timeout=timedelta(minutes=20)
-)
-
-# Start / stop
-w.warehouses.start(id="abc123").result()
-w.warehouses.stop(id="abc123").result()
-
-
-# --- Statement Execution ---
-
-# Execute a simple SQL query
 response = w.statement_execution.execute_statement(
     warehouse_id="abc123",
-    statement="SELECT * FROM main.default.my_table LIMIT 10",
-    wait_timeout="30s"
+    statement="""
+        SELECT order_id, customer_id, total
+        FROM main.sales.orders
+        WHERE order_date >= :start_date
+          AND total > :min_total
+    """,
+    parameters=[
+        StatementParameterListItem(
+            name="start_date", value="2024-01-01", type="DATE"
+        ),
+        StatementParameterListItem(
+            name="min_total", value="100.0", type="DECIMAL"
+        ),
+    ],
+    wait_timeout="30s",
 )
 
 if response.status.state == StatementState.SUCCEEDED:
@@ -361,206 +78,159 @@ if response.status.state == StatementState.SUCCEEDED:
     print(f"Columns: {columns}")
     for row in response.result.data_array:
         print(row)
-
-# Parameterized query (prevents SQL injection)
-response = w.statement_execution.execute_statement(
-    warehouse_id="abc123",
-    statement="SELECT * FROM users WHERE age > :min_age AND name = :name",
-    parameters=[
-        StatementParameterListItem(name="min_age", value="21", type="INT"),
-        StatementParameterListItem(name="name", value="Alice", type="STRING"),
-    ],
-    wait_timeout="30s"
-)
-
-# Large results with external links
-response = w.statement_execution.execute_statement(
-    warehouse_id="abc123",
-    statement="SELECT * FROM large_table",
-    disposition=Disposition.EXTERNAL_LINKS,
-    format=Format.ARROW_STREAM,
-    wait_timeout="0s"
-)
 ```
 
-### Unity Catalog
+Parameterized queries with `:name` placeholders prevent SQL injection and handle type casting for you. Always set `wait_timeout` -- without it, the call returns immediately and you have to poll for results.
+
+### Create and Run a Job
+
+> "Create a job with a notebook task on an ephemeral cluster and wait for it to finish, in Python."
 
 ```python
-"""
-Databricks SDK - Unity Catalog Examples
-
-Catalogs: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/catalogs.html
-Schemas: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/schemas.html
-Tables: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/tables.html
-Volumes: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/volumes.html
-"""
-
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.catalog import VolumeType
-
-w = WorkspaceClient()
-
-# --- Catalogs ---
-
-for catalog in w.catalogs.list():
-    print(f"Catalog: {catalog.name} (owner: {catalog.owner})")
-
-new_catalog = w.catalogs.create(name="my_catalog", comment="My analytics catalog")
-
-
-# --- Schemas ---
-
-for schema in w.schemas.list(catalog_name="main"):
-    print(f"Schema: {schema.full_name}")
-
-new_schema = w.schemas.create(
-    name="analytics", catalog_name="main", comment="Analytics data schema"
-)
-
-
-# --- Tables ---
-
-for table in w.tables.list(catalog_name="main", schema_name="default"):
-    print(f"Table: {table.full_name} ({table.table_type})")
-
-table = w.tables.get(full_name="main.default.my_table")
-for col in table.columns:
-    print(f"  {col.name}: {col.type_name} (nullable: {col.nullable})")
-
-exists = w.tables.exists(full_name="main.default.my_table")
-
-
-# --- Volumes ---
-
-for volume in w.volumes.list(catalog_name="main", schema_name="default"):
-    print(f"Volume: {volume.full_name} ({volume.volume_type})")
-
-managed_volume = w.volumes.create(
-    catalog_name="main",
-    schema_name="default",
-    name="my_managed_volume",
-    volume_type=VolumeType.MANAGED,
-    comment="Managed volume for data files"
-)
-
-# Upload / download files to volumes
-w.files.upload(
-    file_path="/Volumes/main/default/my_volume/data.csv",
-    contents=open("local_file.csv", "rb"),
-    overwrite=True
-)
-
-for entry in w.files.list_directory_contents("/Volumes/main/default/my_volume/"):
-    print(f"{entry.name}: {'dir' if entry.is_directory else 'file'}")
-```
-
-### Serving Endpoints and Vector Search
-
-```python
-"""
-Databricks SDK - Model Serving and Vector Search Examples
-
-Serving Endpoints: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/serving/serving_endpoints.html
-Vector Search: https://databricks-sdk-py.readthedocs.io/en/latest/workspace/vectorsearch/vector_search_indexes.html
-"""
-
-import json
 from datetime import timedelta
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.serving import (
-    EndpointCoreConfigInput,
-    ServedEntityInput,
-    TrafficConfig,
-    Route,
+from databricks.sdk.service.compute import AutoScale
+from databricks.sdk.service.jobs import (
+    Task, NotebookTask, JobCluster, ClusterSpec,
 )
 
 w = WorkspaceClient()
 
-# --- Model Serving ---
+spark_version = w.clusters.select_spark_version(
+    latest=True, long_term_support=True
+)
+node_type = w.clusters.select_node_type(
+    local_disk=True, min_memory_gb=16
+)
 
-# List endpoints
-for endpoint in w.serving_endpoints.list():
-    print(f"{endpoint.name}: {endpoint.state}")
-
-# Create a serving endpoint for a Unity Catalog model
-created = w.serving_endpoints.create_and_wait(
-    name="my-model-endpoint",
-    config=EndpointCoreConfigInput(
-        served_entities=[
-            ServedEntityInput(
-                entity_name="main.ml.my_model",
-                entity_version="1",
-                workload_size="Small",
-                scale_to_zero_enabled=True,
-            )
-        ],
-        traffic_config=TrafficConfig(
-            routes=[Route(served_model_name="my_model-1", traffic_percentage=100)]
+job = w.jobs.create(
+    name="one-time-etl",
+    job_clusters=[
+        JobCluster(
+            job_cluster_key="etl",
+            new_cluster=ClusterSpec(
+                spark_version=spark_version,
+                node_type_id=node_type,
+                autoscale=AutoScale(min_workers=1, max_workers=4),
+            ),
         ),
-    ),
-    timeout=timedelta(minutes=30)
+    ],
+    tasks=[
+        Task(
+            task_key="main",
+            job_cluster_key="etl",
+            notebook_task=NotebookTask(
+                notebook_path="/Workspace/etl/transform",
+                base_parameters={"date": "2024-01-15"},
+            ),
+        ),
+    ],
 )
 
-# Query custom model endpoint
-response = w.serving_endpoints.query(
-    name="my-model-endpoint",
-    inputs=[{"feature1": 1.0, "feature2": "value"}]
+run = w.jobs.run_now_and_wait(
+    job_id=job.job_id,
+    timeout=timedelta(hours=1),
 )
+print(f"Run {run.run_id}: {run.state.result_state}")
+```
 
-# Query chat/completions endpoint (LLM)
+`select_spark_version()` and `select_node_type()` pick the best runtime and instance type programmatically -- you don't need to hardcode version strings that go stale.
+
+### Manage Unity Catalog Objects
+
+> "List all tables in a schema and print their column details, in Python."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+for table in w.tables.list(
+    catalog_name="main", schema_name="sales"
+):
+    print(f"\n{table.full_name} ({table.table_type})")
+    detail = w.tables.get(full_name=table.full_name)
+    for col in detail.columns:
+        print(f"  {col.name}: {col.type_name} (nullable: {col.nullable})")
+```
+
+The `list()` and `get()` pattern works across all catalog objects -- catalogs, schemas, tables, volumes. Iterators handle pagination transparently.
+
+### Query a Serving Endpoint
+
+> "Send a chat completion request to an LLM serving endpoint and print the response, in Python."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
 response = w.serving_endpoints.query(
     name="my-llm-endpoint",
     messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Hello!"}
+        {"role": "system", "content": "You are a helpful data analyst."},
+        {"role": "user", "content": "Summarize Q4 revenue trends."},
     ],
-    max_tokens=100
+    max_tokens=200,
 )
-
-# Get OpenAI-compatible client
-openai_client = w.serving_endpoints.get_open_ai_client()
-
-
-# --- Vector Search ---
-
-# List indexes
-for index in w.vector_search_indexes.list_indexes(endpoint_name="my-vs-endpoint"):
-    print(f"Index: {index.name}")
-
-# Query with text
-results = w.vector_search_indexes.query_index(
-    index_name="main.default.my_index",
-    columns=["id", "text", "metadata"],
-    query_text="What is machine learning?",
-    num_results=5,
-    filters_json='{"category": "ai"}'
-)
-
-for doc in results.result.data_array:
-    print(f"Score: {doc[-1]}, Text: {doc[1][:100]}...")
-
-# Upsert data into a Direct Vector Access index
-w.vector_search_indexes.upsert_data_vector_index(
-    index_name="main.default.direct_index",
-    inputs_json=json.dumps([
-        {"id": "1", "text": "Hello world", "embedding": [0.1, 0.2, 0.3]},
-        {"id": "2", "text": "Another doc", "embedding": [0.4, 0.5, 0.6]},
-    ])
-)
-
-# Sync a Delta Sync index
-w.vector_search_indexes.sync_index(index_name="main.default.delta_sync_index")
+print(response.choices[0].message.content)
 ```
 
-## References
+LLM endpoints accept OpenAI-compatible chat messages. For tighter integration, use `w.serving_endpoints.get_open_ai_client()` to get an OpenAI client pre-configured with your workspace credentials.
 
-- [Databricks SDK for Python](https://databricks-sdk-py.readthedocs.io/en/latest/)
-- [SDK GitHub Repository](https://github.com/databricks/databricks-sdk-py)
-- [Authentication Guide](https://databricks-sdk-py.readthedocs.io/en/latest/authentication.html)
-- [Clusters API](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/compute/clusters.html)
-- [Jobs API](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/jobs/jobs.html)
-- [SQL Statement Execution](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/sql/statement_execution.html)
-- [Unity Catalog Tables](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/tables.html)
-- [Serving Endpoints](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/serving/serving_endpoints.html)
-- [Vector Search](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/vectorsearch/vector_search_indexes.html)
-- [DBUtils](https://databricks-sdk-py.readthedocs.io/en/latest/dbutils.html)
+### Upload Files to Volumes
+
+> "Upload a local CSV file to a Unity Catalog volume and verify it landed, in Python."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Upload
+w.files.upload(
+    file_path="/Volumes/main/raw/uploads/data.csv",
+    contents=open("local_data.csv", "rb"),
+    overwrite=True,
+)
+
+# Verify
+for entry in w.files.list_directory_contents(
+    "/Volumes/main/raw/uploads/"
+):
+    print(f"{entry.name}: {'dir' if entry.is_directory else 'file'}")
+```
+
+`w.files.upload()` writes directly to Unity Catalog volumes. Use `overwrite=True` for idempotent uploads in automated workflows.
+
+### Async Safety in Web Applications
+
+> "Use the SDK safely inside a FastAPI endpoint without blocking the event loop, in Python."
+
+```python
+import asyncio
+from databricks.sdk import WorkspaceClient
+from fastapi import FastAPI
+
+app = FastAPI()
+w = WorkspaceClient()
+
+@app.get("/tables")
+async def list_tables():
+    tables = await asyncio.to_thread(
+        lambda: list(w.tables.list(
+            catalog_name="main", schema_name="default"
+        ))
+    )
+    return [{"name": t.full_name, "type": t.table_type.value} for t in tables]
+```
+
+The Databricks SDK is synchronous. In async frameworks like FastAPI, wrap every SDK call in `asyncio.to_thread()` to prevent blocking the event loop. Property access like `w.config.host` is safe without wrapping.
+
+## Watch Out For
+
+- **Blocking the event loop in async apps** -- Every SDK method is synchronous and makes HTTP calls. In FastAPI or asyncio contexts, a single `w.tables.list()` call blocks the entire event loop. Always use `asyncio.to_thread()`.
+- **Ignoring `Wait` objects on long-running operations** -- `w.clusters.create()` returns a `Wait`, not a ready cluster. Either use `create_and_wait()` for blocking calls or call `.result()` on the `Wait` object with a timeout.
+- **Catching generic exceptions instead of SDK-specific ones** -- Import `NotFound`, `PermissionDenied`, and `ResourceAlreadyExists` from `databricks.sdk.errors` for precise error handling. A bare `except Exception` swallows useful error context.
+- **Hardcoding Spark versions and node types** -- Spark version strings change with every runtime release. Use `w.clusters.select_spark_version()` and `w.clusters.select_node_type()` to resolve them dynamically.
+- **Using `DATABRICKS_PROFILE` instead of `DATABRICKS_CONFIG_PROFILE`** -- The SDK expects `DATABRICKS_CONFIG_PROFILE` for environment-based profile selection. The wrong variable name silently falls through to default credentials.

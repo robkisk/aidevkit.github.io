@@ -1,17 +1,20 @@
 ---
 title: Data Exploration
-description: Discover table schemas and execute SQL queries using the Databricks CLI for data exploration.
+description: Discover table schemas, search catalogs, and run ad-hoc SQL queries from the Databricks CLI.
 sidebar:
   order: 3
 ---
 
-Before building pipelines or dashboards you often need to discover which tables exist and what their schemas look like. This page shows how to search `information_schema` by keyword, inspect column details, and run ad-hoc SQL queries directly from the Databricks CLI.
+## What You Can Build
 
-## Finding Tables by Keyword
+Before you build pipelines or dashboards, you need to know what data exists and what it looks like. You can use the Databricks CLI to search `information_schema` by keyword, inspect column types and partitioning, and run ad-hoc SQL queries -- all without leaving the terminal. This is the fastest path from "where's the customer data?" to "here's the schema and a sample."
 
-Search `information_schema` to discover tables:
+## In Action
+
+> "Find all tables with 'customer' in the name across every catalog I have access to, then show me the columns for the best match."
 
 ```bash
+# Search for tables by keyword
 databricks sql execute --warehouse-id <WH_ID> \
   --statement "
     SELECT table_catalog, table_schema, table_name
@@ -19,39 +22,85 @@ databricks sql execute --warehouse-id <WH_ID> \
     WHERE LOWER(table_name) LIKE '%customer%'
     ORDER BY table_catalog, table_schema, table_name
   " --profile <PROFILE>
-```
 
-## Schema Discovery
-
-Get column details for a table:
-
-```bash
+# Inspect the schema of a specific table
 databricks sql execute --warehouse-id <WH_ID> \
-  --statement "DESCRIBE TABLE EXTENDED my_catalog.my_schema.my_table" \
+  --statement "DESCRIBE TABLE EXTENDED main.sales.customers" \
   --profile <PROFILE>
 ```
 
-## Executing Queries
+**Key decisions:**
+- **`system.information_schema.tables`** searches across all catalogs you have access to -- this is the right starting point when you don't know which catalog contains your data
+- **`DESCRIBE TABLE EXTENDED`** returns column names, types, nullability, partitioning, and table properties in a single call
+- The `--warehouse-id` flag routes the query to a SQL warehouse (not a cluster), which is faster and cheaper for metadata lookups
+
+## More Patterns
+
+### Find an Available Warehouse
+
+> "List SQL warehouses in my workspace to find one that's running."
 
 ```bash
-databricks sql execute --warehouse-id <WH_ID> \
-  --statement "SELECT * FROM my_catalog.my_schema.my_table LIMIT 10" \
-  --profile <PROFILE>
-```
-
-## Warehouse Discovery
-
-Find an available SQL warehouse:
-
-```bash
+# List all warehouses with their status
 databricks warehouses list --profile <PROFILE>
 
-# Or get the default AI tools warehouse
+# Or get the default warehouse for AI tools
 databricks experimental aitools tools get-default-warehouse --profile <PROFILE>
 ```
 
-## Best Practices
+If you don't know your warehouse ID, `warehouses list` shows all available warehouses with their IDs and current state. Pick one that's `RUNNING` or `STARTING` to avoid cold-start wait times.
 
-- Always search `information_schema` before writing queries against unknown tables
-- Check date ranges on sample datasets before filtering with `CURRENT_DATE()`
-- Use `DESCRIBE TABLE EXTENDED` to see column types, partitioning, and table properties
+### Run Ad-Hoc Queries
+
+> "Pull a 10-row sample from a table to check what the data looks like."
+
+```bash
+databricks sql execute --warehouse-id <WH_ID> \
+  --statement "SELECT * FROM main.sales.customers LIMIT 10" \
+  --profile <PROFILE>
+```
+
+Ad-hoc queries are useful for sanity-checking data before writing transforms. The output format is JSON by default -- pipe through `jq` for prettier formatting if needed.
+
+### Check Date Ranges Before Filtering
+
+> "Find the actual date range in a table so I don't accidentally filter to an empty result set."
+
+```bash
+databricks sql execute --warehouse-id <WH_ID> \
+  --statement "
+    SELECT
+      MIN(order_date) AS earliest,
+      MAX(order_date) AS latest,
+      COUNT(*) AS total_rows
+    FROM main.sales.orders
+  " --profile <PROFILE>
+```
+
+Sample datasets and dev environments often have historical data rather than current-day data. Checking the date range first prevents the common mistake of filtering with `CURRENT_DATE()` against a dataset that ends six months ago.
+
+### Explore Column Statistics
+
+> "Get value distributions for key columns to understand data quality before building a pipeline."
+
+```bash
+databricks sql execute --warehouse-id <WH_ID> \
+  --statement "
+    SELECT
+      COUNT(*) AS total,
+      COUNT(DISTINCT customer_id) AS unique_customers,
+      COUNT(CASE WHEN email IS NULL THEN 1 END) AS null_emails,
+      MIN(created_at) AS first_record,
+      MAX(created_at) AS last_record
+    FROM main.sales.customers
+  " --profile <PROFILE>
+```
+
+Running basic profiling queries before you design a pipeline saves time. Knowing the null rate, cardinality, and date range up front means fewer surprises when your transform logic hits production data.
+
+## Watch Out For
+
+- **Querying `information_schema` without a warehouse** -- `information_schema` lives in the `system` catalog and requires a SQL warehouse for execution. Cluster-based queries can't access it. Always pass `--warehouse-id`.
+- **Filtering with `CURRENT_DATE()` on sample data** -- Demo and dev tables often contain historical data. A `WHERE order_date = CURRENT_DATE()` filter returns zero rows. Check date ranges first.
+- **Forgetting `--profile` on multi-workspace setups** -- Without `--profile`, the CLI uses default credentials, which may point to the wrong workspace. Always specify the profile when working with multiple environments.
+- **Running expensive queries without `LIMIT`** -- Ad-hoc exploration without `LIMIT` can accidentally scan a multi-terabyte table. Start with `LIMIT 10` and remove it only when you've confirmed the table size.
