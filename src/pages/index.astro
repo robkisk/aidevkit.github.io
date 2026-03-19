@@ -1,0 +1,423 @@
+---
+import LandingHeader from '../components/LandingHeader.astro';
+import LandingFooter from '../components/LandingFooter.astro';
+
+const rawBase = import.meta.env.BASE_URL;
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+
+const features = [
+  {
+    stat: '28+',
+    title: 'Skills',
+    description: 'Pre-built knowledge for pipelines, jobs, apps, ML',
+  },
+  {
+    stat: '99',
+    title: 'MCP Tools',
+    description: 'Direct API access to your Databricks workspace',
+  },
+  {
+    stat: '',
+    title: 'Interactive Builder',
+    description: 'React + FastAPI app for browsing and installing skills',
+  },
+  {
+    stat: '',
+    title: 'Prompt Library',
+    description: '130+ ready-to-use prompts',
+  },
+];
+
+const steps = [
+  {
+    number: '1',
+    title: 'Install',
+    description: 'claude skill install ... or add MCP server config',
+  },
+  {
+    number: '2',
+    title: 'Prompt',
+    description: 'Ask Claude to build pipelines, deploy jobs, query data',
+  },
+  {
+    number: '3',
+    title: 'Ship',
+    description: 'Production code, deployed resources, working infrastructure',
+  },
+];
+
+const categories = [
+  { name: 'Data Engineering', slug: 'data-engineering' },
+  { name: 'SQL & Analytics', slug: 'sql-analytics' },
+  { name: 'AI & ML', slug: 'ai-ml' },
+  { name: 'Apps & Databases', slug: 'apps-databases' },
+  { name: 'Governance', slug: 'governance' },
+  { name: 'DevOps', slug: 'devops' },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Dev Kit for Databricks</title>
+    <meta name="description" content="Skills, MCP tools, and an interactive builder to accelerate AI development on Databricks" />
+    <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
+    <style>
+      @font-face {
+        font-family: 'DM Sans';
+        src: url('/aidevkit.github.io/fonts/DMSans-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'DM Sans';
+        src: url('/aidevkit.github.io/fonts/DMSans-Medium.woff2') format('woff2');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'DM Sans';
+        src: url('/aidevkit.github.io/fonts/DMSans-Bold.woff2') format('woff2');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html {
+        font-family: 'DM Sans', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      body {
+        background: #0B2026;
+        color: #F9F7F4;
+        line-height: 1.6;
+      }
+
+      /* ===== Hero ===== */
+      .hero {
+        background: #0B2026;
+        padding: 5rem 1.5rem 4rem;
+        text-align: center;
+      }
+
+      .hero-inner {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+
+      .hero h1 {
+        font-size: clamp(2rem, 5vw, 3.25rem);
+        font-weight: 700;
+        line-height: 1.15;
+        margin-bottom: 1rem;
+        color: #F9F7F4;
+      }
+
+      .hero .subtitle {
+        font-size: clamp(1rem, 2vw, 1.25rem);
+        color: #A3B0B5;
+        max-width: 600px;
+        margin: 0 auto 2rem;
+      }
+
+      .hero-ctas {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.75rem 1.75rem;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        letter-spacing: 0.02em;
+      }
+
+      .btn-primary {
+        background: #FF3621;
+        color: #fff;
+        border: 2px solid #FF3621;
+      }
+
+      .btn-primary:hover {
+        background: #801C17;
+        border-color: #801C17;
+      }
+
+      .btn-outline {
+        background: transparent;
+        color: #F9F7F4;
+        border: 2px solid #A3B0B5;
+      }
+
+      .btn-outline:hover {
+        border-color: #F9F7F4;
+      }
+
+      /* ===== Features ===== */
+      .features {
+        background: #0F1F25;
+        padding: 4rem 1.5rem;
+      }
+
+      .features-inner {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 2rem;
+      }
+
+      .feature-card {
+        text-align: center;
+        padding: 1.5rem 1rem;
+      }
+
+      .feature-stat {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #FF3621;
+        line-height: 1.1;
+        margin-bottom: 0.25rem;
+        min-height: 2.75rem;
+      }
+
+      .feature-title {
+        font-size: 1.15rem;
+        font-weight: 600;
+        color: #F9F7F4;
+        margin-bottom: 0.5rem;
+      }
+
+      .feature-desc {
+        font-size: 0.9rem;
+        color: #A3B0B5;
+        line-height: 1.5;
+      }
+
+      /* ===== How It Works ===== */
+      .how-it-works {
+        background: #F9F7F4;
+        color: #0B2026;
+        padding: 4rem 1.5rem;
+      }
+
+      .how-it-works-inner {
+        max-width: 1000px;
+        margin: 0 auto;
+      }
+
+      .section-title {
+        text-align: center;
+        font-size: clamp(1.5rem, 3vw, 2rem);
+        font-weight: 700;
+        margin-bottom: 3rem;
+      }
+
+      .section-title.light {
+        color: #F9F7F4;
+      }
+
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2.5rem;
+      }
+
+      .step {
+        text-align: center;
+      }
+
+      .step-number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 50%;
+        background: #FF3621;
+        color: #fff;
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+      }
+
+      .step-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #0B2026;
+      }
+
+      .step-desc {
+        font-size: 0.9rem;
+        color: #6B7D83;
+        line-height: 1.5;
+      }
+
+      .step-desc code {
+        background: #0B2026;
+        color: #F9F7F4;
+        padding: 0.15em 0.4em;
+        border-radius: 4px;
+        font-size: 0.85em;
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      /* ===== Explore by Category ===== */
+      .categories {
+        background: #0B2026;
+        padding: 4rem 1.5rem;
+      }
+
+      .categories-inner {
+        max-width: 1000px;
+        margin: 0 auto;
+      }
+
+      .category-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+      }
+
+      .category-card {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.25rem 1.5rem;
+        background: #1B3139;
+        border-radius: 8px;
+        text-decoration: none;
+        color: #F9F7F4;
+        font-weight: 500;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+      }
+
+      .category-card:hover {
+        border-color: #FF3621;
+        background: #0F1F25;
+      }
+
+      /* ===== Responsive ===== */
+      @media (max-width: 768px) {
+        .features-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .steps {
+          grid-template-columns: 1fr;
+          gap: 2rem;
+        }
+
+        .category-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      @media (max-width: 480px) {
+        .features-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-ctas {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .btn {
+          width: 100%;
+          max-width: 280px;
+          justify-content: center;
+        }
+
+        .category-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <LandingHeader />
+
+    <section class="hero" data-pagefind-ignore>
+      <div class="hero-inner">
+        <h1>AI Dev Kit for Databricks</h1>
+        <p class="subtitle">Skills, MCP tools, and an interactive builder to accelerate AI development on Databricks</p>
+        <div class="hero-ctas">
+          <a href={`${base}docs/getting-started/`} class="btn btn-primary">Get Started</a>
+          <a href="https://github.com/databricks-solutions/ai-dev-kit" class="btn btn-outline" target="_blank" rel="noopener">View on GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="features" data-pagefind-ignore>
+      <div class="features-inner">
+        <div class="features-grid">
+          {features.map((f) => (
+            <div class="feature-card">
+              <div class="feature-stat">{f.stat}</div>
+              <div class="feature-title">{f.title}</div>
+              <p class="feature-desc">{f.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="how-it-works" data-pagefind-ignore>
+      <div class="how-it-works-inner">
+        <h2 class="section-title">How It Works</h2>
+        <div class="steps">
+          {steps.map((s) => (
+            <div class="step">
+              <div class="step-number">{s.number}</div>
+              <h3 class="step-title">{s.title}</h3>
+              <p class="step-desc" set:html={
+                s.title === 'Install'
+                  ? '<code>claude skill install ...</code> or add MCP server config'
+                  : s.description
+              } />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="categories" data-pagefind-ignore>
+      <div class="categories-inner">
+        <h2 class="section-title light">Explore by Category</h2>
+        <div class="category-grid">
+          {categories.map((c) => (
+            <a href={`${base}docs/skills/${c.slug}/`} class="category-card">{c.name}</a>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <LandingFooter />
+  </body>
+</html>

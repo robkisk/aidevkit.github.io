@@ -1,0 +1,23 @@
+---
+interface Props {
+  prompt: string;
+}
+const { prompt } = Astro.props;
+---
+
+<div class="prompt-card">
+  <pre><code>{prompt}</code></pre>
+</div>
+
+<style>
+  .prompt-card {
+    background: var(--sl-color-gray-1);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .prompt-card pre {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+</style>

@@ -13,6 +13,9 @@ export default defineConfig({
 				light: './src/assets/logo-light.svg',
 				dark: './src/assets/logo-dark.svg',
 			},
+			components: {
+				Hero: './src/components/Hero.astro',
+			},
 			customCss: ['./src/styles/databricks.css'],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/databricks-solutions/ai-dev-kit' },

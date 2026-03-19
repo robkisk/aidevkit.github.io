@@ -1,0 +1,42 @@
+---
+/**
+ * Databricks-branded Hero override for Starlight.
+ * Wraps the default Starlight Hero with Navy 900 background and Lava 600 accents.
+ * Accepts the same props via Astro.locals.starlightRoute — no explicit props needed.
+ */
+import DefaultHero from '@astrojs/starlight/components/Hero.astro';
+---
+
+<div class="dbx-hero-wrapper">
+  <DefaultHero />
+</div>
+
+<style>
+  .dbx-hero-wrapper {
+    background: #0B2026;
+    padding: 2rem 0;
+    margin: -1rem -1rem 2rem -1rem;
+    border-radius: 0 0 8px 8px;
+  }
+
+  /* Accent color for primary CTA buttons inside the hero */
+  .dbx-hero-wrapper :global(.sl-btn[data-variant='primary']) {
+    background: #FF3621;
+    border-color: #FF3621;
+    color: #fff;
+  }
+
+  .dbx-hero-wrapper :global(.sl-btn[data-variant='primary']:hover) {
+    background: #801C17;
+    border-color: #801C17;
+  }
+
+  /* Ensure hero text is readable on dark background */
+  .dbx-hero-wrapper :global(h1) {
+    color: #F9F7F4;
+  }
+
+  .dbx-hero-wrapper :global(.tagline) {
+    color: #A3B0B5;
+  }
+</style>

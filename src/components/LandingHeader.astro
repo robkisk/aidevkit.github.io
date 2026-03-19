@@ -1,0 +1,63 @@
+---
+const rawBase = import.meta.env.BASE_URL;
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+---
+
+<header class="landing-header">
+  <nav>
+    <a href={base} class="logo-link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 32" fill="none" width="120" height="24">
+        <rect x="0" y="4" width="24" height="24" rx="4" fill="#FF3621"/>
+        <text x="8" y="23" font-family="sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">AI</text>
+        <text x="32" y="23" font-family="sans-serif" font-size="16" font-weight="500" fill="#F9F7F4">Dev Kit</text>
+      </svg>
+    </a>
+    <div class="nav-links">
+      <a href={`${base}docs/getting-started/`}>Docs</a>
+      <a href="https://github.com/databricks-solutions/ai-dev-kit" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<style>
+  .landing-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #0B2026;
+    border-bottom: 1px solid #1B3139;
+  }
+
+  nav {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo-link {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+  }
+
+  .nav-links a {
+    color: #A3B0B5;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover {
+    color: #F9F7F4;
+  }
+</style>
