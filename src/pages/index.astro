@@ -3,6 +3,8 @@ import LandingHeader from '../components/LandingHeader.astro';
 import LandingFooter from '../components/LandingFooter.astro';
 import { Image } from 'astro:assets';
 import databricksLogo from '../assets/databricks-symbol-color.svg';
+import dashboardIcon from '../assets/primary-icon-orange-dashboards.svg';
+import sparkleIcon from '../assets/SparkleDoubleIcon.svg';
 
 const rawBase = import.meta.env.BASE_URL;
 const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
@@ -22,11 +24,13 @@ const features = [
     stat: '',
     title: 'Interactive Builder',
     description: 'React + FastAPI app for browsing and installing skills',
+    icon: dashboardIcon,
   },
   {
     stat: '',
     title: 'Prompt Library',
     description: '130+ ready-to-use prompts',
+    icon: sparkleIcon,
   },
 ];
 
@@ -392,7 +396,9 @@ const categories = [
         <div class="features-grid">
           {features.map((f) => (
             <div class="feature-card">
-              <div class="feature-stat">{f.stat}</div>
+              <div class="feature-stat">
+                {f.stat ? f.stat : f.icon ? <Image src={f.icon} alt="" width={48} height={48} /> : null}
+              </div>
               <div class="feature-title">{f.title}</div>
               <p class="feature-desc">{f.description}</p>
             </div>
