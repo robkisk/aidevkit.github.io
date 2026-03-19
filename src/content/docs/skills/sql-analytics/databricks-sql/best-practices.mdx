@@ -1,19 +1,17 @@
 ---
 title: Data Modeling & Best Practices
-description: Data modeling patterns, Liquid Clustering, performance optimization, cost management, and common anti-patterns for Databricks SQL.
+description: Design star schemas, configure Liquid Clustering, and optimize query performance for sub-second dashboard loads.
 sidebar:
   order: 5
 ---
 
-Good data modeling, clustering, and query patterns are the difference between sub-second and multi-minute dashboard loads. This page covers star schema design, Liquid Clustering configuration, performance tuning techniques, cost management strategies, and common anti-patterns to avoid in Databricks SQL.
+## What You Can Build
 
-## Data Modeling
+Good data modeling and clustering configuration are the difference between sub-second and multi-minute dashboard loads. Star schemas in the Gold layer, Liquid Clustering on the right columns, and a few optimization habits give you consistently fast analytics without manual tuning. The patterns here apply to any Databricks SQL workload -- dashboards, ad-hoc queries, and materialized views.
 
-### Star Schema in the Lakehouse
+## In Action
 
-The recommended approach for the Gold layer. In benchmarks, dimensional models outperformed OBT (2.6s vs 3.5s) despite requiring joins. Both approaches achieve sub-500ms with automatic caching.
-
-**Fact table pattern:**
+> "Write SQL that creates a star schema with a fact table and a customer dimension table, both using Liquid Clustering and proper constraints."
 
 ```sql
 CREATE TABLE gold.sales.fact_orders (
@@ -26,11 +24,7 @@ CREATE TABLE gold.sales.fact_orders (
   CONSTRAINT fk_customer FOREIGN KEY (customer_key) REFERENCES gold.sales.dim_customer(customer_key),
   CONSTRAINT fk_product FOREIGN KEY (product_key) REFERENCES gold.sales.dim_product(product_key)
 ) CLUSTER BY (date_key, customer_key);
-```
 
-**Dimension table pattern:**
-
-```sql
 CREATE TABLE gold.sales.dim_customer (
   customer_key BIGINT GENERATED ALWAYS AS IDENTITY,
   customer_id STRING NOT NULL COMMENT 'Natural key from source system',
@@ -41,47 +35,71 @@ CREATE TABLE gold.sales.dim_customer (
 ) CLUSTER BY (customer_key, segment);
 ```
 
-### Liquid Clustering vs Partitioning
+**Key decisions:**
+- `GENERATED ALWAYS AS IDENTITY` creates integer surrogate keys -- faster joins than string keys
+- `DECIMAL(18,2)` for financial amounts avoids floating-point precision errors
+- `FOREIGN KEY` constraints inform the optimizer about table relationships (they're not enforced at write time)
+- `CLUSTER BY` replaces both partitioning and Z-ORDER with a single, incremental mechanism
+- Fact tables cluster by the most commonly filtered foreign keys; dimension tables cluster by primary key plus common filter columns
 
-Liquid Clustering is the default recommendation for all new Delta tables. It replaces both partitioning and Z-ORDER.
+## More Patterns
 
-| Aspect | Liquid Clustering | Partitioning + Z-ORDER |
-|--------|-------------------|------------------------|
-| Column flexibility | Change keys anytime | Fixed at creation |
-| Maintenance | Incremental, automatic | Manual OPTIMIZE required |
-| Filter dimensions | 1-4 clustering keys | One partition + Z-ORDER |
-| Performance | 30-60% query speed improvement | Better for single-partition lookups |
+### Choose between star schema and One Big Table
 
-## Performance Optimization
+> "Help me decide whether to use a star schema or a wide denormalized table for my Gold layer."
 
-**Engine-level optimizations (automatic on Serverless):**
-- **Predictive Query Execution (PQE)**: Detects skew and spills in real-time
-- **Photon Vectorized Shuffle**: 1.5x higher shuffle throughput
-- **Low Shuffle Merge**: Optimized MERGE for common workloads
+In benchmarks, dimensional models outperformed One Big Tables (2.6s vs 3.5s) despite requiring joins, because fewer files needed scanning. With Liquid Clustering applied, OBT achieved 1.13s. Both approaches hit sub-500ms with automatic caching after the first run.
 
-**Manual optimization actions:**
-- Run `ANALYZE TABLE ... COMPUTE STATISTICS FOR COLUMNS` on dimension keys
-- Define PRIMARY KEY and FOREIGN KEY constraints
-- Use deterministic queries to benefit from result caching
-- Prefer `CREATE OR REPLACE TABLE` over delete-then-create
+Use star schemas when you filter on 5+ dimensions or need SCD tracking. Use OBT when you filter on 1-3 dimensions and want simpler governance. The recommended approach: OBT or Data Vault in Silver for fast integration, star schemas in Gold as the curated presentation layer for BI.
 
-## Cost Optimization
+### Collect statistics for the optimizer
 
-1. Use serverless SQL warehouses (pay only when queries run)
-2. Enable predictive optimization for automatic OPTIMIZE and VACUUM
-3. Use Liquid Clustering to reduce scan volume
-4. Design deterministic queries to maximize result cache hits
-5. Collect statistics with `ANALYZE TABLE`
-6. Use materialized views for frequently computed aggregations
+> "Write SQL to compute column statistics on a fact table so the query optimizer can make better join and filter decisions."
 
-## Common Anti-Patterns
+```sql
+ANALYZE TABLE gold.sales.fact_orders COMPUTE STATISTICS FOR COLUMNS
+  date_key, customer_key, product_key;
+```
 
-| Anti-Pattern | Fix |
-|-------------|-----|
-| Skipping dimensional modeling in Gold | Use star schemas for multi-dimensional analysis |
-| Over-partitioning (>5,000 partitions) | Use Liquid Clustering instead |
-| String surrogate keys | Use integer IDENTITY columns |
-| Missing PK/FK constraints | Define constraints for optimizer |
-| Using FLOAT for financial data | Use DECIMAL for precision |
-| Python UDFs when native functions exist | Native functions avoid serialization overhead |
-| Non-deterministic functions in cached queries | Remove `NOW()`, `RAND()` from filters |
+Run `ANALYZE TABLE` after bulk loads, table overwrites, or major data changes. Focus on columns used in WHERE clauses, JOINs, and GROUP BY. Missing statistics lead to suboptimal query plans -- the optimizer guesses cardinality instead of knowing it.
+
+### Enable predictive optimization
+
+> "Write SQL to enable automatic OPTIMIZE and VACUUM on a managed table."
+
+```sql
+ALTER TABLE gold.sales.fact_orders
+SET TBLPROPERTIES ('delta.enableOptimizeWrite' = 'true');
+```
+
+On serverless SQL warehouses, `optimizeWrite` and `autoCompact` are managed automatically -- you don't need to set them. For classic compute, enable them explicitly. For Unity Catalog managed tables, predictive optimization handles OPTIMIZE and VACUUM scheduling automatically.
+
+### Write cost-efficient queries
+
+> "Show me the SQL patterns that maximize query result caching and minimize scan volume."
+
+```sql
+-- Use CREATE OR REPLACE instead of DELETE + CREATE
+CREATE OR REPLACE TABLE gold.sales.daily_summary AS
+SELECT
+  date_key,
+  SUM(order_amount) AS total_revenue,
+  COUNT(DISTINCT customer_key) AS unique_customers
+FROM gold.sales.fact_orders
+GROUP BY date_key;
+
+-- Use QUALIFY instead of subquery for window filtering
+SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_key ORDER BY order_amount DESC) AS rn
+FROM gold.sales.fact_orders
+QUALIFY rn = 1;
+```
+
+`CREATE OR REPLACE TABLE` preserves time travel and avoids reader interruptions. `QUALIFY` eliminates the need for a wrapping subquery. Avoid `NOW()`, `RAND()`, and other non-deterministic functions in filters -- they prevent query result caching.
+
+## Watch Out For
+
+- **Skipping dimensional modeling in the Gold layer** -- OBTs are fine for Silver, but Gold should use star schemas when you need multi-dimensional analysis. The upfront modeling effort pays for itself in query performance and governance clarity.
+- **Over-partitioning tables** -- more than 5,000 partitions degrades performance. Use Liquid Clustering instead, which handles 1-4 keys and adjusts incrementally without reorganizing the entire table.
+- **Using Python UDFs when native SQL functions exist** -- UDFs require serialization between Python and Spark, adding significant overhead. Check for a native function first.
+- **Using FLOAT for financial data** -- `FLOAT` and `DOUBLE` introduce precision errors in aggregations. Always use `DECIMAL(18,2)` or similar for monetary values.
+- **Missing PK/FK constraints** -- even though they're not enforced at write time, constraints give the optimizer critical information about table relationships and eliminate unnecessary joins.

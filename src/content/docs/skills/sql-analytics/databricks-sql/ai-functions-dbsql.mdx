@@ -1,18 +1,19 @@
 ---
 title: AI Functions in DBSQL
-description: Built-in AI functions for LLM-powered data enrichment, external API calls, federated queries, and file ingestion directly from Databricks SQL.
+description: Run LLM-powered classification, extraction, and enrichment alongside external API calls and federated queries directly from SQL.
 sidebar:
   order: 4
 ---
 
-Databricks SQL exposes Foundation Model APIs as built-in SQL functions, letting you classify, extract, summarize, and enrich data without leaving your SQL warehouse. Use these functions when you need LLM-powered transformations directly in queries, views, or materialized views alongside standard SQL logic.
+## What You Can Build
 
-## AI Functions Overview
+Databricks SQL exposes Foundation Model APIs, external HTTP endpoints, federated database queries, and file ingestion as built-in SQL functions. You can classify, extract, summarize, and enrich data in the same query that joins federated sources and calls external APIs -- all without leaving your SQL warehouse.
 
-Databricks AI Functions invoke Foundation Model APIs directly from SQL. They work on table columns as naturally as `UPPER()` or `LENGTH()`.
+## In Action
+
+> "Write a SQL query that classifies support tickets, runs sentiment analysis, and extracts structured entities in a single pass."
 
 ```sql
--- Classify, extract, and enrich in one query
 SELECT
   ticket_id,
   ai_classify(description, ARRAY('billing', 'technical', 'account')) AS category,
@@ -22,7 +23,17 @@ FROM catalog.schema.support_tickets
 LIMIT 100;
 ```
 
-### Structured Output with `ai_query`
+**Key decisions:**
+- AI functions work on table columns as naturally as `UPPER()` or `LENGTH()`
+- Each function calls a pre-configured Foundation Model API -- no endpoint selection needed
+- `LIMIT 100` during development controls token costs on Foundation Model APIs
+- Requires a Databricks SQL warehouse (not Classic) or DBR 15.1+
+
+## More Patterns
+
+### Get structured JSON output with ai_query
+
+> "Write a SQL query that uses ai_query to extract structured feedback analysis with topic, sentiment, and action items."
 
 ```sql
 SELECT ai_query(
@@ -33,9 +44,11 @@ SELECT ai_query(
 FROM catalog.schema.customer_feedback LIMIT 50;
 ```
 
-## External API Calls
+`returnType` tells `ai_query` to parse the model response into a typed Spark struct. This gives you strongly typed columns you can filter, join, and aggregate downstream without manual JSON parsing.
 
-### `http_request` -- Call External APIs
+### Call external APIs with http_request
+
+> "Write a SQL query that validates orders against an external API using an HTTP connection."
 
 ```sql
 CREATE CONNECTION my_api_conn TYPE HTTP
@@ -48,7 +61,11 @@ SELECT order_id, http_request(
 FROM catalog.schema.orders WHERE needs_validation = true;
 ```
 
-### `remote_query` -- Federated Queries
+`http_request` calls external services through Unity Catalog HTTP connections. The connection stores credentials securely via `secret()`. The function returns a `STRUCT<status_code: INT, text: STRING>` so you can parse responses with `from_json`.
+
+### Run federated queries against external databases
+
+> "Write a SQL query that reads customer data from a PostgreSQL database using Lakehouse Federation."
 
 ```sql
 SELECT * FROM remote_query(
@@ -58,7 +75,11 @@ SELECT * FROM remote_query(
 );
 ```
 
-### `read_files` -- Ingest Raw Files
+`remote_query` pushes SQL to an external database and returns results as a table. Supported databases include PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery, and Redshift. Queries are read-only and pushed down for efficient execution.
+
+### Ingest raw files from volumes
+
+> "Write a SQL query that reads JSON event files from a Unity Catalog volume with schema hints."
 
 ```sql
 SELECT * FROM read_files(
@@ -70,8 +91,11 @@ SELECT * FROM read_files(
 );
 ```
 
-## Requirements
+`read_files` handles CSV, JSON, Parquet, Avro, ORC, XML, and binary formats. Use `schemaHints` to override specific inferred column types while letting the rest auto-detect.
 
-- Databricks SQL warehouse (not Classic) or DBR 15.1+
-- Pro or Serverless warehouse for `ai_forecast`
-- DBR 17.1+ for `ai_parse_document`
+## Watch Out For
+
+- **Using AI functions on a Classic SQL warehouse** -- they require a Serverless SQL Warehouse. Classic warehouses return "function not found" errors.
+- **Forgetting to test `http_request` connections** -- network connectivity, secret scopes, and OAuth configuration all need to work before the query runs. Test with a simple GET request first.
+- **Running `remote_query` without understanding pushdown** -- filters, limits, and aggregations are pushed to the remote database by default. But complex expressions may not push down, causing full table scans over the network. Check the query plan.
+- **Skipping `LIMIT` during AI function development** -- every row incurs Foundation Model API token costs. Start small, validate output, then scale to full tables.

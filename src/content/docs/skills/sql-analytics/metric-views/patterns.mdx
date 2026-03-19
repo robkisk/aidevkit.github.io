@@ -1,50 +1,17 @@
 ---
 title: Metric View Patterns
-description: Common patterns for metric views — single table metrics, derived dimensions, ratios, filtered measures, star schema joins, snowflake schemas, materialization, and window measures.
+description: Define reusable business metrics as code with dimensions, measures, joins, filtered aggregations, and window calculations.
 sidebar:
   order: 1
 ---
 
-Metric views define reusable business metrics as code -- dimensions, measures, joins, and filters in YAML attached to a SQL view. This page provides patterns for single-table metrics, derived dimensions, ratios, filtered measures, star and snowflake schema joins, materialization, and window-based calculations.
+## What You Can Build
 
-## Simple Metrics from a Single Table
+Metric views define reusable business metrics as code -- dimensions, measures, joins, and filters in YAML attached to a SQL view. Once defined, anyone can query a metric view with `MEASURE()` syntax and get consistent, governed results regardless of how they slice the data. You get a single source of truth for metrics like revenue, fulfillment rate, and customer count.
 
-```sql
-CREATE OR REPLACE VIEW catalog.schema.product_metrics
-WITH METRICS LANGUAGE YAML
-AS $$
-  version: 1.1
-  source: catalog.schema.sales
-  dimensions:
-    - name: Product Name
-      expr: product_name
-    - name: Sale Date
-      expr: sale_date
-  measures:
-    - name: Units Sold
-      expr: COUNT(1)
-    - name: Total Revenue
-      expr: SUM(price * quantity)
-    - name: Average Price
-      expr: AVG(price)
-$$
-```
+## In Action
 
-## Filtered Measures
-
-Create measures that only count a subset of rows using `FILTER`:
-
-```sql
-measures:
-  - name: Total Orders
-    expr: COUNT(1)
-  - name: Open Orders
-    expr: COUNT(1) FILTER (WHERE status = 'OPEN')
-  - name: Fulfillment Rate
-    expr: COUNT(1) FILTER (WHERE status = 'FULFILLED') * 1.0 / COUNT(1)
-```
-
-## Star Schema with Joins
+> "Write SQL that creates a metric view for sales analytics with customer and product dimensions from a star schema."
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.sales_analytics
@@ -74,68 +41,150 @@ AS $$
 $$
 ```
 
-## Window Measures (Experimental)
+**Key decisions:**
+- `version: 1.1` is the current spec for DBR 17.2+ (use `0.1` for DBR 16.4-17.1)
+- `source` points to the fact table; `joins` bring in dimension tables using the join name as a namespace (e.g., `customer.segment`)
+- Dimensions cannot use aggregate functions; measures must contain at least one aggregate
+- Measures are queried with `MEASURE(\`Total Revenue\`)` -- never with `SELECT *`
+- Dimension expressions can reference SQL functions, CASE statements, and columns from joined tables
 
-### 7-Day Trailing Customers
+## More Patterns
 
-```sql
-measures:
-  - name: t7d_customers
-    expr: COUNT(DISTINCT customer_id)
-    window:
-      - order: date
-        range: trailing 7 day
-        semiadditive: last
-```
+### Build filtered measures for status-based reporting
 
-### Year-to-Date
+> "Write YAML for a metric view with filtered measures that track open orders, fulfilled orders, and fulfillment rate."
 
 ```sql
-measures:
-  - name: ytd_sales
-    expr: SUM(total_price)
-    window:
-      - order: date
-        range: cumulative
-        semiadditive: last
-      - order: year
-        range: current
-        semiadditive: last
+CREATE OR REPLACE VIEW catalog.schema.order_status_metrics
+WITH METRICS LANGUAGE YAML
+AS $$
+  version: 1.1
+  source: catalog.schema.orders
+  dimensions:
+    - name: Order Month
+      expr: DATE_TRUNC('MONTH', order_date)
+    - name: Region
+      expr: region
+  measures:
+    - name: Total Orders
+      expr: COUNT(1)
+    - name: Open Orders
+      expr: COUNT(1) FILTER (WHERE status = 'OPEN')
+    - name: Fulfillment Rate
+      expr: COUNT(1) FILTER (WHERE status = 'FULFILLED') * 1.0 / COUNT(1)
+$$
 ```
 
-### Period-over-Period Growth
+`FILTER (WHERE ...)` on a measure counts only the rows matching that condition. The denominator in `Fulfillment Rate` uses an unfiltered `COUNT(1)`, giving you a correct ratio that recalculates correctly at any dimension level.
 
-Derived measures can reference window measures using `MEASURE()`:
+### Navigate multi-level hierarchies with snowflake joins
+
+> "Write SQL for a metric view that traverses customer, nation, and region dimensions using nested joins."
 
 ```sql
-measures:
-  - name: previous_day_sales
-    expr: SUM(total_price)
-    window:
-      - order: date
-        range: trailing 1 day
-        semiadditive: last
-  - name: current_day_sales
-    expr: SUM(total_price)
-    window:
-      - order: date
-        range: current
-        semiadditive: last
-  - name: day_over_day_growth
-    expr: (MEASURE(current_day_sales) - MEASURE(previous_day_sales)) / MEASURE(previous_day_sales) * 100
+CREATE OR REPLACE VIEW catalog.schema.geo_sales
+WITH METRICS LANGUAGE YAML
+AS $$
+  version: 1.1
+  source: catalog.schema.orders
+  joins:
+    - name: customer
+      source: catalog.schema.customer
+      on: source.customer_key = customer.customer_key
+      joins:
+        - name: nation
+          source: catalog.schema.nation
+          on: customer.nation_key = nation.nation_key
+          joins:
+            - name: region
+              source: catalog.schema.region
+              on: nation.region_key = region.region_key
+  dimensions:
+    - name: Nation
+      expr: nation.name
+    - name: Region
+      expr: region.name
+  measures:
+    - name: Total Revenue
+      expr: SUM(source.total_price)
+    - name: Order Count
+      expr: COUNT(1)
+$$
 ```
 
-## Materialized Metric View
+Nested `joins` create a snowflake schema traversal. Query `Region` to roll up across nations, or drill into `Nation` with a `WHERE` clause. Snowflake joins require DBR 17.1+.
+
+### Calculate trailing windows and period-over-period growth
+
+> "Write YAML for window measures that compute 7-day trailing customers and day-over-day sales growth."
 
 ```sql
-materialization:
-  schedule: every 1 hour
-  mode: relaxed
-  materialized_views:
-    - name: daily_category
-      type: aggregated
-      dimensions: [Category, Day]
-      measures: [Revenue, Transactions]
-    - name: full_model
-      type: unaggregated
+CREATE OR REPLACE VIEW catalog.schema.daily_growth
+WITH METRICS LANGUAGE YAML
+AS $$
+  version: 1.1
+  source: catalog.schema.orders
+  dimensions:
+    - name: date
+      expr: order_date
+  measures:
+    - name: previous_day_sales
+      expr: SUM(total_price)
+      window:
+        - order: date
+          range: trailing 1 day
+          semiadditive: last
+    - name: current_day_sales
+      expr: SUM(total_price)
+      window:
+        - order: date
+          range: current
+          semiadditive: last
+    - name: day_over_day_growth
+      expr: (MEASURE(current_day_sales) - MEASURE(previous_day_sales)) / MEASURE(previous_day_sales) * 100
+$$
 ```
+
+Window measures enable trailing aggregations, running totals, and period-over-period calculations. `semiadditive: last` controls what happens when the window dimension isn't in the GROUP BY -- it returns the last value instead of summing across time. Derived measures reference window measures via `MEASURE()`.
+
+### Pre-compute common aggregations with materialization
+
+> "Write YAML that materializes daily revenue by category on an hourly schedule."
+
+```sql
+CREATE OR REPLACE VIEW catalog.schema.ecommerce_metrics
+WITH METRICS LANGUAGE YAML
+AS $$
+  version: 1.1
+  source: catalog.schema.transactions
+  dimensions:
+    - name: Category
+      expr: product_category
+    - name: Day
+      expr: DATE_TRUNC('DAY', transaction_date)
+  measures:
+    - name: Revenue
+      expr: SUM(amount)
+    - name: Transactions
+      expr: COUNT(1)
+  materialization:
+    schedule: every 1 hour
+    mode: relaxed
+    materialized_views:
+      - name: daily_category
+        type: aggregated
+        dimensions: [Category, Day]
+        measures: [Revenue, Transactions]
+      - name: full_model
+        type: unaggregated
+$$
+```
+
+Materialization pre-computes specific dimension/measure combinations as SDP-managed materialized views. `aggregated` type pre-computes specific combos; `unaggregated` materializes the full data model (source + joins + filter). Requires serverless compute and DBR 17.2+.
+
+## Watch Out For
+
+- **Using `SELECT *` on a metric view** -- it's not supported. You must use `MEASURE(\`name\`)` to query measures and reference dimensions by their backtick-quoted names.
+- **Putting aggregate functions in dimension expressions** -- dimensions define grouping categories. Aggregates belong in measures only. The YAML parser rejects dimensions with aggregate functions.
+- **Forgetting `semiadditive: last` on window measures** -- without it, the system doesn't know how to handle the window dimension when it's absent from the GROUP BY. Every window block requires the `semiadditive` field.
+- **Using MAP columns in joined tables** -- joins don't support MAP type columns in the joined source. Use only scalar and STRUCT columns in dimension and measure expressions from joined tables.

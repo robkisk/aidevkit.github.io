@@ -1,26 +1,72 @@
 ---
 title: YAML Reference
-description: Complete YAML specification for Unity Catalog metric views — top-level fields, dimensions, measures, joins, filters, materialization, and window measures.
+description: Build metric view definitions using the complete YAML specification for dimensions, measures, joins, filters, windows, and materialization.
 sidebar:
   order: 2
 ---
 
-This is the complete YAML specification for Unity Catalog metric views. Refer to it when you need the exact field names, types, and constraints for dimensions, measures, joins, filters, materialization, and window measures in your metric view definitions.
+## What You Can Build
 
-## Top-Level Fields
+The metric view YAML spec defines everything about a metric -- its source table, join relationships, dimension expressions, measure aggregations, filters, window calculations, and materialization config. This page shows you how to construct each section with the exact field names, types, and constraints the parser expects.
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `version` | No | `"1.1"` for DBR 17.2+, `"0.1"` for DBR 16.4-17.1 |
-| `source` | Yes | Source table/view in three-level namespace |
-| `comment` | No | Description of the metric view (v1.1+) |
-| `filter` | No | SQL boolean expression as global WHERE clause |
-| `dimensions` | Yes | At least one dimension definition |
-| `measures` | Yes | At least one measure definition |
-| `joins` | No | Star/snowflake schema join definitions |
-| `materialization` | No | Pre-computation configuration (experimental) |
+## In Action
 
-## Dimensions
+> "Write a complete metric view definition with joins, derived dimensions, filtered measures, and materialization."
+
+```sql
+CREATE OR REPLACE VIEW catalog.schema.sales_metrics
+WITH METRICS LANGUAGE YAML
+AS $$
+  version: 1.1
+  comment: "Sales metrics with customer and product dimensions"
+  source: catalog.schema.fact_sales
+  filter: sale_date >= '2023-01-01'
+  joins:
+    - name: customer
+      source: catalog.schema.dim_customer
+      on: source.customer_id = customer.id
+    - name: product
+      source: catalog.schema.dim_product
+      on: source.product_id = product.id
+  dimensions:
+    - name: Sale Month
+      expr: DATE_TRUNC('MONTH', sale_date)
+      comment: "Month of sale"
+    - name: Customer Type
+      expr: CASE WHEN customer.tier = 'A' THEN 'Enterprise' ELSE 'SMB' END
+    - name: Product Category
+      expr: product.category
+  measures:
+    - name: Total Revenue
+      expr: SUM(amount)
+    - name: Open Revenue
+      expr: SUM(amount) FILTER (WHERE status = 'O')
+    - name: Revenue per Customer
+      expr: SUM(amount) / COUNT(DISTINCT customer_id)
+  materialization:
+    schedule: every 1 hour
+    mode: relaxed
+    materialized_views:
+      - name: monthly_summary
+        type: aggregated
+        dimensions: [Sale Month, Product Category]
+        measures: [Total Revenue]
+$$
+```
+
+**Key decisions:**
+- `version` is optional -- defaults to `1.1` on DBR 17.2+, use `0.1` for DBR 16.4-17.1
+- `source` requires fully qualified three-level namespace (`catalog.schema.table`)
+- `filter` applies a global WHERE clause to all queries against this metric view
+- `comment` at top level and on individual dimensions/measures adds documentation visible in Unity Catalog
+- Dimension `expr` can reference other dimensions, joined columns, and SQL functions but cannot contain aggregates
+- Measure `expr` must contain at least one aggregate function
+
+## More Patterns
+
+### Define dimensions with SQL transformations
+
+> "Write YAML dimensions that use date truncation, CASE expressions, and joined column references."
 
 ```yaml
 dimensions:
@@ -32,32 +78,17 @@ dimensions:
   - name: Customer Type
     expr: CASE WHEN tier = 'A' THEN 'Enterprise' ELSE 'SMB' END
   - name: Nation
-    expr: customer.c_name    # Reference joined table columns
+    expr: customer.c_name
 ```
 
-Cannot use aggregate functions in dimensions.
+Dimensions define the categorical axes for grouping and filtering. They support direct column references, SQL functions, multi-line CASE expressions, and references to joined table columns using `join_name.column_name`. They cannot use aggregate functions.
 
-## Measures
+### Configure star and snowflake schema joins
 
-```yaml
-measures:
-  - name: Total Revenue
-    expr: SUM(total_price)
-  - name: Unique Customers
-    expr: COUNT(DISTINCT customer_id)
-  - name: Revenue per Customer
-    expr: SUM(total_price) / COUNT(DISTINCT customer_id)
-  - name: Open Revenue
-    expr: SUM(total_price) FILTER (WHERE status = 'O')
-```
-
-Queried via `MEASURE(\`name\`)`. Must contain aggregate functions.
-
-## Joins
-
-### Star Schema
+> "Write YAML joins for a star schema with two dimension tables, and a snowflake schema with nested customer-nation-region hierarchy."
 
 ```yaml
+# Star schema
 joins:
   - name: customer
     source: catalog.schema.dim_customer
@@ -65,11 +96,8 @@ joins:
   - name: product
     source: catalog.schema.dim_product
     on: source.product_id = product.id
-```
 
-### Snowflake Schema (Nested, DBR 17.1+)
-
-```yaml
+# Snowflake schema (DBR 17.1+)
 joins:
   - name: customer
     source: catalog.schema.customer
@@ -84,15 +112,11 @@ joins:
             on: nation.region_key = region.region_key
 ```
 
-## Window Measures
+In `on` expressions, reference the fact table as `source` and joined tables by their `name`. Use either `on` (expression) or `using` (column list), not both. Nested `joins` create snowflake traversals for multi-level hierarchies.
 
-| Range | Description |
-|-------|-------------|
-| `current` | Only rows matching current ordering value |
-| `cumulative` | All rows up to and including current |
-| `trailing <N> <unit>` | N units before current (excludes current) |
-| `leading <N> <unit>` | N units after current |
-| `all` | All rows |
+### Add window measures for time-based calculations
+
+> "Write YAML window measures for a running total, a 7-day trailing count, and year-to-date sales."
 
 ```yaml
 measures:
@@ -102,9 +126,30 @@ measures:
       - order: date
         range: cumulative
         semiadditive: last
+
+  - name: 7-Day Customers
+    expr: COUNT(DISTINCT customer_id)
+    window:
+      - order: date
+        range: trailing 7 day
+        semiadditive: last
+
+  - name: YTD Sales
+    expr: SUM(total_price)
+    window:
+      - order: date
+        range: cumulative
+        semiadditive: last
+      - order: year
+        range: current
+        semiadditive: last
 ```
 
-## Materialization
+Window ranges include `current` (matching value only), `cumulative` (up to and including current), `trailing N unit` (N units before, excludes current), `leading N unit` (N units after), and `all` (every row). Year-to-date composes two windows: cumulative over date, scoped to the current year. Every window block requires `order`, `range`, and `semiadditive` fields.
+
+### Configure materialization for faster queries
+
+> "Write YAML materialization config that pre-computes two aggregation levels on a 6-hour schedule."
 
 ```yaml
 materialization:
@@ -119,4 +164,12 @@ materialization:
       measures: [total_revenue, order_count]
 ```
 
-Requires serverless compute and DBR 17.2+.
+`unaggregated` materializes the full data model (source + joins + filter) for expensive joins. `aggregated` pre-computes specific dimension/measure combinations for the most common query patterns. Requires serverless compute and DBR 17.2+.
+
+## Watch Out For
+
+- **Using `version: 0.1` on DBR 17.2+** -- version `0.1` is the legacy spec. Use `1.1` to get `comment` support, improved validation, and all current features. Window measures still require `0.1` as an experimental feature.
+- **Mixing `on` and `using` in the same join** -- pick one. `on` takes a SQL expression; `using` takes a column list. Specifying both raises a parse error.
+- **Referencing measures with `SELECT` instead of `MEASURE()`** -- metric views require `MEASURE(\`Total Revenue\`)` syntax. Plain `SELECT \`Total Revenue\`` returns an error.
+- **Adding MAP columns in joined table sources** -- joins don't support MAP types. Use scalar, STRING, or STRUCT columns for dimension expressions from joined tables.
+- **Forgetting `semiadditive` in window blocks** -- every window spec requires `semiadditive: first` or `semiadditive: last`. Omitting it causes a validation error.

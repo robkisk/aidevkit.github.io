@@ -1,18 +1,20 @@
 ---
 title: Geospatial SQL & Collations
-description: H3 hexagonal indexing, ST spatial functions, and collation support for case-insensitive and locale-aware string matching in Databricks SQL.
+description: Run H3 hexagonal indexing, ST spatial operations, and case-insensitive string matching for location analytics and multi-locale data.
 sidebar:
   order: 3
 ---
 
-Databricks SQL includes H3 hexagonal indexing for geospatial analytics and ST_ functions for geometry operations, plus collation support for case-insensitive and locale-aware string comparisons. Use these features when your queries involve location data, proximity searches, or need consistent string matching across locales.
+## What You Can Build
 
-## H3 Geospatial Functions
+Databricks SQL includes two geospatial function families -- H3 for hexagonal grid indexing and ST for standard spatial operations -- plus collation support for case-insensitive and locale-aware string comparisons. Together they handle proximity searches, point-in-polygon queries, spatial joins, and consistent string matching across languages.
 
-H3 is Uber's hexagonal hierarchical spatial index with 16 resolutions (0-15). Available since DBR 11.2.
+## In Action
+
+> "Write SQL that indexes taxi trips by H3 cell, runs a proximity search, and rolls up trip counts to a coarser resolution."
 
 ```sql
--- Index taxi trips by pickup location
+-- Index taxi trips by pickup location at resolution 12
 CREATE TABLE trips_h3 AS
 SELECT
   h3_longlatash3(pickup_longitude, pickup_latitude, 12) AS pickup_cell,
@@ -23,46 +25,34 @@ FROM taxi_trips;
 -- Proximity search: cells within 2 rings of a location
 SELECT explode(h3_kring(h3_longlatash3(-73.985, 40.748, 9), 2)) AS nearby_cell;
 
--- Roll up to coarser resolution
+-- Roll up to coarser resolution for visualization
 SELECT h3_toparent(pickup_cell, 7) AS parent_cell, count(*) AS trip_count
 FROM trips_h3 GROUP BY h3_toparent(pickup_cell, 7);
 ```
 
-### Key H3 Functions
+**Key decisions:**
+- H3 divides the Earth into hexagonal cells at 16 resolutions (0-15) -- resolution 12 gives ~300m cells, resolution 9 gives ~5km cells
+- `h3_kring` returns all cells within a grid distance, creating a proximity search without calculating actual distances
+- `h3_toparent` aggregates to coarser resolutions for map visualizations
+- H3 functions are available since DBR 11.2 with no additional installation
 
-| Function | Description |
-|----------|-------------|
-| `h3_longlatash3(lon, lat, res)` | Convert coordinates to H3 cell |
-| `h3_polyfillash3(geog, res)` | Fill polygon with H3 cells |
-| `h3_toparent(cell, res)` | Get parent cell at coarser resolution |
-| `h3_kring(cell, k)` | All cells within grid distance k |
-| `h3_ischildof(cell1, cell2)` | Test parent-child relationship |
-| `h3_distance(cell1, cell2)` | Grid distance between cells |
+## More Patterns
 
-## ST Spatial Functions
+### Run point-in-polygon queries with ST functions
 
-Native spatial SQL with 80+ functions operating on `GEOMETRY` and `GEOGRAPHY` types. Requires DBR 17.1+.
+> "Write SQL that finds stores within a delivery zone using native spatial types and ST_Contains."
 
 ```sql
--- Point-in-polygon: find stores within a delivery zone
 SELECT s.name, z.zone_name
 FROM retail_stores s
 JOIN delivery_zones z ON ST_Contains(z.boundary, s.location);
-
--- Distance calculation
-SELECT c.customer_id,
-  ST_DistanceSphere(c.location, s.location) AS distance_meters
-FROM customers c CROSS JOIN retail_stores s
-WHERE s.store_id = 1
-  AND ST_DWithin(
-    ST_GeogFromText(ST_AsText(c.location)),
-    ST_GeogFromText(ST_AsText(s.location)), 5000
-  );
 ```
 
-### Combining H3 and ST Functions
+ST functions operate on `GEOMETRY` and `GEOGRAPHY` types with 80+ available functions. Use `GEOMETRY` for projected coordinate systems (distances in meters) and `GEOGRAPHY` for longitude/latitude on WGS 84. Requires DBR 17.1+.
 
-Use H3 for fast pre-filtering, then ST for precise spatial operations:
+### Combine H3 and ST for fast spatial joins
+
+> "Write SQL that uses H3 for fast pre-filtering and ST for precise distance calculation to find customers within 2km of each store."
 
 ```sql
 SELECT s.name AS store, c.name AS customer,
@@ -73,22 +63,11 @@ JOIN customer_h3 c
 WHERE ST_DistanceSphere(s.location, c.location) < 2000;
 ```
 
-Spatial joins benefit from up to **17x performance improvement** on serverless SQL warehouses with automatic spatial indexing.
+H3 pre-filtering narrows the candidate set to nearby cells (cheap integer comparisons), then `ST_DistanceSphere` calculates precise spherical distance on the remaining rows. Spatial joins on serverless SQL warehouses see up to 17x performance improvement with automatic spatial indexing.
 
-## Collations
+### Set up case-insensitive string matching across a catalog
 
-Collations define rules for comparing and sorting strings. Available from DBR 16.1+.
-
-| Collation | Behavior |
-|-----------|----------|
-| `UTF8_BINARY` | Default byte-by-byte comparison |
-| `UTF8_LCASE` | Case-insensitive binary |
-| `UNICODE` | ICU root locale ordering |
-| `UNICODE_CI` | Unicode case-insensitive |
-| `UNICODE_CI_AI` | Case and accent-insensitive |
-| Locale-specific | Language-aware (e.g., `DE`, `FR`, `JA`) |
-
-### Setting Collations
+> "Write SQL that creates a catalog where all string comparisons are case-insensitive by default."
 
 ```sql
 -- Catalog level (DBR 17.1+)
@@ -107,4 +86,23 @@ SELECT * FROM products
 WHERE name COLLATE UNICODE_CI = 'laptop';
 ```
 
-Collation inheritance: Catalog > Schema > Table > Column > Expression. `STARTSWITH` and `ENDSWITH` with `UTF8_LCASE` show up to **10x speedup** compared to `LOWER()` workarounds.
+Collation inheritance flows: Catalog > Schema > Table > Column > Expression. Override at any level. `UNICODE_CI` handles case-insensitive comparisons; `UNICODE_CI_AI` adds accent-insensitivity (so "Montreal" matches "Montreal"). `STARTSWITH` and `ENDSWITH` with `UTF8_LCASE` show up to 10x speedup compared to `LOWER()` workarounds.
+
+### Calculate delivery zone areas with projected coordinates
+
+> "Write SQL that computes the area of delivery zones in square meters using a projected coordinate system."
+
+```sql
+SELECT zone_name,
+  ST_Area(ST_Transform(boundary, 5070)) AS area_sq_meters
+FROM delivery_zones;
+```
+
+Always transform to a projected coordinate system (like SRID 5070, NAD83/Albers) before calculating area or distance in meters. Geographic coordinates (WGS 84) use degrees, which produce meaningless area values without projection.
+
+## Watch Out For
+
+- **Calculating distances on GEOMETRY types without projection** -- `ST_Distance` on unprojected GEOMETRY returns values in degrees, not meters. Use `ST_DistanceSphere` for quick spherical approximations or transform to a projected CRS first.
+- **Using GEOMETRY columns on non-serverless compute** -- `GEOMETRY` and `GEOGRAPHY` column types in `CREATE TABLE` require serverless compute with DBR 17.1+. On older warehouses, store WKT strings and convert with `ST_GeomFromText()` at query time.
+- **Mixing two different explicit collations in the same expression** -- this raises an error. Use `COLLATE` on one side to harmonize, or set a default collation at the table or catalog level.
+- **Assuming `ALTER SCHEMA DEFAULT COLLATION` retroactively changes existing columns** -- it only affects newly created objects. Existing tables and columns keep their original collation.

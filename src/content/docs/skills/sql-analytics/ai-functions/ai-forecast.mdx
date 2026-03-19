@@ -1,17 +1,21 @@
 ---
-title: ai_forecast Reference
-description: Time series forecasting with ai_forecast — single metric, multi-group, multi-metric, confidence intervals, and PySpark integration.
+title: ai_forecast
+description: Forecast time series data with confidence intervals using a single SQL function call -- single metric, multi-group, or multi-metric.
 sidebar:
   order: 3
 ---
 
-`ai_forecast` is a table-valued function that returns forecast values with confidence intervals. Requires a Pro or Serverless SQL warehouse.
+## What You Can Build
 
-## Basic Forecast
+`ai_forecast` is a table-valued function that projects time series data into the future with confidence intervals. You pass it a table of historical observations and a horizon date, and it returns point forecasts plus upper and lower bounds. It handles single metrics, multiple groups (forecast per region), and multiple metrics (revenue and units in one call). Requires a Pro or Serverless SQL warehouse.
+
+## In Action
+
+> "Write a SQL query that forecasts daily revenue through end of year based on historical order data."
 
 ```sql
 SELECT * FROM ai_forecast(
-    observed  => TABLE(SELECT order_date, revenue FROM daily_revenue),
+    observed  => TABLE(SELECT order_date, revenue FROM catalog.schema.daily_revenue),
     horizon   => '2026-12-31',
     time_col  => 'order_date',
     value_col => 'revenue'
@@ -19,13 +23,22 @@ SELECT * FROM ai_forecast(
 -- Returns: order_date, revenue_forecast, revenue_upper, revenue_lower
 ```
 
-## Multi-Group Forecast
+**Key decisions:**
+- `observed` takes a TABLE expression containing your historical data -- filter it to relevant rows before passing it in
+- `horizon` is the right-exclusive end date for the forecast window
+- Output columns follow the pattern `{value_col}_forecast`, `{value_col}_upper`, `{value_col}_lower`
+- The underlying model is prophet-like (piecewise linear with seasonality detection)
+- The time column type is preserved in output -- DATE stays DATE, TIMESTAMP stays TIMESTAMP
 
-Produces one forecast series per distinct value of `group_col`:
+## More Patterns
+
+### Forecast by group
+
+> "Write a SQL query that produces independent sales forecasts for each region."
 
 ```sql
 SELECT * FROM ai_forecast(
-    observed  => TABLE(SELECT date, region, sales FROM regional_sales),
+    observed  => TABLE(SELECT date, region, sales FROM catalog.schema.regional_sales),
     horizon   => '2026-12-31',
     time_col  => 'date',
     value_col => 'sales',
@@ -33,22 +46,30 @@ SELECT * FROM ai_forecast(
 );
 ```
 
-## Multiple Metrics
+Each distinct value of `group_col` gets its own independent forecast model. The output includes the group column so you can filter or join results by region downstream.
+
+### Forecast multiple metrics simultaneously
+
+> "Write a SQL query that forecasts both units sold and revenue in a single call."
 
 ```sql
 SELECT * FROM ai_forecast(
-    observed  => TABLE(SELECT date, units, revenue FROM daily_kpis),
+    observed  => TABLE(SELECT date, units, revenue FROM catalog.schema.daily_kpis),
     horizon   => '2026-06-30',
     time_col  => 'date',
     value_col => 'units,revenue'
 );
 ```
 
-## Custom Confidence Interval
+Pass a comma-separated list to `value_col` to forecast up to 100 metrics per group in one call. The output contains `units_forecast`, `units_upper`, `units_lower`, `revenue_forecast`, `revenue_upper`, `revenue_lower`.
+
+### Narrow the confidence interval for anomaly detection
+
+> "Write a SQL query that forecasts sensor readings with an 80% prediction interval for tighter anomaly bounds."
 
 ```sql
 SELECT * FROM ai_forecast(
-    observed                   => TABLE(SELECT ts, sensor_value FROM iot_readings),
+    observed                   => TABLE(SELECT ts, sensor_value FROM catalog.schema.iot_readings),
     horizon                    => '2026-03-31',
     time_col                   => 'ts',
     value_col                  => 'sensor_value',
@@ -56,7 +77,11 @@ SELECT * FROM ai_forecast(
 );
 ```
 
-## PySpark Integration
+The default prediction interval is 0.95. Narrowing it to 0.80 produces tighter upper/lower bounds, which is useful when you want to flag values outside the forecast range as anomalies.
+
+### Save forecasts to a Delta table
+
+> "Write PySpark code that runs a forecast and persists the results as a Delta table for downstream dashboards."
 
 ```python
 result = spark.sql("""
@@ -70,9 +95,11 @@ result = spark.sql("""
 result.write.format("delta").mode("overwrite").saveAsTable("catalog.schema.sales_forecast")
 ```
 
-## Notes
+Materializing forecast output to Delta lets dashboards and downstream queries read precomputed predictions without re-running the model on every access.
 
-- Underlying model is prophet-like (piecewise linear + seasonality)
-- Handles any number of groups but up to 100 metrics per group
-- Output time column preserves input type (DATE stays DATE)
-- Value columns are always cast to DOUBLE in output
+## Watch Out For
+
+- **Using `'M'` for monthly frequency with DATE columns** -- DATE columns need `frequency => 'month'`, not `'M'`. The `'M'` shorthand is for TIMESTAMP columns only. Mismatching this produces incorrect intervals.
+- **Passing unfiltered data as the observed table** -- the model trains on whatever you give it. Outliers, nulls, and gaps in the time series degrade forecast quality. Clean and filter the input TABLE expression before calling `ai_forecast`.
+- **Expecting causal explanations** -- `ai_forecast` fits a statistical trend model. It doesn't know about promotions, holidays, or business events. For those, you need to add regressors or post-process the output.
+- **Forecasting high-cardinality groups without limits** -- forecasting 10,000 ZIP codes in one call is expensive. Aggregate to a coarser level or limit groups to the top N by volume.

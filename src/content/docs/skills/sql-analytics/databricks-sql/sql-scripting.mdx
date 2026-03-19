@@ -1,15 +1,17 @@
 ---
 title: SQL Scripting & Stored Procedures
-description: Procedural SQL on Databricks — compound statements, variables, control flow, exception handling, stored procedures, recursive CTEs, and multi-statement transactions.
+description: Build procedural SQL logic with compound statements, stored procedures, recursive CTEs, and multi-statement transactions.
 sidebar:
   order: 1
 ---
 
-SQL Scripting enables procedural logic using the SQL/PSM standard. Available in Databricks Runtime 16.3+ and Databricks SQL.
+## What You Can Build
 
-## Compound Statements
+SQL scripting brings procedural logic to Databricks SQL -- variables, control flow, exception handling, and stored procedures that persist in Unity Catalog. You can write conditional ETL pipelines, reusable data processing routines, and recursive queries for hierarchy traversal, all without leaving SQL. Available in DBR 16.3+ and Databricks SQL.
 
-Every SQL script starts with a `BEGIN...END` block containing variable declarations, condition/handler declarations, and executable statements.
+## In Action
+
+> "Write a SQL script that checks for new orders, processes them into a target table with a timestamp, and returns the status and row count."
 
 ```sql
 BEGIN
@@ -32,9 +34,18 @@ BEGIN
 END
 ```
 
-## Stored Procedures
+**Key decisions:**
+- Every SQL script starts with a `BEGIN...END` compound statement
+- Declarations must appear before executable statements -- variables first, then conditions, then handlers
+- `SET` assigns values from scalar subqueries or expressions
+- The compound statement must be the sole statement in a notebook cell
+- Variables are scoped to their enclosing `BEGIN...END` block
 
-Stored procedures persist SQL scripts in Unity Catalog and are invoked with `CALL`. Available in DBR 17.0+ (Public Preview).
+## More Patterns
+
+### Create a reusable stored procedure with error handling
+
+> "Write a stored procedure that upserts customer data with MERGE, returns the affected row count, and handles failures gracefully."
 
 ```sql
 CREATE OR REPLACE PROCEDURE catalog.schema.upsert_customers(
@@ -64,22 +75,11 @@ END;
 CALL catalog.schema.upsert_customers('catalog.schema.staging_customers', ?);
 ```
 
-## Control Flow
+Stored procedures persist in Unity Catalog and are invoked with `CALL`. The `EXIT HANDLER FOR SQLEXCEPTION` catches any error inside the procedure body, sets the output to -1, and raises a custom error message. Available in DBR 17.0+ (Public Preview).
 
-| Statement | Purpose |
-|-----------|---------|
-| `IF / ELSEIF / ELSE` | Conditional branching |
-| `CASE` | Simple or searched case |
-| `WHILE ... DO` | Condition-based loop |
-| `FOR row AS query DO` | Iterate over query results |
-| `LOOP ... END LOOP` | Unconditional loop (use `LEAVE` to exit) |
-| `REPEAT ... UNTIL` | Execute at least once, repeat until condition |
-| `LEAVE label` | Exit a labeled loop (like `BREAK`) |
-| `ITERATE label` | Skip to next iteration (like `CONTINUE`) |
+### Traverse an organizational hierarchy with recursive CTEs
 
-## Recursive CTEs
-
-Available in DBR 17.0+ and DBSQL 2025.20+. Enables hierarchy traversal and graph walking.
+> "Write a SQL query that walks an employee hierarchy from the CEO down, tracking depth and the full path."
 
 ```sql
 WITH RECURSIVE org_chart AS (
@@ -97,11 +97,11 @@ WITH RECURSIVE org_chart AS (
 SELECT * FROM org_chart ORDER BY depth, name;
 ```
 
-Default recursion depth is 100 (override with `MAX RECURSION LEVEL`). Default row limit is 1,000,000.
+Recursive CTEs need an anchor query (seed rows) joined to a recursive step via `UNION ALL`. The `WHERE o.depth < 10` acts as a safety valve. Default recursion depth is 100 (override with `MAX RECURSION LEVEL`), and the default row limit is 1,000,000. Available in DBR 17.0+ and DBSQL 2025.20+.
 
-## Multi-Statement Transactions
+### Execute atomic multi-statement transactions
 
-Use `BEGIN ATOMIC...END` for atomic multi-statement operations (Preview):
+> "Write a SQL script that inserts a customer, their first order, and an audit log entry as a single atomic operation."
 
 ```sql
 BEGIN ATOMIC
@@ -111,9 +111,11 @@ BEGIN ATOMIC
 END;
 ```
 
-Tables used in `BEGIN ATOMIC` blocks must have the `catalogManaged` table feature enabled.
+If any statement fails, all changes roll back. Tables used in `BEGIN ATOMIC` blocks must have the `catalogManaged` table feature enabled. This is a Preview feature.
 
-## Dynamic SQL
+### Build dynamic SQL for parameterized operations
+
+> "Write a SQL script that uses EXECUTE IMMEDIATE to run a parameterized query and capture the result."
 
 ```sql
 BEGIN
@@ -124,13 +126,11 @@ BEGIN
 END;
 ```
 
-## Runtime Version Reference
+`EXECUTE IMMEDIATE` constructs SQL from strings at runtime. Use named parameters (`:param`) for clarity, and `INTO` to capture single-row results into declared variables. Available since DBR 14.3.
 
-| Feature | Minimum Runtime | Status |
-|---------|----------------|--------|
-| SQL Scripting | 16.3 | GA |
-| Stored Procedures | 17.0 | Public Preview |
-| Recursive CTEs | 17.0 / DBSQL 2025.20 | GA |
-| Multi-variable DECLARE | 17.2 | GA |
-| EXECUTE IMMEDIATE (basic) | 14.3 | GA |
-| Multi-statement Transactions | Varies | Preview |
+## Watch Out For
+
+- **Mixing declarations with executable statements** -- declarations must come first in a `BEGIN...END` block. Variable declarations, then condition declarations, then handler declarations, then executable statements. Breaking this order causes syntax errors.
+- **Forgetting `WHERE` guards on recursive CTEs** -- without a depth limit or termination condition, recursive queries hit the 100-level default and error out. Always add a `WHERE depth < N` clause.
+- **Using `BEGIN ATOMIC` without the `catalogManaged` table feature** -- existing tables can't be upgraded in place. You need to recreate them with `TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')`.
+- **Expecting `CREATE OR REPLACE TEMP TABLE`** -- it's not supported yet. Drop the temp table first, then recreate it.

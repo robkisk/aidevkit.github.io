@@ -1,149 +1,132 @@
 ---
 title: AI/BI Dashboards
-description: Create and manage Databricks AI/BI dashboards programmatically — datasets, widgets, layouts, filters, and multi-page designs via the dashboard JSON API.
+description: Build data visualizations, KPI displays, and filtered reports programmatically using the AI/BI dashboard JSON API.
 sidebar:
   order: 1
 ---
 
-AI/BI Dashboards provide a low-code way to build data visualizations, KPI displays, and filtered reports on top of Unity Catalog tables. Use the dashboard JSON API when you need programmatic control over datasets, widgets, layouts, and filters -- for example, generating dashboards from templates or deploying them across workspaces via CI/CD.
+## What You Can Build
 
-## Overview
+AI/BI Dashboards give you programmatic control over data visualizations, KPI counters, charts, tables, and filtered reports on top of Unity Catalog tables. You can generate dashboards from templates, deploy them across workspaces via CI/CD, and configure multi-page layouts with global and page-level filters -- all through a JSON API.
 
-The AI/BI Dashboards skill teaches Claude Code how to create, configure, and deploy Databricks AI/BI dashboards (formerly Lakeview dashboards) using the dashboard JSON API. Use it when building data visualizations, KPI displays, or interactive filtered reports directly from Unity Catalog tables. It covers dataset design, widget configuration, layout rules, and filter architecture.
+## In Action
 
-## Capabilities
+> "Build a dashboard with KPI counters for total trips, average fare, and average distance, plus a bar chart of trips by pickup ZIP code using the NYC taxi dataset."
 
-- Build complete dashboards with datasets, widgets, and multi-page layouts
-- Create KPI counters, bar charts, line charts, pie charts, and data tables
-- Design global filters (cross-dashboard) and page-level filters
-- Validate SQL queries against warehouses before deploying dashboard JSON
-- Configure 6-column grid layouts with proper widget sizing and spacing
-- Use pre-aggregated and aggregating widget patterns for counters
-- Apply Spark SQL patterns for date math, truncation, and grouping
-- Publish and unpublish dashboards for sharing
+```python
+import json
 
-## Related MCP Tools
+# Test queries first (mandatory validation step)
+execute_sql("SELECT COUNT(*) as trips, AVG(fare_amount) as avg_fare, "
+            "AVG(trip_distance) as avg_distance FROM samples.nyctaxi.trips")
 
-| Tool | Description |
-|------|-------------|
-| `get_table_details` | Inspect table schemas to design dataset queries |
-| `execute_sql` | Test SQL queries before embedding them in dashboards |
-| `get_best_warehouse` | Find an available SQL warehouse for dashboard execution |
-| `create_or_update_dashboard` | Deploy dashboard JSON to the workspace |
-| `get_dashboard` | Retrieve dashboard details by ID or list all dashboards |
-| `delete_dashboard` | Move a dashboard to trash |
-| `publish_dashboard` | Publish or unpublish a dashboard for sharing |
+execute_sql("SELECT pickup_zip, COUNT(*) as trip_count "
+            "FROM samples.nyctaxi.trips GROUP BY pickup_zip "
+            "ORDER BY trip_count DESC LIMIT 10")
 
-## Example Prompts
+# Build dashboard JSON
+dashboard = {
+    "datasets": [
+        {"name": "summary", "displayName": "Summary Stats",
+         "queryLines": ["SELECT COUNT(*) as trips, AVG(fare_amount) as avg_fare, ",
+                        "AVG(trip_distance) as avg_distance FROM samples.nyctaxi.trips"]},
+        {"name": "by_zip", "displayName": "Trips by ZIP",
+         "queryLines": ["SELECT pickup_zip, COUNT(*) as trip_count ",
+                        "FROM samples.nyctaxi.trips GROUP BY pickup_zip ",
+                        "ORDER BY trip_count DESC LIMIT 10"]}
+    ],
+    "pages": [{"name": "overview", "displayName": "Overview",
+               "pageType": "PAGE_TYPE_CANVAS", "layout": [...]}]
+}
 
-Use these prompts with Claude Code to build dashboards:
-
-```
-Create a dashboard showing NYC taxi trip statistics with
-total trips, average fare, and average distance KPIs plus
-a bar chart of trips by pickup ZIP code
-```
-
-```
-Build a sales dashboard with a global region filter that
-affects all pages, showing revenue counters and a
-trend line chart by month
+result = create_or_update_dashboard(
+    display_name="NYC Taxi Dashboard",
+    serialized_dashboard=json.dumps(dashboard),
+    warehouse_id=get_best_warehouse()
+)
 ```
 
-```
-Add a multi-select filter for campaign name to my
-marketing dashboard so users can slice all widgets by campaign
-```
+**Key decisions:**
+- Always test SQL queries with `execute_sql` before embedding them in dashboard JSON -- untested queries produce "Invalid widget definition" errors
+- One dataset per domain (orders, customers, products) with fully qualified table names
+- The 6-column grid layout requires every row to sum to exactly width 6 with no gaps
+- Counters use `spec.version: 2`, bar/line/pie charts use `spec.version: 3`
+- Every widget `fieldName` in encodings must exactly match the `name` in query fields
 
-```
-Create a multi-page dashboard with an overview page for KPIs,
-a trends page with time series charts, and a details page
-with a data table
-```
+## More Patterns
 
-```
-Build a pie chart showing order distribution across the top 5
-product categories with an "Other" bucket for the rest
-```
+### Add global filters that affect all pages
 
-```
-Design a dashboard layout with 3 KPI counters across the top,
-two side-by-side charts in the middle, and a full-width table
-at the bottom
-```
+> "Build a dashboard with a global region filter that slices all widgets across every page."
 
-## Key Concepts
-
-### Dashboard JSON Structure
-
-Dashboards are defined as JSON with three main sections:
-- **Datasets** — SQL queries that feed widgets, each with a unique name and fully-qualified table references
-- **Pages** — Canvas or global-filter pages containing widget layouts
-- **Widgets** — Visual elements (counters, charts, tables, filters, text) positioned on a 6-column grid
-
-### 6-Column Grid Layout
-
-Every dashboard uses a 6-column grid. Each widget has a position (`x`, `y`, `width`, `height`) and every row must sum to exactly width 6 with no gaps.
-
-| Widget Type | Recommended Width | Recommended Height |
-|-------------|------------------|--------------------|
-| Text header | 6 | 1 |
-| Counter/KPI | 2 | 3-4 |
-| Line/Bar chart | 3 | 5-6 |
-| Pie chart | 3 | 5-6 |
-| Full-width chart | 6 | 5-7 |
-| Table | 6 | 5-8 |
-
-### Widget Version Requirements
-
-Different widget types require specific version numbers in their spec:
-
-| Widget Type | Version |
-|-------------|---------|
-| counter | 2 |
-| table | 2 |
-| filter-multi-select | 2 |
-| filter-single-select | 2 |
-| filter-date-range-picker | 2 |
-| bar | 3 |
-| line | 3 |
-| pie | 3 |
-| text | N/A (no spec block) |
-
-### Field Name Matching
-
-The `name` in `query.fields` must exactly match the `fieldName` in widget `encodings`. A mismatch causes "no selected fields to visualize" errors.
-
-```json
-// Correct: names match
-"fields": [{"name": "sum(spend)", "expression": "SUM(`spend`)"}]
-"encodings": {"value": {"fieldName": "sum(spend)", "displayName": "Total Spend"}}
+```python
+# Global filter page
+{
+    "name": "filters",
+    "displayName": "Filters",
+    "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+    "layout": [{
+        "widget": {
+            "name": "filter_region",
+            "queries": [{"name": "ds_data_region", "query": {
+                "datasetName": "sales",
+                "fields": [{"name": "region", "expression": "`region`"}],
+                "disaggregated": False
+            }}],
+            "spec": {
+                "version": 2,
+                "widgetType": "filter-multi-select",
+                "encodings": {"fields": [{"fieldName": "region",
+                    "displayName": "Region", "queryName": "ds_data_region"}]},
+                "frame": {"showTitle": True, "title": "Region"}
+            }
+        },
+        "position": {"x": 0, "y": 0, "width": 2, "height": 2}
+    }]
+}
 ```
 
-### Global vs Page-Level Filters
+Global filters live on a dedicated page with `PAGE_TYPE_GLOBAL_FILTERS` and affect all pages that have datasets containing the filter field. Page-level filters go on regular canvas pages and affect only that page's widgets. Filter types: `filter-multi-select`, `filter-single-select`, `filter-date-range-picker`.
 
-| Type | Placement | Scope |
-|------|-----------|-------|
-| **Global** | Dedicated page with `PAGE_TYPE_GLOBAL_FILTERS` | Affects all pages with matching dataset fields |
-| **Page-level** | Regular canvas page | Affects only widgets on that page |
+### Design a standard dashboard layout
 
-Filter widget types: `filter-multi-select`, `filter-single-select`, `filter-date-range-picker`. Always use `spec.version: 2` and include `frame` with `showTitle: true`.
+> "Show me the recommended widget layout for a dashboard with KPIs, charts, and a detail table."
 
-### Dataset Architecture
+The 6-column grid follows a standard structure:
 
-- One dataset per domain (orders, customers, products)
-- Exactly one valid SQL query per dataset (no semicolons)
-- Always use fully-qualified table names: `catalog.schema.table_name`
-- Put all business logic (CASE/WHEN, COALESCE, ratios) in the dataset SQL with explicit aliases
-- Every widget `fieldName` must match a dataset column or alias exactly
+```text
+y=0:  Title text widget (w=6, h=1)
+y=1:  Subtitle text widget (w=6, h=1)
+y=2:  Three KPI counters (w=2 each, h=3)
+y=5:  Section header (w=6, h=1)
+y=6:  Two side-by-side charts (w=3 each, h=5-6)
+y=12: Full-width data table (w=6, h=5-8)
+```
 
-### Cardinality Guidelines
+Text widgets use `multilineTextboxSpec` with no `spec` block. Title and subtitle must be separate widgets at different y positions -- putting them in the same `lines` array concatenates them on one line.
 
-Charts with color/grouping dimensions should have 3-8 distinct values. High-cardinality dimensions (customer IDs, order IDs) should use table widgets instead of charts. For dimensions with more than 10 values, aggregate to a higher level or use a TOP-N + "Other" bucket pattern.
+### Configure counter widgets for KPIs
 
-## References
+> "Show the two patterns for counter widgets: pre-aggregated (single row) and aggregating (multi-row with filters)."
 
-- [AI/BI Dashboards Overview](https://docs.databricks.com/aws/en/dashboards/)
-- [Dashboard API](https://docs.databricks.com/api/workspace/lakeview)
-- [SQL Language Reference](https://docs.databricks.com/aws/en/sql/language-manual/)
-- [Spark SQL Functions](https://docs.databricks.com/aws/en/sql/language-manual/functions/)
+```python
+# Pattern 1: Pre-aggregated dataset (1 row, no filters)
+{"name": "revenue", "expression": "`revenue`"}  # field
+{"fieldName": "revenue", "displayName": "Total Revenue"}  # encoding
+# Use disaggregated: True
+
+# Pattern 2: Aggregating widget (multi-row, supports filters)
+{"name": "sum(spend)", "expression": "SUM(`spend`)"}  # field
+{"fieldName": "sum(spend)", "displayName": "Total Spend"}  # encoding
+# Use disaggregated: False
+```
+
+The field `name` and encoding `fieldName` must match exactly. For aggregating counters, the convention is to use the aggregation expression as the name (e.g., `"sum(spend)"`). Percent values must be 0-1 in the data, not 0-100.
+
+## Watch Out For
+
+- **Deploying without testing queries via `execute_sql`** -- untested queries are the top cause of broken dashboard widgets. Test every dataset query and verify column names match widget field references before deploying.
+- **Mismatching field names between query fields and encodings** -- `name` in `query.fields` must exactly match `fieldName` in widget `encodings`. A mismatch produces "no selected fields to visualize" errors. For aggregations, use the same string in both places (e.g., `"sum(spend)"`).
+- **Using wrong version numbers for widget types** -- counters, tables, and filters need `version: 2`. Bar, line, and pie charts need `version: 3`. Text widgets have no `spec` block at all. Wrong versions produce "Invalid widget definition" errors.
+- **Charting high-cardinality dimensions** -- charts with color/grouping dimensions should have 3-8 distinct values. For dimensions with 10+ values, use a TOP-N with "Other" bucket pattern, or switch to a table widget.
+- **Using `widgetType: "filter"` for filter widgets** -- this type doesn't exist. Use `filter-multi-select`, `filter-single-select`, or `filter-date-range-picker` instead.

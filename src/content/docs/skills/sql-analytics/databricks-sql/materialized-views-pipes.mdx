@@ -1,17 +1,17 @@
 ---
 title: Materialized Views & Pipe Syntax
-description: Materialized views with scheduled refresh, temporary tables and views, and pipe syntax for readable SQL transformations in Databricks SQL.
+description: Precompute query results with scheduled materialized views and chain readable SQL transformations using pipe syntax.
 sidebar:
   order: 2
 ---
 
-Materialized views precompute and store query results for fast reads, while pipe syntax makes multi-step SQL transformations more readable. This page covers MV creation with scheduled refresh, temporary tables and views for session-scoped work, and the pipe operator for chaining filters, aggregations, and joins.
+## What You Can Build
 
-## Materialized Views
+Materialized views store precomputed query results as Delta tables that update on a schedule, on upstream data changes, or on demand. Pipe syntax chains SQL operations top-down using the `|>` operator, eliminating nested subqueries. Together they give you fast-read analytics with readable transformation logic.
 
-Materialized views (MVs) physically store precomputed query results as Delta tables. They update automatically via schedule, event trigger, or on-demand refresh.
+## In Action
 
-### Create with Scheduled Refresh
+> "Write SQL that creates a materialized view of daily revenue by region with hourly auto-refresh."
 
 ```sql
 CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.daily_revenue
@@ -28,16 +28,17 @@ JOIN catalog.schema.dim_store USING (store_id)
 GROUP BY order_date, region;
 ```
 
-### Refresh Strategies
+**Key decisions:**
+- `SCHEDULE EVERY 1 HOUR` creates a Databricks Job that refreshes automatically (valid intervals: 1-72 hours, 1-31 days, 1-8 weeks)
+- `CLUSTER BY` applies Liquid Clustering to the materialized output for fast reads
+- The MV physically stores results as a Delta table -- queries read precomputed data instead of rerunning the aggregation
+- Requires a Unity Catalog-enabled Serverless SQL warehouse
 
-| Strategy | Syntax | Use Case |
-|----------|--------|----------|
-| Manual | `REFRESH MATERIALIZED VIEW mv_name` | On-demand |
-| Scheduled | `SCHEDULE EVERY 1 HOUR` | Predictable cadence |
-| Event-driven | `TRIGGER ON UPDATE` | Near-real-time SLA |
-| Async | `REFRESH MATERIALIZED VIEW mv_name ASYNC` | Long-running refreshes |
+## More Patterns
 
-### Event-Driven Refresh
+### Refresh on upstream data changes
+
+> "Write SQL that creates a materialized view which refreshes within 5 minutes of upstream table updates."
 
 ```sql
 CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.customer_orders
@@ -48,33 +49,31 @@ JOIN catalog.schema.orders o ON c.customer_id = o.customer_id
 GROUP BY c.customer_id, c.name;
 ```
 
-## Temporary Tables and Views
+`TRIGGER ON UPDATE` watches upstream tables for changes and refreshes the MV automatically. The `AT MOST EVERY INTERVAL 5 MINUTES` throttle prevents excessive refreshes from rapid upstream writes. Maximum 10 upstream source tables and 1,000 trigger-based MVs per workspace.
 
-| Aspect | Temporary Tables | Temporary Views |
-|--------|-----------------|-----------------|
-| Storage | Physical Delta table | Logical query definition |
-| Max lifetime | 7 days or session end | Session end |
-| DML support | INSERT, UPDATE, MERGE | None (read-only) |
-| CREATE OR REPLACE | Not supported | Supported |
-| Performance | Faster for repeated reads | Recomputed each time |
+### Use temporary tables and views for session work
+
+> "Write SQL that creates a temporary table for intermediate results and a temporary view as a lightweight query alias."
 
 ```sql
--- Temporary table (physical storage)
+-- Temporary table (physical storage, supports DML)
 CREATE TEMP TABLE temp_active_users
 AS SELECT user_id, username, last_login
 FROM catalog.schema.users
 WHERE last_login > current_date() - INTERVAL 30 DAYS;
 
--- Temporary view (logical alias)
+-- Temporary view (logical alias, recomputed each access)
 CREATE OR REPLACE TEMPORARY VIEW active_customers
 AS SELECT customer_id, name, email
 FROM catalog.schema.customers
 WHERE status = 'active';
 ```
 
-## Pipe Syntax
+Temporary tables persist data for up to 7 days or until session end -- use them when you need repeated reads or DML (INSERT, UPDATE, MERGE). Temporary views are zero-cost query aliases that recompute on every access. They share a namespace: you can't create both with the same name.
 
-Pipe syntax (DBR 16.2+) allows composing SQL queries as a top-down chain using the `|>` operator. It eliminates nested subqueries and compiles to the same execution plan as traditional SQL.
+### Chain transformations with pipe syntax
+
+> "Write a SQL query using pipe syntax that joins orders with products and customers, computes line totals, and aggregates revenue by region and category."
 
 ```sql
 FROM catalog.schema.orders
@@ -91,18 +90,26 @@ FROM catalog.schema.orders
   |> LIMIT 20;
 ```
 
-### Available Pipe Operators
+Pipe syntax reads top-down instead of inside-out. `EXTEND` adds columns (like PySpark's `withColumn`), `SET` modifies existing columns, `DROP` removes them. It compiles to the same execution plan as traditional SQL -- zero performance difference. Available in DBR 16.2+.
 
-| Operator | Purpose | Traditional Equivalent |
-|----------|---------|----------------------|
-| `SELECT` | Project columns | `SELECT` |
-| `EXTEND` | Add new columns | `SELECT *, expr AS new_col` |
-| `SET` | Modify existing columns | `SELECT` with replacement |
-| `DROP` | Remove columns | `SELECT * EXCEPT` |
-| `WHERE` | Filter rows | `WHERE` |
-| `AGGREGATE ... GROUP BY` | Aggregation | `SELECT agg() GROUP BY` |
-| `JOIN` | Combine tables | `JOIN` |
-| `ORDER BY` | Sort | `ORDER BY` |
-| `LIMIT` / `OFFSET` | Pagination | `LIMIT` / `OFFSET` |
-| `TABLESAMPLE` | Sample rows | `TABLESAMPLE` |
-| `PIVOT` / `UNPIVOT` | Reshape | `PIVOT` / `UNPIVOT` |
+### Debug queries by commenting out tail operations
+
+> "Show how pipe syntax makes it easy to inspect intermediate results during development."
+
+```sql
+FROM catalog.schema.sales
+  |> WHERE region = 'US'
+  |> EXTEND amount * tax_rate AS tax_amount
+  -- |> AGGREGATE SUM(tax_amount) AS total_tax GROUP BY state
+  -- |> ORDER BY total_tax DESC
+;
+```
+
+Comment out the last pipe operations to inspect intermediate results at any stage of the pipeline. With traditional SQL, you'd need to restructure the entire query or wrap it in a CTE.
+
+## Watch Out For
+
+- **Using `SELECT` with aggregate functions in pipe syntax** -- pipe syntax separates projection from aggregation. Use `AGGREGATE ... GROUP BY` instead of `SELECT SUM(x) ... GROUP BY`. Putting aggregates in `SELECT` inside a pipe chain raises an error.
+- **Expecting incremental refresh without row tracking** -- MVs fall back to full refresh unless source tables have `delta.enableRowTracking = true`. Enable it on source tables if refresh cost matters.
+- **Creating MVs on Classic SQL warehouses** -- materialized views require Serverless SQL warehouses. Creation silently triggers a serverless pipeline regardless of your warehouse type, but the pipeline won't start if serverless isn't available.
+- **Assuming `OPTIMIZE` and `VACUUM` work on MVs** -- they're managed automatically. Running these commands on a materialized view raises an error.

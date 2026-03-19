@@ -1,71 +1,91 @@
 ---
 title: Genie Conversations
-description: Programmatically ask questions to Genie Spaces via the Conversation API with follow-up context, timeout handling, and response parsing.
+description: Ask natural language questions to curated Genie Spaces programmatically with follow-up context and response handling.
 sidebar:
   order: 1
 ---
 
-The Conversation API lets you programmatically ask natural language questions to a curated Genie Space and receive SQL-generated answers. Use it for testing spaces after creation, building chat interfaces on top of Genie, or integrating natural language data queries into multi-agent workflows.
+## What You Can Build
 
-## Conversation API
+The Conversation API lets you programmatically send natural language questions to a curated Genie Space and receive SQL-generated answers. You can test spaces after creation, build chat interfaces on top of Genie, integrate natural language data queries into multi-agent workflows, or run conversational data exploration with follow-up context.
 
-The `ask_genie` tool sends natural language questions to a curated Genie Space and receives SQL-generated answers.
+## In Action
 
-### Basic Usage
+> "Write Python code that asks a Genie Space about last month's sales and then follows up to break results down by region."
 
 ```python
-ask_genie(
+# First question -- starts a new conversation
+result = ask_genie(
     space_id="01abc123...",
     question="What were total sales last month?"
 )
-```
 
-**Response fields:**
-
-| Field | Description |
-|-------|-------------|
-| `question` | The original question asked |
-| `conversation_id` | ID for follow-up questions |
-| `status` | `COMPLETED`, `FAILED`, `CANCELLED`, `TIMEOUT` |
-| `sql` | The SQL query Genie generated |
-| `columns` | List of column names in result |
-| `data` | Query results as list of rows |
-| `row_count` | Number of rows returned |
-
-### Follow-up Questions
-
-```python
-result = ask_genie(space_id="01abc123...", question="What were total sales last month?")
-
-# Follow-up uses context from first question
-ask_genie(
+# Follow-up -- uses context from the first question
+follow_up = ask_genie(
     space_id="01abc123...",
     question="Break that down by region",
     conversation_id=result["conversation_id"]
 )
 ```
 
-### When to Use `ask_genie` vs Direct SQL
+**Key decisions:**
+- `space_id` targets a specific Genie Space that's been curated with business logic, instructions, and certified queries
+- Omitting `conversation_id` starts a fresh conversation; passing it enables contextual follow-ups where "that" refers to the previous answer
+- Genie generates SQL from your natural language question and runs it against the space's configured tables
+- The response includes the generated SQL, column names, data rows, and status
 
-| Scenario | Use |
-|----------|-----|
-| Genie Space has curated business logic | `ask_genie` |
-| User explicitly says "ask Genie" | `ask_genie` |
-| Testing a Genie Space after creating it | `ask_genie` |
-| Simple ad-hoc query with known SQL | `execute_sql` |
-| Need precise control over query | `execute_sql` |
+## More Patterns
 
-### Best Practices
+### Handle different response statuses
 
-- **New conversations for new topics** -- do not reuse conversations across unrelated questions
-- **Handle clarification requests** -- check for `text_response` when Genie asks for more detail
-- **Set appropriate timeouts** -- 30-60s for simple aggregations, 120+ for large scans
+> "Write Python code that handles successful responses, failures, and timeouts from Genie."
 
-### Troubleshooting
+```python
+result = ask_genie(
+    space_id="01abc123...",
+    question="What is the churn rate?",
+    timeout_seconds=60
+)
 
-| Issue | Solution |
-|-------|----------|
-| "Genie Space not found" | Verify `space_id` with `get_genie` |
-| "Query timed out" | Increase `timeout_seconds` or simplify question |
-| "Failed to generate SQL" | Rephrase question or add instructions to space |
-| Unexpected results | Review generated SQL and add certified queries |
+if result["status"] == "COMPLETED":
+    print(f"SQL: {result['sql']}")
+    for row in result["data"]:
+        print(row)
+elif result["status"] == "FAILED":
+    print(f"Error: {result['error']}")
+elif result["status"] == "TIMEOUT":
+    print("Try a simpler question or increase timeout")
+```
+
+Status values are `COMPLETED`, `FAILED`, `CANCELLED`, and `TIMEOUT`. When Genie needs more detail, it returns a `text_response` field with a clarification question instead of data.
+
+### Test a Genie Space after creation
+
+> "Write Python code that validates a newly created Genie Space by asking a series of test questions."
+
+```python
+space_id = "01abc123..."
+
+# Test basic aggregation
+r1 = ask_genie(space_id=space_id, question="How many employees do we have?")
+print(f"Employee count: {r1['status']} - {r1['data']}")
+
+# Test filtering
+r2 = ask_genie(space_id=space_id, question="What is the average salary by department?")
+print(f"Salary by dept: {r2['status']} - {r2['row_count']} rows")
+```
+
+After creating a space with `create_or_update_genie`, test it with questions that exercise different patterns: simple aggregations, filters, group-by queries, and joins. Review the generated SQL in each response to verify Genie is using the right tables and logic.
+
+### Choose between Genie and direct SQL
+
+> "Help me decide when to use ask_genie versus running SQL directly."
+
+Use `ask_genie` when the Genie Space has curated business logic (like "active customer = ordered in 90 days"), when the user explicitly asks to use their Genie Space, or when you're testing a space after creating it. Use direct SQL when you have the exact query already, need precise control over joins and filters, or when no Genie Space exists for the target data.
+
+## Watch Out For
+
+- **Reusing conversation IDs across unrelated topics** -- Genie carries context from earlier messages, which confuses answers to unrelated questions. Start a new conversation for each distinct topic.
+- **Ignoring clarification requests** -- when Genie can't generate SQL, it returns a `text_response` asking for more detail. Check for this field and rephrase with more specifics instead of retrying the same question.
+- **Setting timeouts too low for complex queries** -- simple aggregations finish in 30-60 seconds, but large scans and complex joins need 120+ seconds. Match your timeout to the expected query complexity.
+- **Expecting Genie to answer questions outside its curated tables** -- Genie only knows about the tables configured in the space. If results are unexpected, review the generated SQL and add instructions or certified queries to the space.

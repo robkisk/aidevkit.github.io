@@ -1,50 +1,17 @@
 ---
 title: Document Processing Pipelines
-description: End-to-end batch document processing using AI Functions in SDP pipelines — parsing, classification, extraction, similarity matching, and custom RAG pipelines.
+description: Build batch document processing pipelines that parse, classify, extract, and match documents at scale using chained AI functions.
 sidebar:
   order: 4
 ---
 
-AI Functions can be chained into multi-stage SDP pipelines that parse, classify, extract, and match documents at scale. This page provides a production architecture for batch document processing -- from raw files in a landing volume through structured Delta output -- using `ai_parse_document`, `ai_classify`, `ai_extract`, and `ai_similarity`.
+## What You Can Build
 
-## Pipeline Architecture
+AI functions chain into multi-stage pipelines that take raw files from a landing volume and produce structured Delta output. You parse binary documents with `ai_parse_document`, classify them with `ai_classify`, extract flat fields with `ai_extract`, pull nested JSON with `ai_query`, and score similarity with `ai_similarity`. The result is a production-grade document processing architecture that runs entirely in SQL.
 
-```
-[Landing Volume] -> Stage 1: ai_parse_document
-                 -> Stage 2: ai_classify (document type)
-                 -> Stage 3: ai_extract (flat) + ai_query (nested JSON)
-                 -> Stage 4: ai_similarity (matching)
-                 -> Stage 5: Final Delta output
-```
+## In Action
 
-### Function Selection by Stage
-
-| Stage | Preferred | Use `ai_query` when... |
-|-------|-----------|----------------------|
-| Parse binary docs | `ai_parse_document` | Need image-level reasoning |
-| Classify document type | `ai_classify` | More than 20 categories |
-| Extract flat fields | `ai_extract` | Nested arrays in schema |
-| Score similarity | `ai_similarity` | Cross-document reasoning |
-| Extract nested JSON | `ai_query` with `responseFormat` | This is the intended use |
-
-## Centralized Configuration
-
-Store model names, prompts, and paths in `config.yml`:
-
-```yaml
-models:
-  default: "databricks-claude-sonnet-4"
-  mini: "databricks-meta-llama-3-1-8b-instruct"
-prompts:
-  extract_invoice: |
-    Extract invoice fields and return ONLY valid JSON.
-    Fields: invoice_number, vendor_name, total_amount,
-    line_items: [{item_code, description, quantity, unit_price}].
-```
-
-## Custom RAG Pipeline
-
-### Parse and Chunk into Delta
+> "Write a SQL pipeline that parses PDF documents from a volume, chunks the content, and stores the results in a Delta table with Change Data Feed enabled for Vector Search sync."
 
 ```sql
 CREATE OR REPLACE TABLE catalog.schema.parsed_chunks AS
@@ -64,19 +31,77 @@ SELECT
   variant_get(element, '$.type', 'STRING') AS element_type
 FROM elements
 WHERE length(trim(variant_get(element, '$.content', 'STRING'))) > 10;
-```
 
-Enable Change Data Feed for Vector Search Delta Sync:
-
-```sql
 ALTER TABLE catalog.schema.parsed_chunks
 SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
 ```
 
-## Tips
+**Key decisions:**
+- `ai_parse_document` handles PDFs, images, DOCX, and PPTX -- requires DBR 17.1+
+- `variant_get` navigates the VARIANT output structure to extract text content and element types
+- The `md5` hash creates a deterministic chunk ID from path + content for deduplication
+- Filtering chunks shorter than 10 characters removes noise (headers, page numbers, empty elements)
+- Change Data Feed enables Delta Sync for downstream Vector Search indexes
 
-1. **Parse first, enrich second** -- never pass raw binary to `ai_query`
-2. **Flat fields = `ai_extract`; nested arrays = `ai_query`**
-3. **`failOnError => false` is mandatory in batch** -- write errors to a sidecar table
-4. **Truncate before `ai_query`** -- use `LEFT(text, 6000)` for context window limits
-5. **Prompts belong in config.yml** -- a prompt change should be a config change
+## More Patterns
+
+### Classify document types after parsing
+
+> "Write a SQL query that classifies parsed documents into invoice, contract, or report categories."
+
+```sql
+SELECT
+  source_path,
+  ai_classify(
+    content,
+    ARRAY('invoice', 'contract', 'report', 'correspondence')
+  ) AS doc_type
+FROM catalog.schema.parsed_chunks
+WHERE element_type = 'text';
+```
+
+Run classification on the text content, not the raw binary. Use the first text element or a concatenation of the first few elements for a representative sample.
+
+### Extract structured fields from invoices
+
+> "Write a SQL query that extracts invoice number, vendor name, and total amount as structured JSON using ai_query with responseFormat."
+
+```sql
+SELECT
+  source_path,
+  ai_query(
+    'databricks-claude-sonnet-4',
+    CONCAT('Extract invoice fields and return ONLY valid JSON. Fields: invoice_number, vendor_name, total_amount, line_items (array of item_code, description, quantity, unit_price). Document: ', content),
+    responseFormat => '{"type":"json_object"}',
+    failOnError => false
+  ) AS extraction
+FROM catalog.schema.parsed_chunks
+WHERE element_type = 'text';
+```
+
+Use `ai_extract` for flat fields (person, location, date). Switch to `ai_query` with `responseFormat` when the output has nested arrays like line items. Always set `failOnError => false` in batch to avoid losing the entire job on one bad document.
+
+### Store prompts in centralized config
+
+> "Write a YAML configuration file that centralizes model names and extraction prompts for a document processing pipeline."
+
+```yaml
+models:
+  default: "databricks-claude-sonnet-4"
+  mini: "databricks-meta-llama-3-1-8b-instruct"
+prompts:
+  extract_invoice: |
+    Extract invoice fields and return ONLY valid JSON.
+    Fields: invoice_number, vendor_name, total_amount,
+    line_items: [{item_code, description, quantity, unit_price}].
+```
+
+Externalizing prompts into config means a prompt change is a config change, not a code change. This matters when you're iterating on extraction quality -- you can version prompts independently from the pipeline logic.
+
+## Watch Out For
+
+- **Passing raw binary directly to `ai_query`** -- always parse first with `ai_parse_document`, then feed the extracted text to `ai_query`. Raw binary content produces unusable output.
+- **Skipping `failOnError => false` in batch document pipelines** -- one corrupt PDF kills the entire query. Route errors to a sidecar table for manual review.
+- **Sending full document text to `ai_query` without truncation** -- context windows have hard limits. Use `LEFT(text, 6000)` to cap input length, or chunk documents and process each chunk separately.
+- **Using `ai_extract` when the output schema has nested arrays** -- `ai_extract` returns flat STRUCTs only. For invoice line items, nested address objects, or any array output, use `ai_query` with `responseFormat`.
+- **Hardcoding prompts in SQL** -- prompts belong in config files. When extraction quality degrades, you want to update a prompt without touching pipeline code.

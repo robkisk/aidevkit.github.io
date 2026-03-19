@@ -1,102 +1,111 @@
 ---
 title: Task-Specific Functions
-description: Complete reference for Databricks task-specific AI functions — ai_classify, ai_extract, ai_summarize, ai_mask, ai_translate, ai_similarity, ai_parse_document, and more.
+description: Classify, extract, summarize, redact, and translate data at scale using zero-config AI SQL functions.
 sidebar:
   order: 1
 ---
 
-Task-specific functions require no model endpoint selection. They call pre-configured Foundation Model APIs optimized for each task. All require DBR 15.1+; `ai_parse_document` requires DBR 17.1+.
+## What You Can Build
 
-## ai_analyze_sentiment
+Task-specific AI functions let you enrich entire tables with sentiment scores, entity extraction, PII redaction, and translations without configuring a model endpoint. They call pre-configured Foundation Model APIs under the hood, so you get LLM-powered transformations as naturally as calling `UPPER()` or `LENGTH()`. All require DBR 15.1+; `ai_parse_document` requires DBR 17.1+.
 
-Returns one of: `positive`, `negative`, `neutral`, `mixed`, or `NULL`.
+## In Action
+
+> "Write a SQL query that classifies support tickets by urgency, extracts the product name and error code, and scores sentiment -- all in one pass."
 
 ```sql
-SELECT ai_analyze_sentiment(review_text) AS sentiment FROM customer_reviews;
+SELECT
+  ticket_id,
+  ai_classify(description, ARRAY('urgent', 'not urgent', 'spam')) AS priority,
+  ai_extract(description, ARRAY('product', 'error_code')) AS entities,
+  ai_analyze_sentiment(description) AS sentiment
+FROM catalog.schema.support_tickets
+LIMIT 100;
 ```
 
-## ai_classify
+**Key decisions:**
+- `ai_classify` accepts 2-20 mutually exclusive labels and returns a single match
+- `ai_extract` returns a STRUCT with one field per label -- use `ai_query` instead when you need nested arrays
+- `ai_analyze_sentiment` returns one of `positive`, `negative`, `neutral`, `mixed`, or `NULL`
+- `LIMIT 100` during development controls Foundation Model API costs
+- No endpoint selection required -- each function routes to an optimized model automatically
 
-Classifies text into 2-20 mutually exclusive categories.
+## More Patterns
+
+### Redact PII before sharing data
+
+> "Write a SQL query that masks personal information in customer messages so I can share the dataset with external analysts."
 
 ```sql
-SELECT ai_classify(ticket_text, ARRAY('urgent', 'not urgent', 'spam')) AS priority
-FROM support_tickets;
+SELECT
+  message_id,
+  ai_mask(message_body, ARRAY('person', 'email', 'phone', 'address')) AS message_safe
+FROM catalog.schema.customer_messages;
 ```
 
-## ai_extract
+The `ai_mask` function replaces matched entities with `[MASKED]`. Common labels include `'person'`, `'email'`, `'phone'`, `'address'`, `'ssn'`, and `'credit_card'`. The original text stays intact in the source table -- masking happens at query time.
 
-Extracts structured entities. Returns a STRUCT with fields matching each label.
+### Summarize long-form content
+
+> "Write a SQL query that generates 20-word executive summaries of news articles."
 
 ```sql
-SELECT entities.person, entities.location, entities.date
-FROM (
-    SELECT ai_extract(message, ARRAY('person', 'location', 'date')) AS entities
-    FROM messages
-);
+SELECT
+  article_id,
+  ai_summarize(article_body, 20) AS brief
+FROM catalog.schema.news_articles;
 ```
 
-Use `ai_query` instead when output has nested arrays.
+The second argument sets the target word count. Default is 50; pass 0 for uncapped output. Summaries work well as inputs to downstream `ai_classify` calls for topic routing.
 
-## ai_mask
+### Translate product descriptions for localization
 
-Redacts PII from text. Common labels: `'person'`, `'email'`, `'phone'`, `'address'`, `'ssn'`, `'credit_card'`.
+> "Write a SQL query that translates product descriptions into Spanish and French."
 
 ```sql
-SELECT ai_mask(message_body, ARRAY('person', 'email', 'phone', 'address')) AS message_safe
-FROM customer_messages;
+SELECT
+  product_id,
+  description AS original,
+  ai_translate(description, 'es') AS description_es,
+  ai_translate(description, 'fr') AS description_fr
+FROM catalog.schema.products;
 ```
 
-## ai_summarize
+Supported language codes: `en`, `de`, `fr`, `it`, `pt`, `hi`, `es`, `th`. For languages outside this list, use `ai_query` with a custom prompt.
 
-Summarizes text with optional word limit (default 50, use 0 for uncapped).
+### Find duplicate companies by semantic similarity
 
-```sql
-SELECT ai_summarize(article_body, 20) AS brief FROM news_articles;
-```
-
-## ai_translate
-
-Supports: `en`, `de`, `fr`, `it`, `pt`, `hi`, `es`, `th`. Use `ai_query` for unsupported languages.
+> "Write a SQL query that detects potential duplicate company records using fuzzy name matching with a similarity threshold."
 
 ```sql
-SELECT ai_translate(product_description, 'es') AS description_es FROM products;
-```
-
-## ai_similarity
-
-Returns a FLOAT between 0.0 and 1.0 for semantic similarity.
-
-```sql
-SELECT a.id, b.id, ai_similarity(a.name, b.name) AS score
-FROM companies a JOIN companies b ON a.id < b.id
+SELECT a.id, b.id,
+  ai_similarity(a.name, b.name) AS score
+FROM catalog.schema.companies a
+JOIN catalog.schema.companies b ON a.id < b.id
 WHERE ai_similarity(a.name, b.name) > 0.85;
 ```
 
-## ai_parse_document
+`ai_similarity` returns a FLOAT between 0.0 and 1.0. The score is relative -- use it for ranking, not as an absolute threshold across different datasets.
 
-Parses PDFs, images, DOCX, and PPTX files. Requires DBR 17.1+.
+### Chain functions in PySpark
 
-```sql
-SELECT path,
-  parsed:pages[*].elements[*].content AS text_blocks,
-  parsed:error AS parse_error
-FROM (
-  SELECT path, ai_parse_document(content) AS parsed
-  FROM read_files('/Volumes/catalog/schema/docs/', format => 'binaryFile')
-);
-```
-
-## PySpark Usage
-
-All functions work with `expr()`:
+> "Write PySpark code that applies classification, extraction, and sentiment analysis to a support tickets table using expr()."
 
 ```python
 from pyspark.sql.functions import expr
 
-df = (spark.table("support_tickets")
+df = (spark.table("catalog.schema.support_tickets")
     .withColumn("priority", expr("ai_classify(ticket_text, array('urgent', 'not urgent', 'spam'))"))
     .withColumn("entities", expr("ai_extract(ticket_text, array('product', 'error_code'))"))
     .withColumn("sentiment", expr("ai_analyze_sentiment(ticket_text)"))
 )
 ```
+
+All task-specific functions work through `expr()` in PySpark. This is the standard pattern for mixing AI functions into Spark DataFrame pipelines.
+
+## Watch Out For
+
+- **Calling `ai_extract` with nested output schemas** -- it returns flat STRUCTs only. When your extraction target has arrays (like line items on an invoice), switch to `ai_query` with `responseFormat`.
+- **Running AI functions without LIMIT during development** -- each row incurs Foundation Model API token costs. Start with `LIMIT 10`, validate the output shape, then remove the limit for production runs.
+- **Using `ai_translate` for unsupported languages** -- the function silently falls back to English or returns poor results. Check the supported list (`en`, `de`, `fr`, `it`, `pt`, `hi`, `es`, `th`) and use `ai_query` with a custom prompt for anything else.
+- **Assuming `ai_similarity` scores are absolute** -- a score of 0.85 means different things across different text domains. Always calibrate your threshold against a labeled sample before using it for deduplication decisions.
