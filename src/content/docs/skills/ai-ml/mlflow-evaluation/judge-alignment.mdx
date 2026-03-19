@@ -1,44 +1,190 @@
 ---
 title: Judge Alignment & Prompt Optimization
-description: Align LLM judges to domain expert preferences with MemAlign and run automated prompt improvement with GEPA optimize_prompts().
+description: Align LLM judges to domain expert preferences with MemAlign and automate prompt improvement with GEPA.
 sidebar:
   order: 3
 ---
 
-Out-of-the-box LLM judges rarely match domain expert preferences. This page covers MemAlign for aligning judges to human labels and GEPA for automated prompt improvement -- two techniques that close the gap between evaluation scores and real-world quality.
+## What You Can Build
 
-## Judge Alignment with MemAlign
+You can make your LLM judge score agent responses the way your domain experts would -- then use that aligned judge to automatically improve your agent's prompts. Out-of-the-box judges apply generic quality standards. MemAlign distills expert feedback into the judge's instructions so it evaluates with domain-specific criteria. GEPA then uses that calibrated judge to iterate on your system prompt automatically.
 
-Align an LLM judge to match domain expert preferences. A well-aligned judge improves evaluation accuracy, production monitoring signal, and prompt optimization quality.
+## In Action
 
-### Workflow
+> "Design a base judge for evaluating my support agent's response quality on a 1-5 scale, then register it to my experiment. Use Python."
 
-1. **Design base judge** with `make_judge` (any feedback type)
-2. **Run evaluate()**, tag successful traces
-3. **Build UC dataset** and create SME labeling session
-4. **Align judge** with MemAlign after labeling completes
-5. **Register aligned judge** to experiment
-6. **Re-evaluate** with aligned judge as new baseline
+```python
+import mlflow
+from mlflow.genai.judges import make_judge
 
-### Key Facts
+mlflow.set_experiment(experiment_id=EXPERIMENT_ID)
 
-- MemAlign is scorer-agnostic (works with float, bool, or categorical feedback)
-- Label schema `name` must match the judge `name` used in `evaluate()`
-- Aligned judge scores may be lower than unaligned -- this means the judge is more accurate, not that the agent regressed
-- Episodic memory is lazily loaded -- `get_scorer()` results won't show it until first use
+domain_quality_judge = make_judge(
+    name="domain_quality_base",
+    instructions=(
+        "Evaluate if the response in {{ outputs }} appropriately addresses "
+        "the question in {{ inputs }}. The response should be accurate, "
+        "contextually relevant, and actionable. "
+        "Grading criteria: "
+        " 1: Completely unacceptable. Incorrect or no recommendation. "
+        " 2: Mostly unacceptable. Weak recommendations, minimal value. "
+        " 3: Somewhat acceptable. Relevant with some strategic value. "
+        " 4: Mostly acceptable. Relevant with strong strategic value. "
+        " 5: Completely acceptable. Excellent strategic value."
+    ),
+    feedback_value_type=float,
+    model=JUDGE_MODEL,
+)
 
-## Automated Prompt Optimization with GEPA
+registered_judge = domain_quality_judge.register(experiment_id=EXPERIMENT_ID)
+```
 
-Use `optimize_prompts()` to automatically improve a registered system prompt.
+**Key decisions:**
+- **`make_judge` is scorer-agnostic** -- works with `float` (Likert), `bool` (pass/fail), or categorical feedback types
+- **`name` must match your labeling schema** -- `align()` pairs SME feedback with judge scores using this name
+- **`{{ outputs }}` and `{{ inputs }}`** are template variables that get filled from evaluation data
+- Register the judge to an experiment to make it retrievable in later sessions
 
-### Workflow
+## More Patterns
 
-1. **Build optimization dataset** with both `inputs` AND `expectations`
-2. **Run `optimize_prompts()`** with GEPA and a scorer
-3. **Register new version**, promote conditionally based on score improvement
+### Run Evaluation and Tag Traces for Expert Review
 
-### Requirements
+> "Evaluate my agent with the base judge and tag the successful traces for domain expert review. Use Python."
 
-- MLflow >= 3.5.0
-- Dataset must have both `inputs` and `expectations` per record
-- Works with any scorer but best paired with an aligned judge
+```python
+from mlflow.genai import evaluate
+
+eval_data = [
+    {"inputs": {"input": [{"role": "user", "content": q}]}}
+    for q in example_questions
+]
+
+results = evaluate(
+    data=eval_data,
+    predict_fn=lambda input: AGENT.predict({"input": input}),
+    scorers=[domain_quality_judge],
+)
+
+# Tag traces that were successfully scored -- these go to domain experts
+ok_traces = results.result_df.loc[results.result_df["state"] == "OK", "trace_id"]
+for trace_id in ok_traces:
+    mlflow.set_trace_tag(trace_id=trace_id, key="eval", value="complete")
+
+print(f"Tagged {len(ok_traces)} traces for expert labeling")
+```
+
+Only tag traces where the agent responded and the judge scored successfully. Sending error traces to domain experts wastes their time and skews alignment.
+
+### Create a Labeling Session for Domain Experts
+
+> "Build a Unity Catalog dataset from tagged traces and create a labeling session for SME review. Use Python."
+
+```python
+from mlflow.genai.datasets import create_dataset, get_dataset
+from mlflow.genai import create_labeling_session
+from mlflow.genai import label_schemas
+
+# Build persistent dataset from tagged traces
+eval_dataset = create_dataset(name=DATASET_NAME)
+tagged_traces = mlflow.search_traces(
+    locations=[EXPERIMENT_ID],
+    filter_string="tag.eval = 'complete'",
+    return_type="pandas",
+)
+tagged_traces = tagged_traces.rename(columns={"request": "inputs", "response": "outputs"})
+eval_dataset = eval_dataset.merge_records(tagged_traces)
+
+# CRITICAL: Schema name MUST match the judge name from make_judge()
+feedback_schema = label_schemas.create_label_schema(
+    name="domain_quality_base",
+    type="feedback",
+    title="domain_quality_base",
+    input=label_schemas.InputNumeric(min_value=1.0, max_value=5.0),
+    instruction="Rate the response quality from 1 (unacceptable) to 5 (excellent).",
+    enable_comment=True,
+    overwrite=True,
+)
+
+labeling_session = create_labeling_session(
+    name="quality_review_sme",
+    assigned_users=["expert1@company.com", "expert2@company.com"],
+    label_schemas=["domain_quality_base"],
+)
+labeling_session = labeling_session.add_dataset(dataset_name=DATASET_NAME)
+
+print(f"Share with experts: {labeling_session.url}")
+```
+
+The label schema `name` must match the judge `name` exactly. This is how `align()` pairs expert ratings with the judge's scores on the same traces. A mismatch causes alignment to fail silently.
+
+### Align the Judge with MemAlign
+
+> "After domain experts have completed labeling, align the judge to match their preferences using MemAlign. Use Python."
+
+```python
+from mlflow.genai.judges.optimizers import MemAlignOptimizer
+from mlflow.genai.scorers import get_scorer
+
+traces_for_alignment = mlflow.search_traces(
+    locations=[EXPERIMENT_ID],
+    filter_string="tag.eval = 'complete'",
+    return_type="list",
+)
+
+optimizer = MemAlignOptimizer(
+    reflection_lm=REFLECTION_MODEL,
+    retrieval_k=5,
+    embedding_model="databricks:/databricks-gte-large-en",
+)
+
+base_judge = get_scorer(name="domain_quality_base")
+aligned_judge = base_judge.align(
+    traces=traces_for_alignment,
+    optimizer=optimizer,
+)
+
+# Register the aligned version
+aligned_judge.update(experiment_id=EXPERIMENT_ID)
+
+# Inspect what MemAlign learned from experts
+for i, guideline in enumerate(aligned_judge._semantic_memory, 1):
+    print(f"  {i}. {guideline.guideline_text}")
+```
+
+MemAlign distills expert feedback patterns into semantic guidelines that augment the judge's instructions. It runs in seconds, not minutes, and improves continuously as you add more expert feedback without re-optimization.
+
+### Automate Prompt Improvement with GEPA
+
+> "Use the aligned judge to automatically improve my agent's system prompt with GEPA. Use Python."
+
+```python
+from mlflow.genai import optimize_prompts
+from mlflow.genai.judges.optimizers import GepaPromptOptimizer
+
+# Dataset needs BOTH inputs AND expectations for optimization
+optimization_data = [
+    {
+        "inputs": {"query": "What is our refund policy?"},
+        "expectations": {"expected_facts": ["30-day window", "original packaging"]}
+    },
+    # ... more examples
+]
+
+result = optimize_prompts(
+    predict_fn=my_agent_fn,
+    train_data=optimization_data,
+    prompt_uris=[prompt.uri],
+    optimizer=GepaPromptOptimizer(reflection_model=REFLECTION_MODEL),
+    scorers=[aligned_judge],
+)
+```
+
+GEPA iterates on your system prompt by running evaluations with the aligned judge, reflecting on failures, and generating improved prompt candidates. The aligned judge gives domain-accurate signal, so GEPA optimizes toward what your experts actually care about. Requires MLflow >= 3.5.0.
+
+## Watch Out For
+
+- **Label schema name mismatch** -- the label schema `name` in the labeling session MUST match the judge `name` used in `evaluate()`. Mismatches cause `align()` to silently fail or produce incorrect results.
+- **Aligned judge scores may be lower than unaligned** -- this is expected and correct. The aligned judge is more accurate, not more generous. A lower score from a calibrated judge is a better signal than a higher score from a generic one.
+- **Episodic memory is lazily loaded** -- calling `get_scorer()` and printing the result won't show episodic memory. It loads on first use during evaluation.
+- **GEPA datasets need expectations** -- `optimize_prompts()` requires both `inputs` and `expectations` per record. A dataset with only `inputs` won't work for optimization (though it works for evaluation).
+- **Forgetting to set `embedding_model`** -- MemAlign defaults to `openai/text-embedding-3-small` if you don't set it. On Databricks, explicitly use `databricks:/databricks-gte-large-en` to avoid external API calls.

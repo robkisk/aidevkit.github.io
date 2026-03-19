@@ -1,38 +1,112 @@
 ---
 title: Knowledge Assistants
-description: Create document-based Q&A agents using Knowledge Assistants with RAG over Unity Catalog Volume files.
+description: Turn documents in Unity Catalog Volumes into RAG-powered Q&A agents without building a custom retrieval pipeline.
 sidebar:
   order: 1
 ---
 
-Knowledge Assistants turn documents stored in Unity Catalog Volumes into RAG-powered Q&A agents. Use them when you need a self-service bot that answers questions grounded in PDFs, text files, or other unstructured content without building a custom retrieval pipeline.
+## What You Can Build
 
-## Creating a Knowledge Assistant
+You can turn a folder of PDFs and text files in a Unity Catalog Volume into a fully functional Q&A agent. Knowledge Assistants handle the indexing, retrieval, and generation pipeline for you -- upload documents, provide instructions, and you get a conversational interface that answers questions grounded in your content.
+
+## In Action
+
+> "Create a Knowledge Assistant that answers questions about our HR policies from PDFs stored in a Unity Catalog Volume. Use Python with the AI Dev Kit tools."
 
 ```python
 manage_ka(
     action="create_or_update",
-    name="Company Policy Assistant",
-    volume_path="/Volumes/catalog/schema/volume/policies",
-    description="Answers questions about company policies and procedures",
-    instructions="Answer concisely, cite the source document, and say 'I don't know' if unsure"
+    name="HR Policy Assistant",
+    volume_path="/Volumes/catalog/schema/volume/hr_docs",
+    description="Answers questions about HR policies and procedures",
+    instructions="""
+    Be helpful and professional. When answering:
+    1. Always cite the specific document and section
+    2. If multiple documents are relevant, mention all of them
+    3. If the information isn't in the documents, clearly say so
+    4. Use bullet points for multi-part answers
+    """
 )
 ```
 
-### Prerequisites
+**Key decisions:**
+- **`volume_path`** points to the Unity Catalog Volume containing your source documents (PDFs, text, markdown)
+- **`instructions`** shape answer quality directly -- specific instructions produce noticeably better outputs than generic ones
+- **`add_examples_from_volume=true`** (default) auto-extracts example Q&A pairs from companion JSON files for evaluation
+- The endpoint provisions in 2-5 minutes; check status with `action="get"` before sending queries
 
-- Documents (PDF, text, or other files) stored in a Unity Catalog Volume
-- Generate synthetic documents with the `databricks-unstructured-pdf-generation` skill if needed
+## More Patterns
 
-### Auto-Examples
+### Look Up an Existing Assistant
 
-When `add_examples_from_volume=true` (default), examples are automatically extracted from JSON files in the volume and added once the endpoint is ONLINE.
+> "Find my existing Knowledge Assistant by name so I can get its tile_id for use in a Supervisor Agent."
 
-### Operations
+```python
+result = manage_ka(
+    action="find_by_name",
+    name="HR Policy Assistant"
+)
+# Returns: {"found": True, "tile_id": "01abc...", "name": "HR_Policy_Assistant",
+#           "endpoint_name": "ka-01abc...-endpoint"}
+```
 
-| Action | Purpose |
-|--------|---------|
-| `create_or_update` | Create new or update existing KA |
-| `get` | Get KA details by tile_id |
-| `find_by_name` | Look up KA by name |
-| `delete` | Delete a KA |
+The `tile_id` is what you'll pass to `manage_mas` when wiring this assistant into a Supervisor Agent. The endpoint name follows the pattern `ka-{tile_id}-endpoint`.
+
+### Check Provisioning Status
+
+> "My Knowledge Assistant was just created. Check if it's ready to accept queries."
+
+```python
+status = manage_ka(
+    action="get",
+    tile_id="01abc-def2-..."
+)
+# Look for endpoint_status: "ONLINE"
+```
+
+The endpoint needs 2-5 minutes to provision after creation. Don't send queries until the status shows `ONLINE`. If it stays in `PROVISIONING` for more than 10 minutes, check workspace capacity and volume accessibility.
+
+### Generate Source Documents with Synthetic PDFs
+
+> "I don't have real documents yet. Generate synthetic PDFs with companion evaluation data for testing my Knowledge Assistant."
+
+```python
+# Step 1: Generate PDFs with the unstructured PDF generation skill
+# This creates PDFs in the volume plus JSON files with Q&A pairs
+
+# Step 2: Create the KA pointing to the generated documents
+manage_ka(
+    action="create_or_update",
+    name="Demo Policy Assistant",
+    volume_path="/Volumes/catalog/schema/raw_data/pdf_documents",
+    description="Demo assistant for generated policy documents",
+    instructions="Answer concisely, cite the source document, and say 'I don't know' if unsure"
+)
+# Companion JSON files are auto-detected and added as example questions
+```
+
+The `databricks-unstructured-pdf-generation` skill creates realistic PDFs along with JSON files containing question/guideline pairs. These JSON files are automatically picked up as examples when `add_examples_from_volume=true`.
+
+### Update Content After Document Changes
+
+> "I've added new policy documents to the volume. Update the Knowledge Assistant to re-index them."
+
+```python
+manage_ka(
+    action="create_or_update",
+    name="HR Policy Assistant",
+    tile_id="01abc-def2-...",
+    volume_path="/Volumes/catalog/schema/volume/hr_docs",
+    description="Answers questions about HR policies and procedures",
+    instructions="Same instructions as before..."
+)
+```
+
+Passing the same `name` and `tile_id` triggers a re-index of the volume contents. Add, remove, or modify files in the volume first, then call `create_or_update` to refresh.
+
+## Watch Out For
+
+- **Vague instructions produce vague answers** -- "Be helpful" is not enough. Tell the assistant to cite sources, handle ambiguity, and format responses. Specific instructions are the highest-leverage improvement you can make.
+- **Unsupported file formats are silently skipped** -- stick to PDF, TXT, and MD. If your volume contains DOCX or HTML, those files won't be indexed and you won't get an error.
+- **Volume path typos fail silently at query time** -- double-check the path with `ls /Volumes/catalog/schema/volume/` before creating the KA. A wrong path creates an assistant that answers "I don't know" to everything.
+- **Large documents reduce answer quality** -- if you have 200-page PDFs, consider splitting them into topic-focused files. Smaller, well-structured documents produce better retrieval results.

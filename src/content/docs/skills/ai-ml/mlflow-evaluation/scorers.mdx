@@ -1,55 +1,183 @@
 ---
 title: Scorers & Evaluation
-description: Built-in and custom scorers for MLflow GenAI evaluation — Guidelines, Correctness, Safety, RetrievalGroundedness, and custom @scorer patterns.
+description: Evaluate agent quality with built-in and custom MLflow scorers for guidelines, correctness, safety, and domain-specific metrics.
 sidebar:
   order: 1
 ---
 
-Scorers are the evaluation primitives in MLflow GenAI -- each one checks a specific quality dimension of an agent response. This page covers the built-in scorers (Guidelines, Correctness, Safety, RetrievalGroundedness) and shows how to build custom scorers with the `@scorer` decorator for project-specific metrics.
+## What You Can Build
 
-## Built-in Scorers
+You can evaluate every dimension of agent quality -- tone, correctness, safety, retrieval grounding, latency, tool usage -- using MLflow's scorer system. Built-in scorers cover the common checks. When your domain needs something specific ("did the agent cite the right policy section?"), the `@scorer` decorator lets you write custom evaluation logic in plain Python.
 
-| Scorer | Purpose | Requires |
-|--------|---------|----------|
-| Guidelines | Check adherence to custom guidelines | Guidelines text |
-| Correctness | Compare against ground truth | Expected response |
-| Safety | Detect harmful content | Nothing extra |
-| RetrievalGroundedness | Check if response is grounded in context | Retrieved documents |
+## In Action
 
-## Custom Scorers
-
-Use the `@scorer` decorator for project-specific metrics:
-
-```python
-from mlflow.genai import scorer
-
-@scorer
-def tone_check(request, response):
-    """Check if response maintains professional tone."""
-    # Return float (0-1), bool, or categorical
-    return {"professional_tone": 0.9, "rationale": "Response is formal and helpful"}
-```
-
-## Running Evaluations
+> "Evaluate my support agent against professional tone guidelines and safety checks using MLflow GenAI. Use Python."
 
 ```python
 import mlflow.genai
+from mlflow.genai.scorers import Guidelines, Safety
 
 results = mlflow.genai.evaluate(
-    data=[{"inputs": {"query": "What is our refund policy?"}}],
+    data=[
+        {"inputs": {"query": "What is our refund policy?"}},
+        {"inputs": {"query": "I want to cancel my account immediately"}},
+        {"inputs": {"query": "Your product is terrible and I'm angry"}},
+    ],
     predict_fn=my_agent_fn,
-    scorers=[Guidelines(guidelines="Always be professional"), Safety()]
+    scorers=[
+        Guidelines(
+            name="professional_tone",
+            guidelines=[
+                "The response must maintain a professional, helpful tone throughout",
+                "The response must directly address the user's question",
+                "The response must not include made-up information"
+            ]
+        ),
+        Safety()
+    ]
 )
 ```
 
-## Comparing Versions
+**Key decisions:**
+- **`mlflow.genai.evaluate()`** is the correct entry point (not `mlflow.evaluate()` -- that's the legacy API)
+- **`data` format** uses nested `{"inputs": {"query": "..."}}` -- flat dicts cause silent failures
+- **`predict_fn`** receives unpacked kwargs from `inputs`, not the dict itself
+- **Multiple guidelines in one scorer** are evaluated together as a single pass/fail
 
-Use named runs to establish baselines and detect regressions:
+## More Patterns
+
+### Check Against Ground Truth
+
+> "Evaluate my agent's factual accuracy against known expected answers. Use Python."
 
 ```python
+from mlflow.genai.scorers import Correctness
+
+eval_data = [
+    {
+        "inputs": {"query": "What is MLflow?"},
+        "expectations": {
+            "expected_facts": [
+                "MLflow is open-source",
+                "MLflow manages the ML lifecycle",
+                "MLflow includes experiment tracking"
+            ]
+        }
+    },
+    {
+        "inputs": {"query": "Who created MLflow?"},
+        "expectations": {
+            "expected_response": "MLflow was created by Databricks and released in June 2018."
+        }
+    }
+]
+
+results = mlflow.genai.evaluate(
+    data=eval_data,
+    predict_fn=my_agent_fn,
+    scorers=[Correctness()]
+)
+```
+
+`Correctness` supports both `expected_facts` (checks each fact independently) and `expected_response` (compares against a full reference answer). Use `expected_facts` when the agent can state things in any order.
+
+### Evaluate RAG Retrieval Quality
+
+> "Check whether my RAG agent's responses are grounded in the retrieved documents. Use Python."
+
+```python
+from mlflow.genai.scorers import RetrievalGroundedness, RelevanceToQuery
+import mlflow
+from mlflow.entities import Document
+
+@mlflow.trace(span_type="RETRIEVER")
+def retrieve_docs(query: str) -> list[Document]:
+    # Your retrieval logic here
+    return [Document(id="doc1", page_content="Retrieved content...", metadata={"source": "kb"})]
+
+@mlflow.trace
+def rag_app(query: str):
+    docs = retrieve_docs(query)
+    context = "\n".join([d.page_content for d in docs])
+    return {"response": generate_response(query, context)}
+
+results = mlflow.genai.evaluate(
+    data=eval_data,
+    predict_fn=rag_app,
+    scorers=[RetrievalGroundedness(), RelevanceToQuery()]
+)
+```
+
+`RetrievalGroundedness` checks whether the response is supported by the retrieved documents. It requires a `RETRIEVER` span type in the trace -- without that span annotation, the scorer has no retrieval context to evaluate against.
+
+### Build a Custom Scorer
+
+> "Write a custom scorer that checks response length and returns detailed feedback. Use Python."
+
+```python
+from mlflow.genai.scorers import scorer
+from mlflow.entities import Feedback
+
+@scorer
+def response_quality_check(inputs, outputs):
+    """Return multiple quality metrics from one scorer."""
+    response = str(outputs.get("response", ""))
+    query = inputs.get("query", "")
+
+    feedbacks = []
+
+    # Word count check
+    word_count = len(response.split())
+    feedbacks.append(Feedback(
+        name="word_count",
+        value=word_count,
+        rationale=f"Response contains {word_count} words"
+    ))
+
+    # Query term coverage
+    query_terms = set(query.lower().split())
+    response_terms = set(response.lower().split())
+    overlap = len(query_terms & response_terms) / max(len(query_terms), 1)
+    feedbacks.append(Feedback(
+        name="query_coverage",
+        value=round(overlap, 2),
+        rationale=f"{overlap*100:.0f}% of query terms found in response"
+    ))
+
+    return feedbacks
+```
+
+Custom scorers can return a `bool`, `float`, `Feedback` object, or a list of `Feedback` objects for multiple metrics. The `name` field in `Feedback` controls how the metric appears in the results table.
+
+### Compare Agent Versions
+
+> "Run the same evaluation against two agent versions to detect regressions. Use Python."
+
+```python
+import mlflow
+
+scorers = [
+    Guidelines(name="quality", guidelines="Must be helpful and accurate"),
+    Safety()
+]
+
 with mlflow.start_run(run_name="baseline_v1"):
-    results_v1 = mlflow.genai.evaluate(data=eval_data, predict_fn=agent_v1, scorers=scorers)
+    results_v1 = mlflow.genai.evaluate(
+        data=eval_data, predict_fn=agent_v1, scorers=scorers
+    )
 
 with mlflow.start_run(run_name="candidate_v2"):
-    results_v2 = mlflow.genai.evaluate(data=eval_data, predict_fn=agent_v2, scorers=scorers)
+    results_v2 = mlflow.genai.evaluate(
+        data=eval_data, predict_fn=agent_v2, scorers=scorers
+    )
 ```
+
+Named runs let you compare metrics side-by-side in the MLflow UI. Run the same dataset and scorers against both versions to get an apples-to-apples comparison.
+
+## Watch Out For
+
+- **Using `mlflow.evaluate()` instead of `mlflow.genai.evaluate()`** -- the legacy API has a different data format and scorer interface. GenAI evaluation requires the `mlflow.genai` namespace.
+- **Flat input dicts** -- `{"query": "..."}` causes a silent failure. Always nest: `{"inputs": {"query": "..."}}`.
+- **`predict_fn` receives kwargs, not a dict** -- if your inputs are `{"query": "hello"}`, your function signature should be `def my_fn(query: str)`, not `def my_fn(inputs: dict)`.
+- **Missing `RETRIEVER` span type** -- `RetrievalGroundedness` silently returns no score if your retrieval function isn't annotated with `@mlflow.trace(span_type="RETRIEVER")`.
+- **Scorers returning `None`** -- if a custom scorer hits an edge case and returns `None`, the metric is silently omitted from results. Always return a `Feedback` object, even for error cases.

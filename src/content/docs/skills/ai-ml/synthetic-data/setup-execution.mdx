@@ -1,28 +1,26 @@
 ---
 title: Setup & Execution
-description: Environment setup, compute selection, and execution modes for synthetic data generation — Databricks Connect serverless, jobs, and classic clusters.
+description: Configure your environment and pick a compute target for generating synthetic data with Spark, Faker, and Pandas UDFs.
 sidebar:
   order: 1
 ---
 
-Before generating synthetic data you need to pick a compute target and configure your environment. This page covers the three execution modes (Databricks Connect serverless, serverless jobs, and classic clusters), required dependencies, and the quick-start pattern for spinning up a Spark session with Faker, Pandas, and NumPy.
+## What You Can Build
 
-## Execution Modes
+You can spin up a Spark session with Faker, Pandas, and NumPy preloaded on serverless compute and start generating synthetic data in minutes. No cluster provisioning, no library installation -- Databricks Connect 16.4+ manages dependencies automatically. This setup handles everything from 1,000-row prototypes to multi-million-row production datasets.
 
-| Mode | Best For | Setup |
-|------|----------|-------|
-| DB Connect 16.4+ Serverless | Local dev, Python 3.12+ | `DatabricksEnv().withDependencies(...)` |
-| Serverless Job | Production, scheduled | Job with `environments` parameter |
-| Classic Cluster | Fallback only | Install libraries via CLI |
+## In Action
 
-## Quick Start with Serverless
+> "Set up a serverless Spark session with Faker, then generate 10,000 synthetic customer records with realistic name, tier, and revenue distributions. Use Python."
 
 ```python
 from databricks.connect import DatabricksSession, DatabricksEnv
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, DoubleType
-import pandas as pd, numpy as np
+import pandas as pd
+import numpy as np
 
+# Serverless session with managed dependencies
 env = DatabricksEnv().withDependencies("faker", "pandas", "numpy")
 spark = DatabricksSession.builder.withEnvironment(env).serverless(True).getOrCreate()
 
@@ -43,16 +41,86 @@ customers_df = (
     )
 )
 
+# Create infrastructure and write
+CATALOG = "my_catalog"
+SCHEMA = "demo_data"
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.raw_data")
 customers_df.write.mode("overwrite").parquet(f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/customers")
 ```
 
-## Common Issues
+**Key decisions:**
+- **`DatabricksEnv().withDependencies()`** installs Faker and NumPy on serverless compute without manual cluster setup
+- **`pandas_udf`** processes names in batches (not row-by-row), which is 10-50x faster than standard UDFs
+- **`numPartitions=16`** controls parallelism -- increase for larger datasets to avoid memory pressure
+- **Weighted tier distribution** uses chained `F.when()` to produce 60% Free, 30% Pro, 10% Enterprise
 
-| Issue | Solution |
-|-------|----------|
-| `ModuleNotFoundError: faker` | Use `DatabricksEnv().withDependencies("faker")` |
-| `PERSIST TABLE is not supported` | Never use `.cache()` or `.persist()` on serverless |
-| Slow Faker UDFs | Use `pandas_udf` for batch processing |
-| Out of memory | Increase `numPartitions` in `spark.range()` |
+## More Patterns
+
+### Run as a Serverless Job
+
+> "Execute my data generation script as a serverless job for production or scheduled runs. Use the AI Dev Kit tools."
+
+```python
+manage_jobs(
+    action="create",
+    name="generate-demo-data",
+    tasks=[{
+        "task_key": "generate",
+        "spark_python_task": {
+            "python_file": "/Workspace/Users/you@company.com/generate_data.py"
+        }
+    }],
+    environments=[{
+        "environment_key": "default",
+        "spec": {
+            "client": "1",
+            "dependencies": ["faker", "pandas", "numpy"]
+        }
+    }]
+)
+```
+
+Serverless jobs use the `environments` parameter to declare dependencies, similar to `DatabricksEnv().withDependencies()` for interactive sessions. Use this mode for scheduled or repeatable data generation.
+
+### Classic Cluster Fallback
+
+> "Install Faker on a classic cluster when serverless isn't available. Use the Databricks CLI."
+
+```bash
+databricks libraries install \
+  --cluster-id "<cluster_id>" \
+  --json '{"libraries": [
+    {"pypi": {"package": "faker"}},
+    {"pypi": {"package": "holidays"}}
+  ]}'
+```
+
+Classic clusters require explicit library installation before running your generation script. This is the fallback when serverless compute isn't available in your workspace.
+
+### Write Output as a Delta Table
+
+> "Save my generated data as a Delta table in Unity Catalog with table and column comments for discoverability. Use Python."
+
+```python
+# Write to Delta table
+customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
+
+# Add metadata for Unity Catalog discoverability
+spark.sql(f"""
+    ALTER TABLE {CATALOG}.{SCHEMA}.customers
+    SET TBLPROPERTIES ('comment' = 'Synthetic customer data for demo purposes')
+""")
+spark.sql(f"ALTER TABLE {CATALOG}.{SCHEMA}.customers ALTER COLUMN customer_id COMMENT 'Unique customer identifier (CUST-XXXXX)'")
+spark.sql(f"ALTER TABLE {CATALOG}.{SCHEMA}.customers ALTER COLUMN tier COMMENT 'Subscription tier: Free, Pro, Enterprise'")
+```
+
+Delta tables give you ACID transactions, time travel, and schema enforcement. Adding comments makes the data self-documenting for anyone browsing Unity Catalog.
+
+## Watch Out For
+
+- **`ModuleNotFoundError: faker`** -- this means `DatabricksEnv().withDependencies("faker")` wasn't called before building the Spark session. Dependencies must be declared before `getOrCreate()`.
+- **Using `.cache()` or `.persist()` on serverless** -- these operations throw `AnalysisException: PERSIST TABLE is not supported on serverless compute`. Write master tables to Delta first, then read them back for FK joins.
+- **Slow Faker UDFs** -- if you're using `@F.udf` instead of `@F.pandas_udf`, switch to the Pandas variant. Standard UDFs process one row at a time; Pandas UDFs process batches, which is dramatically faster for Faker calls.
+- **Out of memory on large datasets** -- increase `numPartitions` in `spark.range()`. With 16 partitions, each partition generates 625 rows for a 10K dataset. For 1M rows, bump to 100+ partitions.
+- **Assuming the catalog exists** -- always create the schema and volume in your script (`CREATE SCHEMA IF NOT EXISTS`, `CREATE VOLUME IF NOT EXISTS`). Never create catalogs programmatically; those should be pre-provisioned by an admin.

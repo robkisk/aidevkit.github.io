@@ -1,66 +1,154 @@
 ---
 title: Data Patterns & Domain Guidance
-description: Realistic data patterns for synthetic generation — distributions, referential integrity, time patterns, and domain-specific guidance for e-commerce, IoT, and financial data.
+description: Generate statistically realistic synthetic data with proper distributions, referential integrity, and domain-specific patterns.
 sidebar:
   order: 2
 ---
 
-Realistic synthetic data requires more than random values -- it needs statistically plausible distributions, referential integrity, and domain-appropriate patterns. This page provides reusable code for log-normal amounts, time-series seasonality, geographic distributions, and domain-specific generators for e-commerce, IoT, and financial datasets.
+## What You Can Build
 
-## Realistic Distributions
+You can generate synthetic data that passes the smell test -- log-normal transaction amounts, seasonal time patterns, correlated customer attributes, and proper foreign key relationships across tables. Random uniform distributions are the telltale sign of fake data. These patterns produce datasets that behave like production data in dashboards, pipelines, and ML models.
 
-### Log-Normal Amounts
+## In Action
+
+> "Generate order amounts with log-normal distributions that vary by customer tier. Enterprise customers should spend more than Free tier. Use Python with PySpark."
 
 ```python
+from pyspark.sql import functions as F
+from pyspark.sql.types import DoubleType
+import pandas as pd
+import numpy as np
+
 @F.pandas_udf(DoubleType())
 def generate_amount(tiers: pd.Series) -> pd.Series:
     amounts = []
     for tier in tiers:
         if tier == "Enterprise":
-            amounts.append(float(np.random.lognormal(7.5, 0.8)))
+            amounts.append(float(np.random.lognormal(7.5, 0.8)))   # ~$1,800 median
         elif tier == "Pro":
-            amounts.append(float(np.random.lognormal(5.5, 0.7)))
+            amounts.append(float(np.random.lognormal(5.5, 0.7)))   # ~$245 median
         else:
-            amounts.append(float(np.random.lognormal(4.0, 0.6)))
+            amounts.append(float(np.random.lognormal(4.0, 0.6)))   # ~$55 median
     return pd.Series(amounts)
+
+orders_df = customers_df.withColumn("amount", generate_amount(F.col("tier")))
 ```
 
-### Time Patterns
+**Key decisions:**
+- **Log-normal distribution** produces the long tail that real financial data exhibits -- most transactions are modest, but some are large
+- **Tier-specific parameters** (`mean`, `sigma`) create correlated spending patterns where Enterprise customers spend 30x more than Free tier
+- **`pandas_udf`** processes the entire column in batches, making it fast enough for millions of rows
+- Real revenue data is never uniformly distributed; log-normal, Pareto, and exponential are the realistic choices
+
+## More Patterns
+
+### Generate Realistic Date Ranges with Patterns
+
+> "Create order dates spread over the last 6 months with natural time distribution. Use Python with PySpark."
 
 ```python
 from datetime import datetime, timedelta
+
 END_DATE = datetime.now()
 START_DATE = END_DATE - timedelta(days=180)
 
-F.date_add(F.lit(START_DATE.date()), (F.rand() * 180).cast("int")).alias("order_date")
+orders_with_dates = orders_df.withColumn(
+    "order_date",
+    F.date_add(F.lit(START_DATE.date()), (F.rand() * 180).cast("int"))
+)
 ```
 
-## Referential Integrity
+This produces a uniform spread across 180 days. For more realistic seasonality, multiply `F.rand()` by a sine function or add weekday/weekend weighting to simulate business patterns.
 
-Write master tables to Delta first, then read back for FK joins:
+### Maintain Referential Integrity Across Tables
+
+> "Generate an orders table with valid customer_id foreign keys that reference the customers master table. Use Python with PySpark."
 
 ```python
-# Write master table
+CATALOG = "my_catalog"
+SCHEMA = "demo_data"
+
+# Step 1: Write master table to Delta FIRST
 customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
 
-# Read back for FK joins
+# Step 2: Read back and join for FK relationships
 customer_ids = spark.table(f"{CATALOG}.{SCHEMA}.customers").select("customer_id")
-orders_df = spark.range(0, 15000).join(customer_ids.sample(fraction=3.0, withReplacement=True), how="cross")
+
+orders_df = (
+    spark.range(0, 15000, numPartitions=16)
+    .select(
+        F.concat(F.lit("ORD-"), F.lpad(F.col("id").cast("string"), 6, "0")).alias("order_id"),
+    )
+    .crossJoin(customer_ids.sample(fraction=3.0, withReplacement=True).limit(15000))
+    .withColumn("amount", generate_amount(F.lit("Pro")))  # Add amounts
+    .withColumn("status",
+        F.when(F.rand() < 0.65, "delivered")
+         .when(F.rand() < 0.80, "shipped")
+         .when(F.rand() < 0.90, "processing")
+         .when(F.rand() < 0.95, "pending")
+         .otherwise("cancelled")
+    )
+)
 ```
 
-## Output Formats
+Write master tables to Delta first, then read them back for FK joins. This is the only approach that works on serverless compute -- `.cache()` and `.persist()` are not supported.
 
-| Format | Use Case | Code |
-|--------|----------|------|
-| Parquet (default) | SDP pipeline input | `df.write.parquet(path)` |
-| JSON | Log-style ingestion | `df.write.json(path)` |
-| CSV | Legacy systems | `df.write.option("header", "true").csv(path)` |
-| Delta Table | Direct analytics | `df.write.saveAsTable("catalog.schema.table")` |
+### Choose the Right Output Format
 
-## Best Practices
+> "Save my generated dataset in the format that matches my downstream pipeline. Use Python."
 
-- Generate raw data only -- no pre-aggregated fields
-- Create master tables first, then related tables with valid FKs
-- Use non-linear distributions (log-normal, Pareto, exponential)
-- Add table and column comments for Unity Catalog discoverability
-- Create infrastructure in script (`CREATE SCHEMA/VOLUME IF NOT EXISTS`)
+```python
+# Delta Table -- default choice for analytics and SDP pipelines
+orders_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.orders")
+
+# Parquet -- for SDP pipeline raw file input
+orders_df.write.mode("overwrite").parquet(f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/orders")
+
+# JSON -- for log-style or streaming ingestion
+orders_df.write.mode("overwrite").json(f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/orders_json")
+
+# CSV -- for legacy system integration
+orders_df.write.mode("overwrite").option("header", "true").csv(
+    f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/orders_csv"
+)
+```
+
+Delta tables are the default for analytics workloads. Use Parquet or JSON when feeding into ingestion pipelines (SDP, streaming) that expect raw files in a Volume.
+
+### Domain-Specific Patterns
+
+> "Show me how to generate weighted status distributions that look realistic for an e-commerce order pipeline. Use Python with PySpark."
+
+```python
+# E-commerce order statuses with realistic weights
+orders_df = orders_df.withColumn("status",
+    F.when(F.rand() < 0.65, "delivered")
+     .when(F.rand() < 0.80, "shipped")
+     .when(F.rand() < 0.90, "processing")
+     .when(F.rand() < 0.95, "pending")
+     .otherwise("cancelled")
+)
+
+# IoT sensor readings with device-type variation
+@F.pandas_udf(DoubleType())
+def sensor_reading(device_types: pd.Series) -> pd.Series:
+    readings = []
+    for dt in device_types:
+        if dt == "temperature":
+            readings.append(float(np.random.normal(72.0, 3.5)))   # Fahrenheit
+        elif dt == "humidity":
+            readings.append(float(np.random.beta(2, 5) * 100))    # 0-100%
+        else:
+            readings.append(float(np.random.exponential(50)))      # Pressure
+    return pd.Series(readings)
+```
+
+Each domain has characteristic distributions. E-commerce uses weighted categories, IoT uses normal/beta distributions with physical constraints, and financial data uses log-normal with outlier injection.
+
+## Watch Out For
+
+- **Using uniform random for amounts** -- `F.rand() * 1000` produces a flat distribution that looks nothing like real financial data. Use log-normal (`np.random.lognormal`) for transaction amounts and Pareto for income distributions.
+- **Generating FK values instead of joining** -- random IDs won't match any existing master table. Always write the master table first, read it back, and join. This guarantees referential integrity.
+- **Forgetting to create infrastructure** -- your script should always include `CREATE SCHEMA IF NOT EXISTS` and `CREATE VOLUME IF NOT EXISTS`. Don't assume the schema exists; don't try to create the catalog.
+- **Pre-aggregating data** -- generate raw transactional records, not pre-computed metrics. Downstream pipelines and dashboards should compute aggregations themselves. Pre-aggregated synthetic data doesn't test the full pipeline.
+- **Missing table and column comments** -- without `ALTER TABLE ... SET TBLPROPERTIES` and `ALTER COLUMN ... COMMENT`, the synthetic data is undiscoverable in Unity Catalog. Add comments to make the data self-documenting.

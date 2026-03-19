@@ -1,37 +1,126 @@
 ---
 title: Classical ML Models
-description: Deploy traditional ML models (sklearn, xgboost) with MLflow autolog, auto-registration, and model serving endpoints.
+description: Train, register, and deploy scikit-learn, XGBoost, and LightGBM models to serving endpoints with MLflow autolog.
 sidebar:
   order: 1
 ---
 
-Classical ML models (scikit-learn, XGBoost, LightGBM) can be logged, registered to Unity Catalog, and deployed to model serving endpoints with minimal code. Use this workflow when you need a low-latency REST API for batch or real-time scoring of traditional ML models.
+## What You Can Build
 
-## Quick Start
+You can go from a trained scikit-learn model to a live REST API in under ten minutes. MLflow autolog captures everything -- parameters, metrics, model artifacts, input examples -- and registers the model to Unity Catalog automatically. From there, you deploy to a serving endpoint that scales to zero when idle.
+
+## In Action
+
+> "Train a logistic regression classifier, auto-register it to Unity Catalog, and deploy it to a serving endpoint. Use Python."
 
 ```python
 import mlflow
 import mlflow.sklearn
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 
+# Autolog handles logging, signature inference, and UC registration
 mlflow.sklearn.autolog(
     log_input_examples=True,
-    registered_model_name="main.models.my_classifier"
+    registered_model_name="main.models.churn_classifier"
 )
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
 
 model = LogisticRegression()
 model.fit(X_train, y_train)
+# Model is now logged and registered in Unity Catalog automatically
 ```
 
-The model is logged and registered to Unity Catalog automatically. Deploy via UI or SDK.
+**Key decisions:**
+- **`autolog`** captures parameters, metrics, model artifacts, and input examples with zero extra code
+- **`registered_model_name`** auto-registers to Unity Catalog on every training run, creating new versions automatically
+- **`log_input_examples=True`** saves sample inputs alongside the model, which helps with debugging and schema inference at serving time
+- Supported frameworks: `sklearn`, `xgboost`, `lightgbm`, `pytorch`, `tensorflow`, `spark`
 
-## Query a Traditional ML Endpoint
+## More Patterns
+
+### Manual Logging with Custom Metrics
+
+> "Train a random forest with custom metrics and explicit signature logging for tighter control. Use Python."
 
 ```python
-query_serving_endpoint(
-    name="sklearn-classifier",
-    dataframe_records=[
-        {"age": 25, "income": 50000, "credit_score": 720}
-    ]
+import mlflow
+from sklearn.ensemble import RandomForestClassifier
+from mlflow.models import infer_signature
+
+mlflow.set_registry_uri("databricks-uc")
+
+with mlflow.start_run():
+    model = RandomForestClassifier(n_estimators=100)
+    model.fit(X_train, y_train)
+
+    accuracy = model.score(X_test, y_test)
+    mlflow.log_metric("accuracy", accuracy)
+
+    signature = infer_signature(X_train, model.predict(X_train))
+
+    mlflow.sklearn.log_model(
+        model,
+        artifact_path="model",
+        signature=signature,
+        input_example=X_train[:5],
+        registered_model_name="main.models.random_forest"
+    )
+```
+
+Manual logging gives you control over which metrics get recorded and how the model signature is inferred. Use it when autolog captures too much or too little for your use case.
+
+### Deploy to a Serving Endpoint
+
+> "Deploy my registered model to a serving endpoint with scale-to-zero using the Databricks SDK. Use Python."
+
+```python
+from databricks.sdk import WorkspaceClient
+from datetime import timedelta
+
+w = WorkspaceClient()
+
+endpoint = w.serving_endpoints.create_and_wait(
+    name="churn-classifier",
+    config={
+        "served_entities": [{
+            "entity_name": "main.models.churn_classifier",
+            "entity_version": "1",
+            "workload_size": "Small",
+            "scale_to_zero_enabled": True
+        }]
+    },
+    timeout=timedelta(minutes=10)
 )
 ```
+
+Classical ML endpoints typically provision in 2-5 minutes. `scale_to_zero_enabled` shuts down compute when there's no traffic, which keeps costs near zero for dev and staging environments.
+
+### Query the Live Endpoint
+
+> "Send a prediction request to my deployed sklearn model endpoint. Use Python."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+response = w.serving_endpoints.query(
+    name="churn-classifier",
+    dataframe_records=[
+        {"age": 25, "income": 50000, "credit_score": 720},
+        {"age": 45, "income": 120000, "credit_score": 680}
+    ]
+)
+print(response.predictions)
+```
+
+The `dataframe_records` format accepts a list of dictionaries where keys match your model's input feature names. The response contains predictions in the same order as your input records.
+
+## Watch Out For
+
+- **Forgetting `log_input_examples=True`** -- without input examples, the serving endpoint can't validate the request schema, which makes debugging payload issues harder.
+- **Version numbers are auto-incremented** -- every `model.fit()` call with autolog creates a new version in Unity Catalog. Use `mlflow.sklearn.autolog(disable=True)` during experimentation to avoid version sprawl.
+- **Scale-to-zero adds cold start latency** -- the first request after idle triggers a cold start (30-60 seconds). For latency-sensitive production use, set `scale_to_zero_enabled=False`.
+- **Missing `mlflow.set_registry_uri("databricks-uc")`** -- without this, manual logging targets the workspace model registry instead of Unity Catalog. Autolog with `registered_model_name` in three-level format handles this automatically.

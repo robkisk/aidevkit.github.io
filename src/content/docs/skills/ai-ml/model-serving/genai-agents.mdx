@@ -1,55 +1,188 @@
 ---
 title: GenAI Agents
-description: Build and deploy GenAI agents using ResponsesAgent pattern with LangGraph, tool integration, and MLflow 3.
+description: Build conversational agents with MLflow ResponsesAgent, LangGraph orchestration, and tool integration for model serving.
 sidebar:
   order: 2
 ---
 
-GenAI agents on Databricks combine LangGraph orchestration with MLflow 3's ResponsesAgent base class for tool-calling, tracing, and deployment. Use this page when building conversational agents that need to call tools, query databases, or chain multiple LLM steps behind a model serving endpoint.
+## What You Can Build
 
-## ResponsesAgent Pattern
+You can build a conversational agent that calls tools, queries databases, and chains multiple LLM steps -- then deploy it behind a model serving endpoint with built-in tracing. The `ResponsesAgent` base class from MLflow 3 gives you a standardized interface that works with Databricks evaluation, monitoring, and the Review App out of the box.
 
-The recommended approach for building GenAI agents on Databricks. Uses MLflow 3's `ResponsesAgent` base class.
+## In Action
 
-### Setup
+> "Build a basic conversational agent using ResponsesAgent with a foundation model endpoint. Use Python."
 
 ```python
-%pip install -U mlflow==3.6.0 databricks-langchain langgraph==0.3.4 databricks-agents pydantic
-dbutils.library.restartPython()
+# agent.py
+import mlflow
+from mlflow.pyfunc import ResponsesAgent
+from mlflow.types.responses import (
+    ResponsesAgentRequest,
+    ResponsesAgentResponse,
+    ResponsesAgentStreamEvent,
+)
+from typing import Generator
+
+class MyAgent(ResponsesAgent):
+    def __init__(self):
+        from databricks_langchain import ChatDatabricks
+        self.llm = ChatDatabricks(endpoint="databricks-meta-llama-3-3-70b-instruct")
+
+    def predict(self, request: ResponsesAgentRequest) -> ResponsesAgentResponse:
+        messages = [{"role": m.role, "content": m.content} for m in request.input]
+        response = self.llm.invoke(messages)
+        return ResponsesAgentResponse(
+            output=[self.create_text_output_item(text=response.content, id="msg_1")]
+        )
+
+    def predict_stream(
+        self, request: ResponsesAgentRequest
+    ) -> Generator[ResponsesAgentStreamEvent, None, None]:
+        result = self.predict(request)
+        for item in result.output:
+            yield ResponsesAgentStreamEvent(type="response.output_item.done", item=item)
+
+AGENT = MyAgent()
+mlflow.models.set_model(AGENT)
 ```
 
-### Agent Development Workflow
+**Key decisions:**
+- **`ResponsesAgent`** is MLflow 3's recommended base class -- it standardizes the input/output format for evaluation, tracing, and deployment
+- **Helper methods are required** -- use `self.create_text_output_item()`, `self.create_function_call_item()`, and `self.create_function_call_output_item()` instead of constructing output objects manually
+- **`mlflow.models.set_model(AGENT)`** at module level makes the agent discoverable by MLflow's logging and serving infrastructure
+- **Both `predict` and `predict_stream`** are needed -- the serving endpoint calls whichever the client requests
 
-1. **Create agent file** (`agent.py`) with `ResponsesAgent` pattern
-2. **Upload to workspace** via `upload_folder`
-3. **Test agent** via `run_python_file_on_databricks`
-4. **Log model** to Unity Catalog
-5. **Deploy** asynchronously via Databricks Job
-6. **Query endpoint** once READY
+## More Patterns
 
-### Output Format
+### Agent with LangGraph and Tools
 
-Always use helper methods:
+> "Build an agent that uses LangGraph for tool calling and state management. Use Python."
 
 ```python
-# Text response
-return ResponsesAgentResponse(
-    output=[self.create_text_output_item(text="Answer here", id="msg_1")]
+# agent.py
+import mlflow
+from mlflow.pyfunc import ResponsesAgent
+from mlflow.types.responses import (
+    ResponsesAgentRequest, ResponsesAgentResponse,
+    ResponsesAgentStreamEvent, output_to_responses_items_stream,
+    to_chat_completions_input,
+)
+from databricks_langchain import ChatDatabricks
+from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableLambda
+from langgraph.graph import END, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt.tool_node import ToolNode
+from typing import Annotated, Generator, Sequence, TypedDict
+
+LLM_ENDPOINT = "databricks-meta-llama-3-3-70b-instruct"
+SYSTEM_PROMPT = "You are a helpful assistant with access to tools."
+
+class AgentState(TypedDict):
+    messages: Annotated[Sequence, add_messages]
+
+class ToolCallingAgent(ResponsesAgent):
+    def __init__(self):
+        self.llm = ChatDatabricks(endpoint=LLM_ENDPOINT)
+        self.tools = []  # Add UCFunctionToolkit tools here
+        self.llm_with_tools = self.llm.bind_tools(self.tools) if self.tools else self.llm
+
+    def _build_graph(self):
+        def should_continue(state):
+            last = state["messages"][-1]
+            return "tools" if isinstance(last, AIMessage) and last.tool_calls else "end"
+
+        def call_model(state):
+            msgs = [{"role": "system", "content": SYSTEM_PROMPT}] + state["messages"]
+            return {"messages": [self.llm_with_tools.invoke(msgs)]}
+
+        graph = StateGraph(AgentState)
+        graph.add_node("agent", RunnableLambda(call_model))
+        if self.tools:
+            graph.add_node("tools", ToolNode(self.tools))
+            graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
+            graph.add_edge("tools", "agent")
+        else:
+            graph.add_edge("agent", END)
+        graph.set_entry_point("agent")
+        return graph.compile()
+
+    def predict_stream(self, request: ResponsesAgentRequest) -> Generator[ResponsesAgentStreamEvent, None, None]:
+        messages = to_chat_completions_input([m.model_dump() for m in request.input])
+        for event in self._build_graph().stream({"messages": messages}, stream_mode=["updates"]):
+            if event[0] == "updates":
+                for node_data in event[1].values():
+                    if node_data.get("messages"):
+                        yield from output_to_responses_items_stream(node_data["messages"])
+
+    def predict(self, request: ResponsesAgentRequest) -> ResponsesAgentResponse:
+        outputs = [e.item for e in self.predict_stream(request) if e.type == "response.output_item.done"]
+        return ResponsesAgentResponse(output=outputs)
+
+mlflow.langchain.autolog()
+AGENT = ToolCallingAgent()
+mlflow.models.set_model(AGENT)
+```
+
+The LangGraph pattern gives you a state machine with tool-calling loops. The `should_continue` function checks if the LLM wants to call a tool; if so, it routes to the `ToolNode`, which executes the tool and feeds the result back to the agent.
+
+### Log and Register the Agent
+
+> "Log my agent to MLflow with its dependencies and register it to Unity Catalog. Use Python."
+
+```python
+import mlflow
+from mlflow.models.resources import DatabricksServingEndpoint
+
+mlflow.set_registry_uri("databricks-uc")
+
+resources = [DatabricksServingEndpoint(endpoint_name="databricks-meta-llama-3-3-70b-instruct")]
+
+with mlflow.start_run():
+    model_info = mlflow.pyfunc.log_model(
+        name="agent",
+        python_model="agent.py",
+        resources=resources,
+        pip_requirements=[
+            "mlflow==3.6.0",
+            "databricks-langchain",
+            "langgraph==0.3.4",
+        ],
+        input_example={"input": [{"role": "user", "content": "Hello!"}]},
+        registered_model_name="main.agents.my_agent"
+    )
+```
+
+Specify exact package versions in `pip_requirements` to avoid dependency resolution issues on the serving endpoint. The `resources` list declares which model endpoints your agent calls, enabling permission checks at deployment time.
+
+### Test Locally Before Deploying
+
+> "Test my agent locally with a sample request before deploying to a serving endpoint. Use Python."
+
+```python
+from agent import AGENT
+from mlflow.types.responses import ResponsesAgentRequest, ChatContext
+
+request = ResponsesAgentRequest(
+    input=[{"role": "user", "content": "What is Databricks?"}],
+    context=ChatContext(user_id="test@example.com")
 )
 
-# Tool call
-self.create_function_call_item(id="call_1", call_id="fc_1", name="search", arguments='{}')
+# Non-streaming
+result = AGENT.predict(request)
+print(result.model_dump(exclude_none=True))
 
-# Tool result
-self.create_function_call_output_item(call_id="fc_1", output="result text")
+# Streaming
+for event in AGENT.predict_stream(request):
+    print(event)
 ```
 
-### Foundation Model Endpoints
+Always test locally before deploying. Agent deployment takes around 15 minutes, so catching errors locally saves significant iteration time.
 
-| Use Case | Endpoint |
-|----------|----------|
-| General reasoning | `databricks-claude-sonnet-4` |
-| Fast/cheap tasks | `databricks-meta-llama-3-1-8b-instruct` |
-| Large context | `databricks-meta-llama-3-3-70b-instruct` |
-| Multimodal | `databricks-llama-4-maverick` |
-| Embeddings | `databricks-gte-large-en` |
+## Watch Out For
+
+- **Constructing output objects manually** -- always use the helper methods (`create_text_output_item`, `create_function_call_item`, `create_function_call_output_item`). Manual construction causes serialization errors that only surface at query time.
+- **Missing `mlflow.models.set_model(AGENT)` at module level** -- without this, MLflow can't find your agent during logging or serving. It must execute when the module is imported, not inside a function.
+- **Loose dependency versions** -- `pip_requirements=["mlflow", "langgraph"]` invites resolution failures on the serving endpoint. Pin exact versions: `"mlflow==3.6.0"`, `"langgraph==0.3.4"`.
+- **Forgetting `resources` in `log_model()`** -- if your agent calls a foundation model endpoint, list it in `resources`. Missing resources cause permission errors at deployment, not at logging time.
