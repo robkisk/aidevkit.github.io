@@ -1,106 +1,243 @@
 ---
 title: Production Patterns
-description: Observability, security validation, resource cleanup, and health checks for production Spark data sources.
+description: Harden custom Spark data sources with rate limiting, metrics, resource cleanup, and input validation.
 sidebar:
   order: 8
 ---
 
-Moving a custom data source from prototype to production requires observability, security hardening, and resource lifecycle management. This page covers metrics reporting, input validation, secure credential handling, connection cleanup, and health-check patterns that make your connector reliable at scale.
+## What You Can Build
 
-## Observability and Metrics
+A data source that works in a notebook needs hardening before it runs unattended in production. Your AI coding assistant can generate the observability, security validation, resource lifecycle, and configuration validation patterns that separate a prototype from a connector you trust to run overnight.
+
+## In Action
+
+> "Harden my custom data source for production with rate limiting, monitoring, and graceful degradation. Track rows processed, failures, and throughput per partition. Use Python."
 
 ```python
-class ObservableWriter:
+import time
+import json
+import logging
+from pyspark import TaskContext
+
+logger = logging.getLogger(__name__)
+
+class ProductionWriter:
+    def __init__(self, options, schema=None):
+        self.url = options.get("url")
+        self.batch_size = int(options.get("batch_size", "50"))
+        self.continue_on_error = options.get("continue_on_error", "false") == "true"
+
     def write(self, iterator):
-        metrics = {"rows_processed": 0, "rows_failed": 0,
-                   "start_time": time.time()}
-        for row in iterator:
-            try:
-                self._send_row(row)
-                metrics["rows_processed"] += 1
-            except Exception as e:
-                metrics["rows_failed"] += 1
-                if not self.continue_on_error:
-                    raise
-        metrics["duration_seconds"] = time.time() - metrics["start_time"]
-        self._report_metrics(metrics)
+        import requests
+
+        context = TaskContext.get()
+        partition_id = context.partitionId()
+
+        metrics = {
+            "partition_id": partition_id,
+            "rows_processed": 0,
+            "rows_failed": 0,
+            "start_time": time.time(),
+        }
+
+        try:
+            for row in iterator:
+                try:
+                    requests.post(self.url, json=row.asDict()).raise_for_status()
+                    metrics["rows_processed"] += 1
+                except Exception as e:
+                    metrics["rows_failed"] += 1
+                    if not self.continue_on_error:
+                        raise
+                    logger.warning(
+                        "Row failed",
+                        extra={"partition": partition_id, "error": str(e)},
+                    )
+        finally:
+            metrics["duration_s"] = time.time() - metrics["start_time"]
+            if metrics["duration_s"] > 0:
+                metrics["rows_per_sec"] = (
+                    metrics["rows_processed"] / metrics["duration_s"]
+                )
+            logger.info("Partition complete", extra={"metrics": json.dumps(metrics)})
 ```
 
-## Security Validation
+**Key decisions your AI coding assistant made:**
+
+- **Metrics in `finally`** -- the metrics block runs whether the partition succeeds or fails, so you always get throughput data for debugging.
+- **`continue_on_error` is opt-in** -- defaulting to `false` means failures surface immediately. You explicitly enable partial-failure tolerance when the downstream use case allows it.
+- **Structured logging** -- `extra={"metrics": ...}` produces parseable log lines for log aggregation systems. Avoid `print()` in production; it interleaves with Spark's own output and can't be filtered.
+- **Per-partition granularity** -- each executor reports its own metrics. Aggregating across partitions on the driver gives you the full picture.
+
+## More Patterns
+
+### Validate configuration before execution
+
+> "Generate input validation for my data source that checks required options, validates numeric ranges, and rejects invalid identifiers before Spark starts any tasks."
 
 ```python
-class SecureDataSource:
-    def _validate_options(self, options):
-        required = ["host", "database", "table"]
-        missing = [opt for opt in required if opt not in options]
-        if missing:
-            raise ValueError(f"Missing: {', '.join(missing)}")
-        self._validate_host(options["host"])
+import re
 
-    def _validate_identifier(self, identifier, name):
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', identifier):
-            raise ValueError(f"Invalid {name}: {identifier}")
+class ValidatedDataSource:
+    def __init__(self, options):
+        self._validate(options)
+        self.options = options
+
+    def _validate(self, options):
+        errors = []
+
+        # Required options
+        for key in ("host", "database", "table"):
+            if key not in options:
+                errors.append(f"Missing required option: {key}")
+
+        # Numeric ranges
+        if "timeout" in options:
+            t = int(options["timeout"])
+            if not 0 <= t <= 300:
+                errors.append(f"timeout must be 0-300, got {t}")
+
+        if "batch_size" in options:
+            b = int(options["batch_size"])
+            if not 1 <= b <= 10000:
+                errors.append(f"batch_size must be 1-10000, got {b}")
+
+        # SQL identifier validation — prevent injection
+        if "table" in options:
+            if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", options["table"]):
+                errors.append(
+                    f"Invalid table name: {options['table']}. "
+                    f"Must match [a-zA-Z_][a-zA-Z0-9_]*"
+                )
+
+        if errors:
+            raise ValueError(
+                "Configuration errors:\n" + "\n".join(f"  - {e}" for e in errors)
+            )
 ```
 
-## Resource Cleanup
+Validation runs on the driver during `__init__`, before Spark distributes any work. Catching bad config here means fast, clear errors instead of cryptic failures on executors 10 minutes into the job.
+
+### Resource cleanup with guaranteed connection closing
+
+> "Add resource lifecycle management to my writer so database connections are always closed, even if the write fails halfway through."
 
 ```python
-class ManagedResourceWriter:
+class ManagedWriter:
+    def __init__(self, options, schema=None):
+        self.options = options
+        self._connection = None
+
     def write(self, iterator):
         try:
-            connection = self._get_connection()
+            self._connection = self._create_connection()
             for row in iterator:
-                self._send_data(connection, row)
+                self._send(self._connection, row)
         finally:
-            self._cleanup()
+            if self._connection:
+                try:
+                    self._connection.close()
+                except Exception as e:
+                    logger.warning(f"Error closing connection: {e}")
+                finally:
+                    self._connection = None
 
-    def _cleanup(self):
-        if self._session:
-            self._session.close()
+    def __del__(self):
+        """Safety net — close connection if write() wasn't called."""
         if self._connection:
             self._connection.close()
 ```
 
-## Health Checks
+Leaked connections accumulate across partitions and micro-batches. On a long-running streaming job, that's a connection-pool exhaustion issue that appears hours after deployment.
+
+### Health check before operations
+
+> "Add a health check to my data source that validates connectivity and authentication before Spark starts distributing tasks."
 
 ```python
-class HealthCheckMixin:
-    def check_health(self):
-        checks = {
-            "connection": self._check_connection(),
-            "authentication": self._check_authentication(),
-            "rate_limit": self._check_rate_limit(),
-        }
-        failed = [n for n, ok in checks.items() if not ok]
+class HealthCheckedDataSource:
+    def reader(self, schema):
+        self._check_health()
+        return MyReader(self.options, schema)
+
+    def _check_health(self):
+        import requests
+
+        checks = {}
+
+        # Connectivity
+        try:
+            response = requests.get(
+                f"{self.options['url']}/health", timeout=5
+            )
+            checks["connectivity"] = response.status_code == 200
+        except Exception:
+            checks["connectivity"] = False
+
+        # Authentication
+        try:
+            response = requests.get(
+                self.options["url"],
+                headers=self._get_auth_headers(),
+                timeout=5,
+            )
+            checks["authentication"] = response.status_code != 401
+        except Exception:
+            checks["authentication"] = False
+
+        failed = [k for k, v in checks.items() if not v]
         if failed:
-            raise Exception(f"Health check failed: {', '.join(failed)}")
+            raise RuntimeError(
+                f"Health check failed: {', '.join(failed)}. "
+                f"Fix before running the job."
+            )
 ```
 
-## Configuration Validation
+Health checks run on the driver before any executor work starts. A 5-second check here saves you from a 10-minute job that fails on every partition because the API is down.
+
+### Structured logging with correlation IDs
+
+> "Add structured logging to my data source so I can correlate log lines across driver and executor processes for a single job."
 
 ```python
-class ConfigValidator:
-    @classmethod
-    def validate(cls, options):
-        errors = []
-        if "timeout" in options:
-            t = int(options["timeout"])
-            if t < 0 or t > 300:
-                errors.append(f"timeout must be 0-300, got {t}")
-        if "batch_size" in options:
-            b = int(options["batch_size"])
-            if b < 1 or b > 10000:
-                errors.append(f"batch_size must be 1-10000, got {b}")
-        if errors:
-            raise ValueError("Config errors:\n" + "\n".join(f"- {e}" for e in errors))
+import logging
+import json
+
+class CorrelatedWriter:
+    def __init__(self, options, schema=None):
+        self.url = options.get("url")
+        self.job_id = options.get("job_id", "unknown")
+
+    def write(self, iterator):
+        import requests
+        from pyspark import TaskContext
+
+        context = TaskContext.get()
+        log_context = {
+            "job_id": self.job_id,
+            "partition_id": context.partitionId(),
+            "stage_id": context.stageId(),
+        }
+
+        logger.info(json.dumps({"event": "partition_start", **log_context}))
+
+        count = 0
+        for row in iterator:
+            requests.post(self.url, json=row.asDict()).raise_for_status()
+            count += 1
+
+        logger.info(json.dumps({
+            "event": "partition_complete",
+            "rows": count,
+            **log_context,
+        }))
 ```
 
-## Best Practices
+Pass a `job_id` option when you start the job. Every log line across every executor includes it, so you can filter logs for a single run across hundreds of tasks.
 
-1. Track throughput, latency, and error rates
-2. Use structured logging with correlation IDs
-3. Never log sensitive values
-4. Validate all inputs at system boundary
-5. Always close connections in `finally` blocks
-6. Verify system health before operations
-7. Set up alerts for error rate anomalies
+## Watch Out For
+
+- **Rate limiter per partition instead of global** -- if you create a rate limiter inside `write()`, each partition has its own. With 20 partitions, your "100 requests/second" limiter actually allows 2,000 requests/second. For global rate limiting, use the target API's `Retry-After` headers or coordinate through a shared resource.
+- **Logging credentials** -- `logger.info(f"Connecting with options: {self.options}")` dumps your API key into the log file. Sanitize options before logging (see the authentication patterns page for masking).
+- **No connection timeout** -- `requests.get(url)` without a `timeout` parameter waits indefinitely if the server accepts the TCP connection but never responds. Always set `timeout=` on every HTTP call.
+- **Skipping validation because "it worked in the notebook"** -- production runs with different options, different cluster sizes, and different data volumes. Validate config in `__init__`, run health checks in `reader()`/`writer()`, and log enough context to debug failures without SSH access to the cluster.
