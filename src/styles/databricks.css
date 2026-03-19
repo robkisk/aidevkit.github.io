@@ -40,38 +40,70 @@
   font-display: swap;
 }
 
-/* === Databricks Brand Tokens (Light Mode) === */
+/*
+ * Starlight color system:
+ *   :root          = DARK mode base (default)
+ *   :root[data-theme='light'] = LIGHT mode overrides
+ *
+ * Variable semantics FLIP between modes:
+ *   Dark:  --sl-color-white = lightest,  --sl-color-black = darkest
+ *   Light: --sl-color-white = darkest,   --sl-color-black = lightest
+ *
+ * Key mapping variables:
+ *   --sl-color-bg      = var(--sl-color-black)     → page background
+ *   --sl-color-text    = var(--sl-color-gray-2)     → body text
+ *   --sl-color-bg-nav  = var(--sl-color-gray-6)     → sidebar/nav bg
+ */
+
+/* === Dark Mode (Starlight default = :root) === */
 
 :root {
   --sl-font: 'DM Sans', sans-serif;
   --sl-font-mono: 'JetBrains Mono', monospace;
 
-  --sl-color-accent-low: #FFB8AB;
-  --sl-color-accent: #FF3621;
-  --sl-color-accent-high: #801C17;
-  --sl-color-white: #F9F7F4;
-  --sl-color-gray-1: #A3B0B5;
-  --sl-color-gray-5: #1B3139;
-  --sl-color-gray-6: #0F1F25;
-  --sl-color-black: #0B2026;
+  /* In dark mode: white=lightest, black=darkest (page bg) */
+  --sl-color-white: #F9F7F4;       /* Oat Light — lightest text/elements */
+  --sl-color-gray-1: #C8CED1;      /* Light gray text */
+  --sl-color-gray-2: #A3B0B5;      /* Body text */
+  --sl-color-gray-3: #6B7D83;      /* Muted text */
+  --sl-color-gray-4: #3A4F57;      /* Subtle borders */
+  --sl-color-gray-5: #1B3139;      /* Nav borders, inline code bg */
+  --sl-color-gray-6: #0F1F25;      /* Sidebar/nav background */
+  --sl-color-black: #0B2026;       /* Page background (Navy 900) */
+
+  /* Accent (Lava) */
+  --sl-color-accent-low: #3D1510;  /* Dark accent background */
+  --sl-color-accent: #FF5F46;      /* Lava 500 — links, highlights */
+  --sl-color-accent-high: #FFB8AB; /* Light accent for text on dark */
 }
 
-/* === Databricks Brand Tokens (Dark Mode) === */
+/* === Light Mode === */
 
-[data-theme='dark'] {
-  --sl-color-accent-low: #801C17;
-  --sl-color-accent: #FF5F46;
-  --sl-color-accent-high: #FFB8AB;
-  --sl-color-white: #0B2026;
-  --sl-color-gray-1: #0F1F25;
-  --sl-color-gray-5: #6B7D83;
-  --sl-color-gray-6: #F9F7F4;
-  --sl-color-black: #FFFFFF;
+:root[data-theme='light'] {
+  /* In light mode: white=darkest, black=lightest (page bg) */
+  --sl-color-white: #0B2026;       /* Navy 900 — darkest text */
+  --sl-color-gray-1: #0F1F25;      /* Navy 800 */
+  --sl-color-gray-2: #1B3139;      /* Navy 700 — body text */
+  --sl-color-gray-3: #3A4F57;      /* Mid gray */
+  --sl-color-gray-4: #6B7D83;      /* Subtle text */
+  --sl-color-gray-5: #C8CED1;      /* Light borders */
+  --sl-color-gray-6: #EDE9E3;      /* Sidebar/nav bg (warm light) */
+  --sl-color-black: #F9F7F4;       /* Oat Light — page background */
+
+  /* Accent (Lava) */
+  --sl-color-accent-low: #FFF0EE;  /* Light accent background */
+  --sl-color-accent: #FF3621;      /* Lava 600 — links */
+  --sl-color-accent-high: #801C17; /* Lava 800 — hover, high contrast */
 }
 
-/* === Starlight Header Logo (invert for dark mode) === */
+/* === Starlight Header Logo === */
 
-[data-theme='dark'] .site-title img {
+:root[data-theme='light'] .site-title img {
+  /* Logo PNG has dark text on transparent — fine for light mode */
+}
+
+:root:not([data-theme='light']) .site-title img {
+  /* Dark mode: invert to white */
   filter: brightness(0) invert(1);
 }
 
@@ -79,12 +111,6 @@
 
 h1, h2, h3, h4, h5, h6 {
   font-weight: 500;
-}
-
-/* === Links (WCAG AA) === */
-
-:root[data-theme='light'] a:not(.sl-btn) {
-  color: #801C17;
 }
 
 /* === Buttons === */
