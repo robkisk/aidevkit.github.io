@@ -10,8 +10,7 @@ export default defineConfig({
 		starlight({
 			title: 'AI Dev Kit',
 			logo: {
-				light: './src/assets/logo-light.svg',
-				dark: './src/assets/logo-dark.svg',
+				src: './src/assets/Databricks_Logo.png',
 			},
 			components: {
 				Hero: './src/components/Hero.astro',

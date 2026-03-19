@@ -69,6 +69,12 @@
   --sl-color-black: #FFFFFF;
 }
 
+/* === Starlight Header Logo (invert for dark mode) === */
+
+[data-theme='dark'] .site-title img {
+  filter: brightness(0) invert(1);
+}
+
 /* === Typography === */
 
 h1, h2, h3, h4, h5, h6 {
