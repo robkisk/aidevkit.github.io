@@ -415,11 +415,7 @@ const categories = [
             <div class="step">
               <div class="step-number">{s.number}</div>
               <h3 class="step-title">{s.title}</h3>
-              <p class="step-desc" set:html={
-                s.title === 'Install'
-                  ? '<code>claude skill install ...</code> or add MCP server config'
-                  : s.description
-              } />
+              <p class="step-desc" set:html={s.description} />
             </div>
           ))}
         </div>
