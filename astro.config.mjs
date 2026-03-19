@@ -9,6 +9,12 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'AI Dev Kit',
+			head: [
+				{ tag: 'link', attrs: { rel: 'preload', href: '/aidevkit.github.io/fonts/DMSans-Regular.woff2', as: 'font', type: 'font/woff2', crossorigin: '' } },
+				{ tag: 'link', attrs: { rel: 'preload', href: '/aidevkit.github.io/fonts/DMSans-Medium.woff2', as: 'font', type: 'font/woff2', crossorigin: '' } },
+				{ tag: 'link', attrs: { rel: 'preload', href: '/aidevkit.github.io/fonts/DMSans-Bold.woff2', as: 'font', type: 'font/woff2', crossorigin: '' } },
+				{ tag: 'link', attrs: { rel: 'preload', href: '/aidevkit.github.io/fonts/JetBrainsMono-Regular.woff2', as: 'font', type: 'font/woff2', crossorigin: '' } },
+			],
 			expressiveCode: {
 				themes: ['catppuccin-mocha', 'catppuccin-latte'],
 			},

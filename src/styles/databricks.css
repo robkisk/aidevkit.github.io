@@ -5,7 +5,7 @@
   src: url('/aidevkit.github.io/fonts/DMSans-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
+  font-display: optional;
 }
 
 @font-face {
@@ -13,7 +13,7 @@
   src: url('/aidevkit.github.io/fonts/DMSans-Medium.woff2') format('woff2');
   font-weight: 500;
   font-style: normal;
-  font-display: swap;
+  font-display: optional;
 }
 
 @font-face {
@@ -21,7 +21,7 @@
   src: url('/aidevkit.github.io/fonts/DMSans-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
-  font-display: swap;
+  font-display: optional;
 }
 
 @font-face {
@@ -29,7 +29,7 @@
   src: url('/aidevkit.github.io/fonts/JetBrainsMono-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
+  font-display: optional;
 }
 
 @font-face {
@@ -37,7 +37,7 @@
   src: url('/aidevkit.github.io/fonts/JetBrainsMono-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
-  font-display: swap;
+  font-display: optional;
 }
 
 /*
@@ -74,7 +74,7 @@
   /* Accent (Lava) */
   --sl-color-accent-low: #3D1510;  /* Dark accent background */
   --sl-color-accent: #E03A25;      /* Richer red — links, highlights */
-  --sl-color-accent-high: #F0A89C; /* Accent text on dark */
+  --sl-color-accent-high: #E63826; /* Matches site title red */
 }
 
 /* === Light Mode === */
