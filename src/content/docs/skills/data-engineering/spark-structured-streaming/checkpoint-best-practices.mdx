@@ -1,54 +1,40 @@
 ---
 title: Checkpoint Best Practices
-description: Configure and manage checkpoint locations for reliable Spark Structured Streaming with exactly-once semantics.
+description: Set up checkpoint storage, naming, and recovery for reliable exactly-once streaming with Spark Structured Streaming.
 sidebar:
   order: 2
 ---
 
-Checkpoints store the offset and state metadata that give Structured Streaming its exactly-once guarantees. Getting checkpoint storage, naming, and lifecycle management right prevents data loss, duplicate processing, and hard-to-debug recovery failures.
+## What You Can Build
 
-## Checkpoint Storage
+Checkpoints are the foundation of exactly-once semantics in Structured Streaming. They store offset positions, state metadata, and commit records that let Spark resume exactly where it left off after a failure. Getting checkpoint storage, naming, and lifecycle management right prevents data loss, duplicate processing, and recovery failures that are notoriously hard to debug.
 
-```python
-# DO: Use Unity Catalog volumes (S3/ADLS-backed)
-checkpoint_path = "/Volumes/catalog/checkpoints/stream_name"
+## In Action
 
-# DON'T: Use DBFS (ephemeral, workspace-local)
-# checkpoint_path = "/dbfs/checkpoints/stream_name"  # Avoid
-```
-
-## Target-Tied Organization
+> "Write a Python function that generates checkpoint paths tied to the target table, and show the correct way to start a stream with persistent checkpoint storage."
 
 ```python
-def get_checkpoint_location(table_name):
-    """Checkpoint should be tied to TARGET, not source."""
-    return f"/Volumes/catalog/checkpoints/{table_name}"
+def get_checkpoint_path(table_name, environment="prod"):
+    """Tie checkpoint to the target table, not the source."""
+    return f"/Volumes/{environment}/checkpoints/{table_name}"
+
+stream.writeStream \
+    .format("delta") \
+    .option("checkpointLocation", get_checkpoint_path("orders")) \
+    .trigger(processingTime="30 seconds") \
+    .start("/delta/orders")
 ```
 
-Checkpoint already contains source information. Target-tied naming gives systematic organization, easy backup, and clear ownership.
+**Key decisions:**
+- **Target-tied naming, not source-tied.** The checkpoint already stores source information (topic, offsets). Naming by target gives systematic organization, easy backup, and clear ownership. When you see `/Volumes/prod/checkpoints/orders`, you know exactly which table this belongs to.
+- **Unity Catalog Volumes, not DBFS.** UC Volumes are backed by S3 or ADLS -- persistent, durable cloud storage. DBFS is ephemeral and workspace-local. A cluster termination can lose your DBFS checkpoints, which means reprocessing from scratch.
+- **One checkpoint per stream, always.** Two streams writing to the same checkpoint corrupt each other's offset tracking. This causes silent data loss that's extremely hard to diagnose.
 
-## One Checkpoint Per Stream
+## More Patterns
 
-```python
-# CORRECT: Each stream has its own checkpoint
-stream1.writeStream.option("checkpointLocation", "/checkpoints/stream1").start()
-stream2.writeStream.option("checkpointLocation", "/checkpoints/stream2").start()
+### Inspecting Checkpoint Contents
 
-# WRONG: Never share checkpoints between streams -- causes data loss
-```
-
-## Checkpoint Structure
-
-```
-checkpoint_location/
-├── metadata/      # Query ID
-├── offsets/       # What to process (intent)
-├── commits/       # What completed (confirmation)
-├── sources/       # Source metadata
-└── state/         # Stateful operations (if any)
-```
-
-## Reading Checkpoint Contents
+> "Write Python code to read the latest offset and commit files from a checkpoint to diagnose whether a batch completed."
 
 ```python
 import json
@@ -56,12 +42,20 @@ import json
 offset_file = "/checkpoints/stream/offsets/223"
 content = dbutils.fs.head(offset_file)
 offset_data = json.loads(content)
+print(json.dumps(offset_data, indent=2))
 
-# Key fields: batchWatermarkMs, batchTimestampMs,
-# source[0].startOffset, source[0].endOffset, source[0].latestOffset
+# Key fields:
+# - batchWatermarkMs: current watermark timestamp
+# - source[0].startOffset: beginning of batch (inclusive)
+# - source[0].endOffset: end of batch (exclusive)
+# - source[0].latestOffset: newest offset available in source
 ```
 
-## Reading State Store
+The gap between `endOffset` and `latestOffset` tells you how far behind the stream is. If a matching commit file exists for this batch ID, the batch completed successfully. If not, Spark will reprocess it on restart.
+
+### Reading State Store Directly
+
+> "Write Python code to query the state store from a checkpoint to audit state size and partition balance."
 
 ```python
 state_df = spark.read.format("statestore").load("/checkpoints/stream/state")
@@ -71,36 +65,59 @@ state_metadata = spark.read.format("state-metadata").load("/checkpoints/stream")
 state_metadata.show()
 ```
 
-## Recovery Scenarios
+The `statestore` reader exposes key, value, partition ID, and expiration timestamp for every state entry. The `state-metadata` reader shows operator names, partition counts, and batch ID ranges. Use these to diagnose state growth issues without stopping the stream.
 
-**Lost or corrupted checkpoint:** delete the folder, restart with `startingOffsets=earliest`. Delta sink handles deduplication if idempotent writes are configured.
+### Recovery from Lost or Corrupted Checkpoint
+
+> "Write Python code to recover a stream after checkpoint loss, including backup before risky changes."
 
 ```python
-dbutils.fs.rm("/checkpoints/stream", recurse=True)
+# Backup before major changes (schema evolution, code refactor)
+dbutils.fs.cp(
+    "/Volumes/prod/checkpoints/orders",
+    "/Volumes/prod/checkpoints/orders_backup_20240101",
+    recurse=True
+)
+
+# If checkpoint is lost or corrupted:
+dbutils.fs.rm("/Volumes/prod/checkpoints/orders", recurse=True)
+
+# Restart with earliest offsets -- Delta idempotent writes prevent duplicates
+stream.writeStream \
+    .format("delta") \
+    .option("checkpointLocation", "/Volumes/prod/checkpoints/orders") \
+    .trigger(processingTime="30 seconds") \
+    .start("/delta/orders")
 ```
 
-**Backup before major changes:**
+Deleting a checkpoint and restarting with `startingOffsets=earliest` reprocesses all data from the source. This is safe if your sink uses idempotent writes (`txnVersion`/`txnAppId`), because Delta skips batches it has already committed. Without idempotent writes, you get duplicates.
+
+### Monitoring Checkpoint Health
+
+> "Write Python code to monitor checkpoint folder size and detect unprocessed batches."
 
 ```python
-dbutils.fs.cp("/checkpoints/stream", "/checkpoints/stream_backup_20240101", recurse=True)
-```
+import json
 
-## Monitoring
+# Check offset/commit sync
+latest_offset = sorted(dbutils.fs.ls("/checkpoints/stream/offsets"))[-1]
+batch_id = latest_offset.path.split("/")[-1]
 
-```python
+commit_exists = dbutils.fs.exists(f"/checkpoints/stream/commits/{batch_id}")
+print(f"Batch {batch_id}: {'Committed' if commit_exists else 'Pending (will reprocess)'}")
+
 # Track checkpoint folder size
-checkpoint_size = dbutils.fs.ls("/checkpoints/stream")
-total_size = sum([f.size for f in checkpoint_size if f.isFile()])
-
-# Monitor state store partition balance (stateful jobs)
-state_df = spark.read.format("statestore").load("/checkpoints/stream/state")
-state_df.groupBy("partitionId").count().orderBy(desc("count")).show()
+files = dbutils.fs.ls("/checkpoints/stream")
+total_mb = sum(f.size for f in files if f.isFile()) / (1024 * 1024)
+print(f"Checkpoint size: {total_mb:.2f} MB")
 ```
 
-## Common Issues
+A missing commit file for the latest offset is normal after a crash -- Spark wrote the intent (offset) but didn't finish processing. It will reprocess on restart. Steadily growing checkpoint size without state operations indicates a retention issue; check `minBatchesToRetain`.
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| State growing too large | Long watermark or high cardinality keys | Reduce watermark duration |
-| Checkpoint corruption | File system issues | Delete and restart; restore from backup |
-| Can't find commit file | Normal if job crashed | Spark will reprocess on restart |
+## Watch Out For
+
+- **Shared checkpoints between streams cause silent data loss** -- each stream must have its own checkpoint location. When two streams share one, they overwrite each other's offsets and skip or duplicate data with no error message.
+- **DBFS checkpoints lost on cluster termination** -- DBFS is not durable storage. Use Unity Catalog Volumes (backed by S3/ADLS) for any checkpoint that matters.
+- **State folder growing unboundedly** -- this means your watermark isn't expiring state. Check that the watermark column has valid, increasing timestamps and that the watermark duration matches your data's latency profile.
+- **Can't resume after code change** -- certain changes (adding/removing stateful operators, changing the number of shuffle partitions) are incompatible with existing checkpoints. Back up the checkpoint before making changes, and be prepared to delete and reprocess if the schema is incompatible.
+- **Forgetting to back up before migration** -- always `dbutils.fs.cp` the checkpoint folder before schema changes, code refactors, or cluster migrations. A corrupted checkpoint with no backup means full reprocessing.

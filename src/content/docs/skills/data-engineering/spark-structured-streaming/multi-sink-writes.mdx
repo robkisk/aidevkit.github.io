@@ -1,39 +1,27 @@
 ---
 title: Multi-Sink Writes
-description: Write a single Spark stream to multiple Delta tables or Kafka topics using ForEachBatch — medallion architecture, conditional routing, and parallel fan-out.
+description: Write a single stream to multiple Delta tables or Kafka topics using foreachBatch for medallion architecture, conditional routing, and parallel fan-out.
 sidebar:
   order: 4
 ---
 
-## Core Pattern
+## What You Can Build
 
-Use a single checkpoint for the entire multi-sink stream. All writes within a `foreachBatch` call see the same input data and share the same `batch_id`.
+You have one stream of events, but three different tables need them -- raw bronze, cleansed silver, and aggregated gold. Reading the source three times wastes resources and triplicates your Kafka consumer lag. `foreachBatch` lets you read once and write many, with all sinks sharing a single checkpoint and seeing the same data per batch.
 
-```python
-def write_multiple_tables(batch_df, batch_id):
-    batch_df.write.format("delta").mode("append") \
-        .option("txnVersion", batch_id) \
-        .option("txnAppId", "multi_sink_bronze") \
-        .save("/delta/bronze_events")
+## In Action
 
-    cleansed = batch_df.dropDuplicates(["event_id"])
-    cleansed.write.format("delta").mode("append") \
-        .option("txnVersion", batch_id) \
-        .option("txnAppId", "multi_sink_silver") \
-        .save("/delta/silver_events")
-
-stream.writeStream \
-    .foreachBatch(write_multiple_tables) \
-    .option("checkpointLocation", "/checkpoints/multi_sink") \
-    .start()
-```
-
-## Medallion Architecture
+> "Write a Python streaming pipeline that reads events from Kafka, then writes raw data to a bronze table, deduplicates to a silver table, and aggregates to a gold table -- all from a single stream."
 
 ```python
-def medallion_architecture(batch_df, batch_id):
+from pyspark.sql.functions import col, current_timestamp, count, sum, window
+
+def medallion_write(batch_df, batch_id):
+    batch_df.cache()
+
     batch_df.write.format("delta").mode("append") \
-        .option("txnVersion", batch_id).option("txnAppId", "medallion_bronze") \
+        .option("txnVersion", batch_id) \
+        .option("txnAppId", "medallion_bronze") \
         .saveAsTable("bronze.events")
 
     silver_df = (batch_df
@@ -41,18 +29,66 @@ def medallion_architecture(batch_df, batch_id):
         .filter(col("status").isin(["active", "pending"]))
         .withColumn("processed_at", current_timestamp()))
     silver_df.write.format("delta").mode("append") \
-        .option("txnVersion", batch_id).option("txnAppId", "medallion_silver") \
+        .option("txnVersion", batch_id) \
+        .option("txnAppId", "medallion_silver") \
         .saveAsTable("silver.events")
 
     gold_df = (silver_df
         .groupBy(window(col("timestamp"), "5 minutes"), "category")
         .agg(count("*").alias("event_count"), sum("amount").alias("total_amount")))
     gold_df.write.format("delta").mode("append") \
-        .option("txnVersion", batch_id).option("txnAppId", "medallion_gold") \
+        .option("txnVersion", batch_id) \
+        .option("txnAppId", "medallion_gold") \
         .saveAsTable("gold.category_metrics")
+
+    batch_df.unpersist()
+
+stream.writeStream \
+    .foreachBatch(medallion_write) \
+    .option("checkpointLocation", "/Volumes/catalog/checkpoints/medallion") \
+    .trigger(processingTime="30 seconds") \
+    .start()
 ```
 
-## Parallel Fan-Out
+**Key decisions:**
+- **One checkpoint for the entire multi-sink stream.** All writes within a single `foreachBatch` call see the same input data and share the same `batch_id`. Don't create separate streams per sink -- that re-reads the source for each one.
+- **`txnVersion` + `txnAppId` per sink** makes each write idempotent. The `txnAppId` must be unique per target table so Spark can detect and skip duplicate batches independently for each sink.
+- **Cache before multi-write** avoids recomputing the batch for each sink. Unpersist after all writes complete to free memory before the next microbatch.
+- **Gold aggregation on silver output, not raw bronze** -- the gold table benefits from the deduplication and filtering already done for silver, avoiding double-counting.
+
+## More Patterns
+
+### Conditional Routing by Event Type
+
+> "Write a Python foreachBatch that routes events to different Delta tables based on event type."
+
+```python
+def route_by_type(batch_df, batch_id):
+    batch_df.cache()
+
+    orders = batch_df.filter(col("event_type") == "order")
+    refunds = batch_df.filter(col("event_type") == "refund")
+    reviews = batch_df.filter(col("event_type") == "review")
+
+    for df, table, app_id in [
+        (orders, "silver.orders", "router_orders"),
+        (refunds, "silver.refunds", "router_refunds"),
+        (reviews, "silver.reviews", "router_reviews"),
+    ]:
+        if df.count() > 0:
+            df.write.format("delta").mode("append") \
+                .option("txnVersion", batch_id) \
+                .option("txnAppId", app_id) \
+                .saveAsTable(table)
+
+    batch_df.unpersist()
+```
+
+Filtering in `foreachBatch` is more efficient than running three separate streams with source-side filters. Spark evaluates the filter predicates against the cached DataFrame without re-reading from Kafka.
+
+### Parallel Fan-Out with ThreadPoolExecutor
+
+> "Write a Python foreachBatch that writes to four Delta tables in parallel."
 
 ```python
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -71,12 +107,11 @@ def parallel_write(batch_df, batch_id):
         ("bronze.all_events", None),
         ("silver.errors", col("level") == "ERROR"),
         ("silver.warnings", col("level") == "WARN"),
+        ("gold.metrics", col("type") == "metric"),
     ]
 
     with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {
-            executor.submit(write_table, t, f): t for t, f in tables
-        }
+        futures = {executor.submit(write_table, t, f): t for t, f in tables}
         errors = []
         for future in as_completed(futures):
             try:
@@ -89,9 +124,15 @@ def parallel_write(batch_df, batch_id):
         raise Exception(f"Write failures: {errors}")
 ```
 
-## Error Handling with Dead Letter Queue
+Sequential writes to four tables mean the microbatch takes four times as long as a single write. Parallel writes cut that to roughly the duration of the slowest sink. Keep `max_workers` at 4 or fewer -- more threads create resource contention that slows everything down.
+
+### Error Handling with Dead Letter Queue
+
+> "Write a Python foreachBatch that validates records and routes invalid ones to a DLQ table."
 
 ```python
+from pyspark.sql.functions import lit
+
 def write_with_dlq(batch_df, batch_id):
     valid = batch_df.filter(col("required_field").isNotNull())
     invalid = batch_df.filter(col("required_field").isNull())
@@ -110,17 +151,11 @@ def write_with_dlq(batch_df, batch_id):
             .saveAsTable("errors.dead_letter_queue"))
 ```
 
-## Best Practices
+Stamp DLQ records with the error reason and batch ID. This gives you enough context to replay or investigate without going back to the source.
 
-- **Cache** the batch DataFrame to avoid recomputation across sinks
-- **Unpersist** after all writes complete
-- Use `txnVersion`/`txnAppId` for idempotent writes (unique per table)
-- Keep batch processing fast -- move expensive aggregations to the stream definition
+## Watch Out For
 
-## Common Issues
-
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| Slow writes | Sequential processing | Use parallel `ThreadPoolExecutor` |
-| Recomputation | Multiple actions on same DataFrame | Cache the batch DataFrame |
-| Partial failures | One sink fails | Use idempotent writes; Spark retries entire batch |
+- **Slow writes from sequential processing** -- if your `foreachBatch` writes to three or more tables sequentially, switch to `ThreadPoolExecutor`. The batch duration should be comfortably under your trigger interval.
+- **Recomputing the batch for each sink** -- every `.write` action re-evaluates the DataFrame lineage. Cache at the top of `foreachBatch` and unpersist at the bottom. Forgetting to cache is the single most common performance issue in multi-sink writes.
+- **Partial failures leave data inconsistent** -- if the second of three writes fails, Spark retries the entire batch. Use `txnVersion`/`txnAppId` on every write so successful sinks skip the duplicate and only the failed sink retries.
+- **Expensive aggregations inside foreachBatch** -- groupBy/agg operations in the batch function block the entire microbatch. Move heavy aggregations to the stream definition if possible, or accept the latency cost.
