@@ -1,0 +1,147 @@
+---
+title: AI/BI Dashboards
+description: Create and manage Databricks AI/BI dashboards programmatically — datasets, widgets, layouts, filters, and multi-page designs via the dashboard JSON API.
+sidebar:
+  order: 1
+---
+
+## Overview
+
+The AI/BI Dashboards skill teaches Claude Code how to create, configure, and deploy Databricks AI/BI dashboards (formerly Lakeview dashboards) using the dashboard JSON API. Use it when building data visualizations, KPI displays, or interactive filtered reports directly from Unity Catalog tables. It covers dataset design, widget configuration, layout rules, and filter architecture.
+
+## Capabilities
+
+- Build complete dashboards with datasets, widgets, and multi-page layouts
+- Create KPI counters, bar charts, line charts, pie charts, and data tables
+- Design global filters (cross-dashboard) and page-level filters
+- Validate SQL queries against warehouses before deploying dashboard JSON
+- Configure 6-column grid layouts with proper widget sizing and spacing
+- Use pre-aggregated and aggregating widget patterns for counters
+- Apply Spark SQL patterns for date math, truncation, and grouping
+- Publish and unpublish dashboards for sharing
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_table_details` | Inspect table schemas to design dataset queries |
+| `execute_sql` | Test SQL queries before embedding them in dashboards |
+| `get_best_warehouse` | Find an available SQL warehouse for dashboard execution |
+| `create_or_update_dashboard` | Deploy dashboard JSON to the workspace |
+| `get_dashboard` | Retrieve dashboard details by ID or list all dashboards |
+| `delete_dashboard` | Move a dashboard to trash |
+| `publish_dashboard` | Publish or unpublish a dashboard for sharing |
+
+## Example Prompts
+
+Use these prompts with Claude Code to build dashboards:
+
+```
+Create a dashboard showing NYC taxi trip statistics with
+total trips, average fare, and average distance KPIs plus
+a bar chart of trips by pickup ZIP code
+```
+
+```
+Build a sales dashboard with a global region filter that
+affects all pages, showing revenue counters and a
+trend line chart by month
+```
+
+```
+Add a multi-select filter for campaign name to my
+marketing dashboard so users can slice all widgets by campaign
+```
+
+```
+Create a multi-page dashboard with an overview page for KPIs,
+a trends page with time series charts, and a details page
+with a data table
+```
+
+```
+Build a pie chart showing order distribution across the top 5
+product categories with an "Other" bucket for the rest
+```
+
+```
+Design a dashboard layout with 3 KPI counters across the top,
+two side-by-side charts in the middle, and a full-width table
+at the bottom
+```
+
+## Key Concepts
+
+### Dashboard JSON Structure
+
+Dashboards are defined as JSON with three main sections:
+- **Datasets** — SQL queries that feed widgets, each with a unique name and fully-qualified table references
+- **Pages** — Canvas or global-filter pages containing widget layouts
+- **Widgets** — Visual elements (counters, charts, tables, filters, text) positioned on a 6-column grid
+
+### 6-Column Grid Layout
+
+Every dashboard uses a 6-column grid. Each widget has a position (`x`, `y`, `width`, `height`) and every row must sum to exactly width 6 with no gaps.
+
+| Widget Type | Recommended Width | Recommended Height |
+|-------------|------------------|--------------------|
+| Text header | 6 | 1 |
+| Counter/KPI | 2 | 3-4 |
+| Line/Bar chart | 3 | 5-6 |
+| Pie chart | 3 | 5-6 |
+| Full-width chart | 6 | 5-7 |
+| Table | 6 | 5-8 |
+
+### Widget Version Requirements
+
+Different widget types require specific version numbers in their spec:
+
+| Widget Type | Version |
+|-------------|---------|
+| counter | 2 |
+| table | 2 |
+| filter-multi-select | 2 |
+| filter-single-select | 2 |
+| filter-date-range-picker | 2 |
+| bar | 3 |
+| line | 3 |
+| pie | 3 |
+| text | N/A (no spec block) |
+
+### Field Name Matching
+
+The `name` in `query.fields` must exactly match the `fieldName` in widget `encodings`. A mismatch causes "no selected fields to visualize" errors.
+
+```json
+// Correct: names match
+"fields": [{"name": "sum(spend)", "expression": "SUM(`spend`)"}]
+"encodings": {"value": {"fieldName": "sum(spend)", "displayName": "Total Spend"}}
+```
+
+### Global vs Page-Level Filters
+
+| Type | Placement | Scope |
+|------|-----------|-------|
+| **Global** | Dedicated page with `PAGE_TYPE_GLOBAL_FILTERS` | Affects all pages with matching dataset fields |
+| **Page-level** | Regular canvas page | Affects only widgets on that page |
+
+Filter widget types: `filter-multi-select`, `filter-single-select`, `filter-date-range-picker`. Always use `spec.version: 2` and include `frame` with `showTitle: true`.
+
+### Dataset Architecture
+
+- One dataset per domain (orders, customers, products)
+- Exactly one valid SQL query per dataset (no semicolons)
+- Always use fully-qualified table names: `catalog.schema.table_name`
+- Put all business logic (CASE/WHEN, COALESCE, ratios) in the dataset SQL with explicit aliases
+- Every widget `fieldName` must match a dataset column or alias exactly
+
+### Cardinality Guidelines
+
+Charts with color/grouping dimensions should have 3-8 distinct values. High-cardinality dimensions (customer IDs, order IDs) should use table widgets instead of charts. For dimensions with more than 10 values, aggregate to a higher level or use a TOP-N + "Other" bucket pattern.
+
+## References
+
+- [AI/BI Dashboards Overview](https://docs.databricks.com/aws/en/dashboards/)
+- [Dashboard API](https://docs.databricks.com/api/workspace/lakeview)
+- [SQL Language Reference](https://docs.databricks.com/aws/en/sql/language-manual/)
+- [Spark SQL Functions](https://docs.databricks.com/aws/en/sql/language-manual/functions/)
