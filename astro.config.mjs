@@ -9,6 +9,9 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'AI Dev Kit',
+			expressiveCode: {
+				themes: ['catppuccin-mocha', 'catppuccin-latte'],
+			},
 			logo: {
 				src: './src/assets/Databricks_Logo.png',
 			},

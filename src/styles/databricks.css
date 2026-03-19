@@ -73,8 +73,8 @@
 
   /* Accent (Lava) */
   --sl-color-accent-low: #3D1510;  /* Dark accent background */
-  --sl-color-accent: #FF5F46;      /* Lava 500 — links, highlights */
-  --sl-color-accent-high: #FFB8AB; /* Light accent for text on dark */
+  --sl-color-accent: #E03A25;      /* Richer red — links, highlights */
+  --sl-color-accent-high: #F0A89C; /* Accent text on dark */
 }
 
 /* === Light Mode === */
@@ -110,7 +110,13 @@
 /* === Site Title Branding === */
 
 .site-title {
-  color: #FF3621 !important;
+  color: #E63826 !important;
+}
+
+/* === Social Icons (neutral, not accent) === */
+
+.social-icons a {
+  color: var(--sl-color-gray-1) !important;
 }
 
 /* === Typography === */
