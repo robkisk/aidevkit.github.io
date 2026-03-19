@@ -97,20 +97,13 @@
 }
 
 /* === Starlight Header Logo === */
-
-:root[data-theme='light'] .site-title img {
-  /* Logo PNG has dark text on transparent — fine for light mode */
-}
-
-:root:not([data-theme='light']) .site-title img {
-  /* Dark mode: invert to white */
-  filter: brightness(0) invert(1);
-}
+/* AI badge SVG renders in native red — no filter needed */
 
 /* === Site Title Branding === */
 
 .site-title {
   color: #E63826 !important;
+  gap: 0.15rem !important;
 }
 
 /* === Social Icons (neutral, not accent) === */
@@ -123,6 +116,18 @@
 
 h1, h2, h3, h4, h5, h6 {
   font-weight: 500;
+}
+
+/* === Card Grid (force 3 columns) === */
+
+.card-grid {
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 0.75rem !important;
+}
+
+.card-grid .card {
+  padding: 0.75rem !important;
+  font-size: 0.85rem;
 }
 
 /* === Buttons === */
