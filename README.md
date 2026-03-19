@@ -1,49 +1,62 @@
-# Starlight Starter Kit: Basics
+# AI Dev Kit Documentation Site
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+Documentation site for [AI Dev Kit](https://github.com/databricks-solutions/ai-dev-kit) — skills, MCP tools, and a prompt library that give AI coding assistants deep knowledge of the Databricks platform.
 
-```
-npm create astro@latest -- --template starlight
-```
+**Live site:** https://robkisk.github.io/aidevkit.github.io
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## What's in the Docs
 
-## 🚀 Project Structure
+- **28 Skills** — Pre-built knowledge covering data engineering, SQL analytics, AI/ML, app development, governance, and DevOps on Databricks
+- **99 MCP Tools** — Direct workspace interaction (run SQL, manage pipelines, deploy apps, query vector indexes)
+- **Prompt Library** — Tested prompt templates for common tasks
+- **Guides** — End-to-end walkthroughs (RAG applications, medallion pipelines, multi-agent systems)
 
-Inside of your Astro + Starlight project, you'll see the following folders and files:
+## Development
 
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+```bash
+npm install
+npm run dev        # Local dev server at localhost:4321
+npm run build      # Production build to ./dist/
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+## Content Structure
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+All documentation lives in `src/content/docs/` as `.mdx` files. The directory structure maps directly to the site URL structure.
 
-Static assets, like favicons, can be placed in the `public/` directory.
+```
+src/content/docs/
+├── getting-started/       # Quick start, installation, configuration
+├── skills/
+│   ├── data-engineering/  # SDP, Structured Streaming, Custom Sources, Zerobus
+│   ├── sql-analytics/     # AI Functions, DBSQL, Genie Spaces, Metric Views
+│   ├── ai-ml/             # Vector Search, Agent Bricks, MLflow, Model Serving
+│   ├── apps-databases/    # Databricks Apps, Lakebase
+│   ├── governance-catalog/ # Iceberg Tables, Unity Catalog
+│   └── devops-config/     # Asset Bundles, Jobs, Workspace Config
+├── mcp-tools/             # MCP tool reference pages
+├── guides/                # End-to-end tutorials
+├── prompt-library/        # Copy-paste prompt templates
+└── reference/             # All skills list, all tools list, changelog
+```
 
-## 🧞 Commands
+## Content Template
 
-All commands are run from the root of the project, from a terminal:
+Child pages follow the "Guided Journey" template:
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+1. **What You Can Build** — Outcome-focused framing (2-3 sentences)
+2. **In Action** — Realistic prompt + generated code + key decisions
+3. **More Patterns** — Additional prompt/code pairs (2-4 scenarios)
+4. **Watch Out For** — Gotchas with mistake, cause, and fix
 
-## 👀 Want to learn more?
+See `docs/superpowers/specs/2026-03-19-child-page-content-rewrite-design.md` for the full content spec.
 
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+## Content Sourcing
+
+Docs pages are manually maintained. Skill source files in [`ai-dev-kit/databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit) provide the authoritative patterns — when sources disagree, skill files take precedence.
+
+## Tech Stack
+
+- [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) — static site framework
+- [Catppuccin Mocha/Latte](https://catppuccin.com) — syntax highlighting theme
+- DM Sans + JetBrains Mono — typography
+- GitHub Pages — hosting
