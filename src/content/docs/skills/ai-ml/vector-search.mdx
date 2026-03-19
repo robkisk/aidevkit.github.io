@@ -1,0 +1,121 @@
+---
+title: Vector Search
+description: Build RAG applications and semantic search with Databricks Vector Search — managed endpoints, Delta Sync indexes, hybrid search, and embedding models.
+sidebar:
+  order: 0
+---
+
+## Overview
+
+The Vector Search skill teaches Claude Code how to create and manage Databricks Vector Search endpoints and indexes for RAG (Retrieval-Augmented Generation) applications and semantic search. Use it when building knowledge bases, implementing similarity matching, or adding retrieval capabilities to AI agents. It covers endpoint selection, index creation, query patterns, and integration with the broader Databricks AI stack.
+
+## Capabilities
+
+- Create Standard endpoints (low-latency, ~50-100ms) and Storage-Optimized endpoints (cost-effective, 1B+ vectors)
+- Build Delta Sync indexes with managed embeddings (Databricks computes vectors automatically)
+- Build Delta Sync indexes with self-managed embeddings (bring your own vectors)
+- Create Direct Access indexes for real-time CRUD operations
+- Query indexes with text, vectors, or hybrid search (semantic + keyword)
+- Apply filters using dictionary syntax (Standard) or SQL-like syntax (Storage-Optimized)
+- Trigger index syncs for on-demand refresh
+- Integrate with Databricks agents via `VectorSearchRetrieverTool`
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_or_update_vs_endpoint` | Create a Standard or Storage-Optimized endpoint |
+| `get_vs_endpoint` | Check endpoint status and configuration |
+| `create_or_update_vs_index` | Create a Delta Sync or Direct Access index |
+| `get_vs_index` | Get index status, row count, and sync details |
+| `query_vs_index` | Query an index with text, vector, or hybrid search |
+| `manage_vs_data` | Upsert or delete vectors in a Direct Access index |
+| `delete_vs_index` | Remove an index from an endpoint |
+| `delete_vs_endpoint` | Delete an endpoint (all indexes must be removed first) |
+
+## Example Prompts
+
+Use these prompts with Claude Code to build vector search infrastructure:
+
+```
+Create a storage-optimized vector search endpoint called
+my-docs-endpoint for my document search application
+```
+
+```
+Build a Delta Sync index on my_catalog.docs.articles table
+using the content column with managed embeddings from
+databricks-gte-large-en
+```
+
+```
+Query my vector index for documents related to
+"quarterly revenue forecast" and return the top 5 matches
+with their similarity scores
+```
+
+```
+Set up a hybrid search query that combines semantic similarity
+with a filter for documents created after 2025-01-01
+```
+
+```
+Create a Direct Access index for real-time vector updates
+with 768-dimensional embeddings
+```
+
+```
+Build an end-to-end RAG pipeline: create a source table from
+PDFs in a volume, set up a vector index with managed embeddings,
+and query it
+```
+
+```
+Sync my triggered Delta Sync index after loading new documents
+into the source table
+```
+
+## Key Concepts
+
+### Endpoint Types
+
+| Type | Latency | Capacity | Best For |
+|------|---------|----------|----------|
+| **Standard** | ~50-100ms | 320M vectors (768 dim) | Real-time applications needing low latency |
+| **Storage-Optimized** | ~250ms | 1B+ vectors (768 dim) | Large-scale search, cost-sensitive workloads |
+
+Storage-Optimized endpoints are newer and recommended for most use cases unless sub-100ms latency is required.
+
+### Index Types
+
+**Delta Sync with managed embeddings** — Provide a text column and an embedding model; Databricks computes and maintains the vectors automatically. Easiest setup.
+
+**Delta Sync with self-managed embeddings** — Provide a pre-computed embedding vector column. Use when you need custom embedding models or have existing vectors.
+
+**Direct Access** — Manual insert/update/delete operations on vectors. Use for real-time applications that need immediate updates without waiting for a sync cycle.
+
+### Hybrid Search
+
+Combines vector similarity with keyword matching for better recall. Available on both Delta Sync and Direct Access indexes. Enable it by passing `query_type="hybrid"` in your query.
+
+### Embedding Models
+
+Databricks provides built-in embedding models for managed indexes:
+
+| Model | Dimensions | Best For |
+|-------|------------|----------|
+| `databricks-gte-large-en` | 1024 | English text, high quality |
+| `databricks-bge-large-en` | 1024 | English text, general purpose |
+
+### Filter Syntax
+
+Filter syntax varies by endpoint type:
+- **Standard endpoints** use `filters_json` with dictionary format: `{"category": "ai"}`
+- **Storage-Optimized endpoints** use `filter_string` with SQL-like syntax: `"category = 'ai' AND year > 2024"`
+
+## References
+
+- [Vector Search Overview](https://docs.databricks.com/aws/en/generative-ai/vector-search)
+- [Create a Vector Search Endpoint](https://docs.databricks.com/aws/en/generative-ai/create-query-vector-search#create-a-vector-search-endpoint)
+- [Create a Vector Search Index](https://docs.databricks.com/aws/en/generative-ai/create-query-vector-search#create-a-vector-search-index)
+- [Query a Vector Search Index](https://docs.databricks.com/aws/en/generative-ai/create-query-vector-search#query-a-vector-search-index)

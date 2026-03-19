@@ -1,0 +1,112 @@
+---
+title: AI Functions
+description: Add AI capabilities directly to SQL and PySpark queries — classify, extract, summarize, translate, forecast, and parse documents without managing model endpoints.
+sidebar:
+  order: 0
+---
+
+## Overview
+
+The AI Functions skill teaches Claude Code how to use Databricks built-in AI functions that call Foundation Model APIs directly from SQL and PySpark pipelines. These functions work on table columns as naturally as `UPPER()` or `LENGTH()`, eliminating the need to set up model endpoints, manage API keys, or write inference boilerplate. Use it when you need to enrich data with classification, extraction, summarization, translation, or forecasting at scale.
+
+## Capabilities
+
+- Classify text into fixed categories with `ai_classify` (2-20 labels)
+- Extract structured entities from unstructured text with `ai_extract`
+- Summarize text with controllable length using `ai_summarize`
+- Detect sentiment with `ai_analyze_sentiment`
+- Redact PII (names, emails, phone numbers, addresses) with `ai_mask`
+- Translate text across supported languages with `ai_translate`
+- Fix grammar and spelling with `ai_fix_grammar`
+- Generate free-form text with `ai_gen`
+- Measure semantic similarity between text pairs with `ai_similarity`
+- Parse PDFs and Office documents with `ai_parse_document`
+- Run complex structured extraction with `ai_query` and custom model endpoints
+- Forecast time series data with `ai_forecast`
+- Build end-to-end document processing pipelines (parse, chunk, index, query)
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `execute_sql` | Run SQL queries using AI functions against warehouse |
+| `get_best_warehouse` | Find an available SQL warehouse for AI function execution |
+| `get_table_details` | Inspect table schema before applying AI functions |
+| `create_or_update_pipeline` | Build SDP pipelines that use AI functions for enrichment |
+
+## Example Prompts
+
+Use these prompts with Claude Code to apply AI functions:
+
+```
+Classify support tickets in my_catalog.support.tickets into
+urgent, not urgent, and spam categories using ai_classify
+```
+
+```
+Extract product names, error codes, and dates from the
+description column in my incident reports table
+```
+
+```
+Summarize each customer review in 30 words or fewer and
+add a sentiment score column
+```
+
+```
+Redact all PII (names, emails, phone numbers) from the
+messages table before writing to a clean version
+```
+
+```
+Parse all PDF files in /Volumes/my_catalog/docs/contracts/
+and extract vendor name, contract date, and total amount
+```
+
+```
+Find near-duplicate company names in my contacts table
+using ai_similarity with a threshold of 0.85
+```
+
+```
+Forecast daily sales through end of year using ai_forecast
+on my daily_revenue table
+```
+
+```
+Create a SQL pipeline that classifies, extracts entities,
+and scores sentiment on incoming support tickets in one pass
+```
+
+## Key Concepts
+
+### Task-Specific vs General-Purpose Functions
+
+Databricks provides two tiers of AI functions:
+
+**Task-specific functions** — Optimized for common NLP tasks. Always prefer these when they fit your use case:
+- `ai_analyze_sentiment`, `ai_classify`, `ai_extract`, `ai_fix_grammar`
+- `ai_gen`, `ai_mask`, `ai_similarity`, `ai_summarize`, `ai_translate`
+- `ai_parse_document`
+
+**General-purpose function** — `ai_query` sends arbitrary prompts to any model endpoint. Use it only when no task-specific function applies, such as complex nested JSON extraction or multi-step reasoning.
+
+**Table-valued function** — `ai_forecast` generates time series predictions and returns a result table with forecast values and confidence intervals.
+
+### Function Selection Rule
+
+Always prefer a task-specific function over `ai_query`. For example, use `ai_classify` for categorization (not `ai_query` with a classification prompt), and `ai_summarize` for summarization (not `ai_query` with a summarize instruction).
+
+### Prerequisites
+
+- Databricks SQL warehouse (not Classic) or cluster with DBR 15.1+
+- DBR 15.4 ML LTS recommended for batch workloads
+- DBR 17.1+ required for `ai_parse_document`
+- `ai_forecast` requires a Pro or Serverless SQL warehouse
+
+## References
+
+- [AI Functions Overview](https://docs.databricks.com/aws/en/large-language-models/ai-functions)
+- [SQL Function Reference](https://docs.databricks.com/aws/en/sql/language-manual/functions/)
+- [ai_query Reference](https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_query)
+- [ai_forecast Reference](https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_forecast)

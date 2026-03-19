@@ -1,6 +1,54 @@
 ---
-title: Getting Started
-description: Get started with the Databricks AI Dev Kit.
+title: Quick Start
+description: Get up and running with AI Dev Kit in 5 minutes.
+sidebar:
+  order: 0
 ---
 
-Welcome to the AI Dev Kit documentation. More content coming soon.
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+
+AI Dev Kit gives Claude Code deep knowledge of the Databricks platform through **28 skills**, **99 MCP tools**, and a curated **Prompt Library**. Instead of writing boilerplate or searching docs, you describe what you want and Claude builds it — pipelines, queries, apps, vector indexes, and more.
+
+## Try It
+
+Once installed, open Claude Code and try one of these prompts:
+
+```
+List all tables in my_catalog.my_schema and show row counts
+```
+
+```
+Create a streaming pipeline that ingests JSON files from a volume,
+cleans the data, and writes a daily summary materialized view
+```
+
+```
+Build a Streamlit app that queries my sales table and shows a
+bar chart of revenue by region
+```
+
+Claude will use the right combination of skills and MCP tools to complete each task — no manual configuration needed.
+
+## What's Included
+
+<CardGrid>
+  <Card title="28 Skills" icon="pencil">
+    Pre-built knowledge covering data engineering, SQL analytics, AI/ML,
+    app development, governance, and DevOps on Databricks.
+  </Card>
+  <Card title="99 MCP Tools" icon="setting">
+    Direct workspace interaction — run SQL, manage pipelines, deploy apps,
+    query vector indexes, and more without leaving your editor.
+  </Card>
+  <Card title="Prompt Library" icon="open-book">
+    Tested prompt templates for common tasks like building medallion pipelines,
+    setting up CI/CD, or creating RAG applications.
+  </Card>
+</CardGrid>
+
+## Next Steps
+
+- **[Installation](./installation/)** — Install skills and connect the MCP server
+- **[Skills Catalog](../skills/)** — Browse all 28 skills by category
+- **[MCP Tools](../mcp-tools/)** — See the full list of workspace tools
+- **[Prompt Library](../prompt-library/)** — Copy-paste prompts for common tasks

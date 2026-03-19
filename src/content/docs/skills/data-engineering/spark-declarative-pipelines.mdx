@@ -1,0 +1,113 @@
+---
+title: Spark Declarative Pipelines
+description: Build streaming and batch data pipelines with SDP — streaming tables, materialized views, Auto Loader, CDC, and medallion architectures.
+sidebar:
+  order: 0
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Overview
+
+The Spark Declarative Pipelines (SDP) skill teaches Claude Code how to create, configure, and manage Databricks Lakeflow pipelines using serverless compute. Use it when building medallion architectures, ingesting streaming data, implementing change data capture (CDC), or working with streaming tables and materialized views. It supports both SQL and Python pipeline definitions.
+
+## Capabilities
+
+- Create new pipeline projects using `databricks pipelines init` with Databricks Asset Bundles
+- Build streaming tables and materialized views in SQL or Python
+- Ingest data from cloud storage with Auto Loader (`read_files` / `cloudFiles`)
+- Implement Change Data Capture (CDC) with AUTO CDC for SCD Type 1 and Type 2
+- Design medallion architectures (bronze/silver/gold) with proper layering
+- Configure Liquid Clustering for optimized query performance
+- Set up multi-environment deployments (dev/staging/prod)
+- Handle schema evolution, expectations (data quality rules), and error handling
+- Migrate legacy DLT pipelines to the modern SDP API
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_or_update_pipeline` | Create or update a serverless SDP pipeline |
+| `start_update` | Trigger a pipeline run (full refresh or incremental) |
+| `get_pipeline` | Get pipeline status, configuration, and recent events |
+| `stop_pipeline` | Stop a running pipeline |
+| `get_pipeline_events` | Retrieve pipeline events and error details |
+| `find_pipeline_by_name` | Look up a pipeline by its display name |
+| `execute_sql` | Run SQL queries against pipeline output tables |
+
+## Example Prompts
+
+Use these prompts with Claude Code to build pipelines:
+
+```
+Create a Python streaming pipeline that ingests JSON files from
+/Volumes/my_catalog/raw/events/ into a bronze table, cleans
+nulls in silver, and writes a daily aggregate to gold
+```
+
+```
+Build a SQL medallion pipeline for order data with Auto Loader
+ingestion, data quality expectations on silver, and a
+customer revenue summary in gold
+```
+
+```
+Set up AUTO CDC on my customers table to track SCD Type 2 history
+with valid_from and valid_to timestamps
+```
+
+```
+Migrate my existing DLT pipeline from the legacy dlt import
+to the modern pyspark.pipelines API
+```
+
+```
+Add data quality expectations to my silver table that drop rows
+where order_amount is negative and quarantine rows with
+missing customer_id
+```
+
+```
+Create an Asset Bundle project for a streaming pipeline with
+separate dev and prod targets using different catalogs
+```
+
+```
+Show me the pipeline events and errors for my failed pipeline run
+```
+
+## Key Concepts
+
+### Streaming Tables vs Materialized Views
+
+**Streaming tables** process data incrementally — each run picks up only new records from the source. Best for append-only ingestion from files, Kafka, or Kinesis.
+
+**Materialized views** recompute their full result set on each refresh. Best for aggregations, joins, and any transformation where the output depends on the entire input dataset.
+
+### Auto Loader
+
+Auto Loader (`read_files` in SQL, `cloudFiles` in Python) incrementally ingests new files from cloud storage. It tracks which files have been processed and only reads new arrivals, making it ideal for landing zones and raw data volumes.
+
+### Medallion Architecture
+
+A layered data design pattern:
+- **Bronze** — Raw ingestion, minimal transformation, append-only
+- **Silver** — Cleaned and validated, business logic applied, deduplication
+- **Gold** — Aggregated and denormalized, optimized for BI and reporting
+
+### AUTO CDC and SCD Type 2
+
+AUTO CDC applies change data capture operations (inserts, updates, deletes) from a source to a target table. When configured for SCD Type 2, it maintains a full history of changes with `__START_AT` and `__END_AT` timestamp columns.
+
+### Liquid Clustering
+
+Replaces traditional `PARTITION BY` with dynamic `CLUSTER BY` that automatically optimizes data layout. Use it on columns frequently used in filters and joins.
+
+## References
+
+- [Spark Declarative Pipelines Overview](https://docs.databricks.com/aws/en/ldp/)
+- [SQL Language Reference](https://docs.databricks.com/aws/en/ldp/developer/sql-dev)
+- [Python Language Reference](https://docs.databricks.com/aws/en/ldp/developer/python-ref)
+- [Loading Data with Auto Loader](https://docs.databricks.com/aws/en/ldp/load)
+- [Change Data Capture (CDC)](https://docs.databricks.com/aws/en/ldp/cdc)
+- [Medallion Architecture](https://docs.databricks.com/aws/en/lakehouse/medallion)

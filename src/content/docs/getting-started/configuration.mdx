@@ -1,0 +1,132 @@
+---
+title: Configuration
+description: Configure workspace profiles, authentication, and MCP server options.
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+AI Dev Kit's MCP server uses standard Databricks authentication. Choose the method that fits your workflow.
+
+## Authentication Methods
+
+<Tabs>
+  <TabItem label="Personal Access Token">
+    Set environment variables directly. Simplest option for individual use.
+
+    ```json
+    {
+      "mcpServers": {
+        "ai-dev-kit": {
+          "command": "uvx",
+          "args": ["databricks-ai-dev-kit"],
+          "env": {
+            "DATABRICKS_HOST": "https://your-workspace.cloud.databricks.com",
+            "DATABRICKS_TOKEN": "dapi..."
+          }
+        }
+      }
+    }
+    ```
+
+    Generate a token in your workspace under **Settings > Developer > Access tokens**.
+  </TabItem>
+
+  <TabItem label="Databricks CLI Profile">
+    Use an existing CLI profile. Best when you already have `databricks auth login` configured.
+
+    ```bash
+    # Authenticate (one-time setup)
+    databricks auth login --host https://your-workspace.cloud.databricks.com
+    ```
+
+    ```json
+    {
+      "mcpServers": {
+        "ai-dev-kit": {
+          "command": "uvx",
+          "args": ["databricks-ai-dev-kit"],
+          "env": {
+            "DATABRICKS_CONFIG_PROFILE": "your-profile-name"
+          }
+        }
+      }
+    }
+    ```
+
+    The profile name matches what you set during `databricks auth login`. Use `DEFAULT` if you did not specify one.
+  </TabItem>
+
+  <TabItem label="OAuth M2M">
+    Use a service principal for CI/CD or shared environments.
+
+    ```json
+    {
+      "mcpServers": {
+        "ai-dev-kit": {
+          "command": "uvx",
+          "args": ["databricks-ai-dev-kit"],
+          "env": {
+            "DATABRICKS_HOST": "https://your-workspace.cloud.databricks.com",
+            "DATABRICKS_CLIENT_ID": "your-client-id",
+            "DATABRICKS_CLIENT_SECRET": "your-client-secret"
+          }
+        }
+      }
+    }
+    ```
+
+    Create a service principal in **Settings > Identity and access > Service principals**, then generate an OAuth secret.
+  </TabItem>
+</Tabs>
+
+## MCP Server Options
+
+The MCP server accepts additional environment variables to customize behavior:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABRICKS_HOST` | Workspace URL | Required (unless using profile) |
+| `DATABRICKS_TOKEN` | Personal access token | — |
+| `DATABRICKS_CONFIG_PROFILE` | CLI profile name | — |
+| `DATABRICKS_CLIENT_ID` | OAuth client ID (M2M) | — |
+| `DATABRICKS_CLIENT_SECRET` | OAuth client secret (M2M) | — |
+| `DATABRICKS_CLUSTER_ID` | Default cluster for command execution | Auto-selected |
+| `DATABRICKS_WAREHOUSE_ID` | Default SQL warehouse | Auto-selected |
+
+When `DATABRICKS_CLUSTER_ID` or `DATABRICKS_WAREHOUSE_ID` are not set, the MCP server automatically selects an available compute resource.
+
+## Multiple Workspaces
+
+To connect to more than one workspace, add multiple MCP server entries with different names:
+
+```json
+{
+  "mcpServers": {
+    "ai-dev-kit-dev": {
+      "command": "uvx",
+      "args": ["databricks-ai-dev-kit"],
+      "env": {
+        "DATABRICKS_CONFIG_PROFILE": "dev"
+      }
+    },
+    "ai-dev-kit-prod": {
+      "command": "uvx",
+      "args": ["databricks-ai-dev-kit"],
+      "env": {
+        "DATABRICKS_CONFIG_PROFILE": "prod"
+      }
+    }
+  }
+}
+```
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `DATABRICKS_PROFILE` not recognized | Use `DATABRICKS_CONFIG_PROFILE` — the SDK requires the full variable name |
+| Token expired | Re-generate under **Settings > Developer > Access tokens** |
+| CLI profile not found | Run `databricks auth login` to create or refresh the profile |
+| Permission denied on catalog/table | Verify Unity Catalog grants for your user or service principal |
