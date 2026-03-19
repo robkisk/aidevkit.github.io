@@ -53,12 +53,12 @@ const steps = [
 ];
 
 const categories = [
-  { name: 'Data Engineering', slug: 'data-engineering' },
-  { name: 'SQL & Analytics', slug: 'sql-analytics' },
-  { name: 'AI & ML', slug: 'ai-ml' },
-  { name: 'Apps & Databases', slug: 'apps-databases' },
-  { name: 'Governance', slug: 'governance' },
-  { name: 'DevOps', slug: 'devops' },
+  { name: 'Data Engineering', slug: 'skills/data-engineering/spark-declarative-pipelines' },
+  { name: 'SQL & Analytics', slug: 'skills/sql-analytics/ai-functions' },
+  { name: 'AI & ML', slug: 'skills/ai-ml/vector-search' },
+  { name: 'Apps & Databases', slug: 'skills/apps-databases/databricks-apps-python' },
+  { name: 'Governance & Catalog', slug: 'skills/governance-catalog/iceberg-tables' },
+  { name: 'DevOps & Config', slug: 'skills/devops-config/asset-bundles' },
 ];
 ---
 
@@ -431,7 +431,7 @@ const categories = [
         <h2 class="section-title light">Explore by Category</h2>
         <div class="category-grid">
           {categories.map((c) => (
-            <a href={`${base}skills/${c.slug}/`} class="category-card">{c.name}</a>
+            <a href={`${base}${c.slug}/`} class="category-card">{c.name}</a>
           ))}
         </div>
       </div>
