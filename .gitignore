@@ -22,3 +22,5 @@ docs/superpowers/
 
 # macOS-specific files
 .DS_Store
+/.claude
+/src/assets
