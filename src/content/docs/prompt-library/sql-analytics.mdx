@@ -1,0 +1,307 @@
+---
+title: "SQL & Analytics"
+description: Prompts for SQL execution, AI Functions, dashboards, Genie Spaces, Metric Views, and advanced SQL features.
+sidebar:
+  order: 2
+---
+
+## SQL Execution & Warehouses
+
+**Skills:** `databricks-dbsql`
+**MCP Tools:** `execute_sql`, `execute_sql_multi`, `list_warehouses`, `get_best_warehouse`
+
+```
+List all SQL warehouses in my workspace and show which ones are running.
+```
+
+```
+Run this SQL query: SELECT * FROM main.default.my_table LIMIT 10
+```
+
+```
+Execute these SQL statements in order:
+1. CREATE SCHEMA IF NOT EXISTS main.analytics
+2. CREATE TABLE main.analytics.daily_summary AS
+   SELECT date, COUNT(*) as cnt FROM main.raw.events GROUP BY date
+```
+
+```
+Find the best available SQL warehouse and run a query to show the top 10 largest
+tables in the main catalog.
+```
+
+```
+Run a SQL query to get the row count and column count for every table in the
+main.sales schema.
+```
+
+```
+Execute a DESCRIBE EXTENDED on main.production.customers and explain what each
+field means.
+```
+
+---
+
+## AI Functions (SQL)
+
+**Skills:** `databricks-ai-functions`
+**MCP Tools:** `execute_sql`
+
+### Classification & Extraction
+
+```
+Run a SQL query that uses ai_classify to categorize customer feedback in
+main.support.tickets into ['bug', 'feature_request', 'question', 'complaint'].
+```
+
+```
+Use ai_extract to pull out product names, prices, and quantities from
+unstructured order description text in main.sales.raw_orders.
+```
+
+```
+Classify the sentiment of customer reviews in main.reviews.comments using
+ai_analyze_sentiment and store results in a new column.
+```
+
+### Summarization & Generation
+
+```
+Summarize the top 50 longest support tickets in main.support.cases using
+ai_summarize, keeping summaries under 100 words each.
+```
+
+```
+Use ai_gen to generate product descriptions for items in main.catalog.products
+that are missing descriptions, based on the product name and category.
+```
+
+```
+Use ai_fix_grammar to clean up user-submitted text in main.content.posts.
+```
+
+### Advanced AI Functions
+
+```
+Use ai_query to call my fine-tuned model endpoint with a custom prompt template
+that includes data from multiple columns.
+```
+
+```
+Run ai_forecast on main.sales.daily_revenue to predict the next 30 days of
+revenue with 90% prediction intervals.
+```
+
+```
+Build a document parsing pipeline:
+1. Use ai_parse_document to extract text from PDFs stored in a volume
+2. Chunk the extracted text into 500-token segments
+3. Store the chunks in a table ready for Vector Search indexing
+```
+
+```
+Use ai_mask to redact PII (names, emails, phone numbers) from customer
+communications before sharing with the analytics team.
+```
+
+```
+Use ai_translate to translate product descriptions in main.catalog.products from
+English to Spanish, French, and German.
+```
+
+```
+Use ai_similarity to find duplicate customer records by comparing name + address
+fields between two tables.
+```
+
+---
+
+## AI/BI Dashboards
+
+**Skills:** `databricks-aibi-dashboards`
+**MCP Tools:** `create_or_update_dashboard`, `get_dashboard`, `delete_dashboard`, `publish_dashboard`
+
+```
+Create an AI/BI dashboard with a dataset querying main.sales.transactions and add:
+- A counter widget showing total revenue
+- A bar chart showing revenue by product category
+- A line chart showing daily revenue trends over the last 90 days
+```
+
+```
+Build a dashboard with two pages:
+- Page 1 "Overview": KPI counters for total users, active users, and churn rate
+- Page 2 "Details": a table widget with user-level data and a filter for date range
+```
+
+```
+Create a dashboard with a global date filter that applies to all datasets,
+showing customer acquisition metrics.
+```
+
+```
+Get the JSON definition of my existing dashboard and help me add a new chart
+widget to it.
+```
+
+```
+Publish my dashboard so it's accessible to all workspace users.
+```
+
+```
+List all dashboards in my workspace and show which ones are published vs draft.
+```
+
+```
+Create a dashboard that uses pre-aggregated datasets for performance — the
+source table has 500M rows so I need the SQL to aggregate before visualization.
+```
+
+---
+
+## Genie Spaces
+
+**Skills:** `databricks-genie`
+**MCP Tools:** `create_or_update_genie`, `get_genie`, `delete_genie`, `ask_genie`, `migrate_genie`
+
+### Creating Genie Spaces
+
+```
+Create a Genie Space called "Sales Explorer" that connects to
+main.sales.transactions and main.sales.customers with sample questions:
+"What was total revenue last month?", "Who are our top 10 customers?",
+"Show monthly revenue trends".
+```
+
+```
+Create a Genie Space for our finance team that includes tables
+main.finance.gl_entries, main.finance.budgets, and main.finance.forecasts
+with instructions to always filter by the current fiscal year.
+```
+
+### Querying Genie Spaces
+
+```
+Ask my Genie Space "Sales Explorer": What were the top 5 product categories by
+revenue in Q4?
+```
+
+```
+Ask the Genie Space: Show me customer churn rate by region for the last 6 months
+as a trend.
+```
+
+```
+Have a multi-turn conversation with my Genie Space — first ask about total
+revenue, then drill down into the top-performing region.
+```
+
+### Managing Genie Spaces
+
+```
+List all Genie Spaces in my workspace.
+```
+
+```
+Export the Genie Space "Sales Explorer" so I can import it into another workspace.
+```
+
+```
+Import a Genie Space configuration from a JSON file into my current workspace.
+```
+
+```
+Migrate my Genie Space from the dev workspace to production.
+```
+
+---
+
+## Metric Views
+
+**Skills:** `databricks-metric-views`
+**MCP Tools:** `manage_metric_views`, `execute_sql`
+
+```
+Create a metric view for "total_revenue" defined as SUM(amount) from
+main.sales.transactions, with dimensions for product_category, region,
+and order_date.
+```
+
+```
+Define a metric view for "monthly_active_users" that counts distinct user_ids
+with activity in a calendar month, with dimensions for platform and country.
+```
+
+```
+Create a set of related metric views for e-commerce KPIs:
+- total_orders (COUNT)
+- average_order_value (AVG)
+- total_revenue (SUM)
+- customer_count (COUNT DISTINCT)
+All sourced from main.sales.orders with shared dimensions.
+```
+
+```
+Query my metric view "total_revenue" grouped by region and month for the
+last year.
+```
+
+```
+List all metric views in the main.metrics schema.
+```
+
+---
+
+## Databricks SQL Advanced Features
+
+**Skills:** `databricks-dbsql`
+**MCP Tools:** `execute_sql`, `execute_sql_multi`
+
+### SQL Scripting & Stored Procedures
+
+```
+Write a SQL stored procedure that accepts a date parameter, runs a data quality
+check on main.production.orders for that date, and returns a summary of any
+violations found.
+```
+
+```
+Create a SQL script with variables, loops, and conditional logic that backfills
+daily aggregation tables for a specified date range.
+```
+
+### Pipe Syntax
+
+```
+Rewrite this SQL query using Databricks pipe syntax (|>):
+SELECT department, AVG(salary) as avg_salary
+FROM main.hr.employees
+WHERE status = 'active'
+GROUP BY department
+HAVING AVG(salary) > 100000
+ORDER BY avg_salary DESC
+```
+
+### Geospatial
+
+```
+Write a geospatial query using H3 functions to aggregate delivery data by
+hexagonal regions at resolution 7 and find the top 10 busiest zones.
+```
+
+```
+Use ST_ spatial functions to find all stores within a 10km radius of a given
+latitude/longitude coordinate.
+```
+
+### Materialized Views & Recursive CTEs
+
+```
+Create a materialized view main.gold.daily_revenue_summary that pre-aggregates
+revenue by day, product category, and region from main.silver.transactions.
+```
+
+```
+Write a recursive CTE to traverse an employee-manager hierarchy in
+main.hr.employees and show the full reporting chain for each employee.
+```

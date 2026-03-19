@@ -1,0 +1,100 @@
+---
+title: "Real-Time Analytics"
+description: Stream events via Zerobus Ingest, process with Spark Streaming, serve from Lakebase, and explore with a Genie Space.
+sidebar:
+  order: 4
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+## Overview
+
+Build a real-time analytics system that ingests events via Zerobus gRPC, processes them through Spark Structured Streaming, materializes aggregates in Lakebase for low-latency serving, and exposes the data through a Genie Space for natural-language exploration.
+
+**Skills used:** `databricks-zerobus-ingest`, `databricks-spark-structured-streaming`, `databricks-lakebase-autoscale`, `databricks-genie`
+**MCP tools used:** `execute_sql`, `get_table_details`, `execute_databricks_command`, `create_or_update_lakebase_branch`, `create_or_update_lakebase_sync`, `create_or_update_genie`, `ask_genie`
+
+## Prerequisites
+
+- A Databricks workspace with Unity Catalog enabled
+- A target table for raw event ingestion (e.g. `main.streaming.raw_events`)
+- A running cluster for Spark Structured Streaming jobs
+- A SQL warehouse for the Genie Space
+
+## Steps
+
+<Steps>
+
+1. **Set up the Zerobus Ingest producer**
+
+   Create a gRPC client that streams events directly into a Delta table in near real-time.
+
+   ```
+   Build a Python Zerobus Ingest producer that streams click events directly
+   into the Delta table main.streaming.raw_events using gRPC. Include fields
+   for event_id, user_id, event_type, page_url, and timestamp. Add proper
+   error handling and retry logic.
+   ```
+
+2. **Build the streaming processing pipeline**
+
+   Process raw events with windowed aggregations and stateful transformations.
+
+   ```
+   Write a Spark Structured Streaming job that:
+   1. Reads from main.streaming.raw_events using Change Data Feed
+   2. Applies a 10-minute watermark on the timestamp column
+   3. Computes event counts per 5-minute tumbling window grouped by event_type
+   4. Writes the windowed aggregates to main.streaming.event_aggregates
+   Use an availableNow trigger for cost-efficient micro-batch processing.
+   ```
+
+3. **Create a Lakebase database for low-latency serving**
+
+   Set up Lakebase Autoscale and sync aggregated data for application access.
+
+   ```
+   Create a new Lakebase Autoscaling project called "realtime-analytics" with
+   scale-to-zero enabled. Then set up a reverse ETL sync from
+   main.streaming.event_aggregates to the Lakebase database so downstream
+   apps always have the latest aggregated data.
+   ```
+
+4. **Create a Genie Space for business exploration**
+
+   Let business users ask questions about the streaming data in natural language.
+
+   ```
+   Create a Genie Space called "Event Analytics" that connects to
+   main.streaming.raw_events and main.streaming.event_aggregates with
+   sample questions:
+   "How many events happened in the last hour?",
+   "What are the top event types today?",
+   "Show me the event trend for the last 24 hours by 15-minute intervals".
+   ```
+
+5. **Test the end-to-end flow**
+
+   Verify events flow from ingestion through to the Genie Space.
+
+   ```
+   Ask my Genie Space "Event Analytics": Show me the event count trend for
+   the last 6 hours broken down by event_type. Then ask: Which pages had the
+   most click events today?
+   ```
+
+</Steps>
+
+## What You Get
+
+- **Zerobus Ingest producer** streaming events into Delta tables via gRPC
+- **Spark Structured Streaming job** with windowed aggregations and checkpointing
+- **Lakebase Autoscale database** with reverse ETL sync for low-latency app queries
+- **Genie Space** for business users to explore event data in natural language
+
+## Next Steps
+
+- Add a [Streamlit app](/aidevkit.github.io/skills/apps-databases/databricks-apps-python/) that reads from Lakebase for a real-time dashboard
+- Build an [AI/BI Dashboard](/aidevkit.github.io/skills/sql-analytics/aibi-dashboards/) with auto-refreshing visualizations
+- Set up [Data Quality Monitoring](/aidevkit.github.io/skills/governance-catalog/unity-catalog/) to alert on event schema drift
+- Use [SDP pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/) for a managed alternative to raw Structured Streaming

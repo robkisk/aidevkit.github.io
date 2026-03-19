@@ -1,0 +1,191 @@
+---
+title: "Governance & Catalog"
+description: Prompts for Unity Catalog exploration, permissions, tags, volumes, Iceberg tables, Delta Sharing, and data quality monitoring.
+sidebar:
+  order: 5
+---
+
+## Data Exploration & Unity Catalog
+
+**Skills:** `databricks-unity-catalog`, `databricks-agent-skill-databricks`
+**MCP Tools:** `manage_uc_objects`, `get_table_details`, `execute_sql`
+
+```
+List all catalogs in my workspace.
+```
+
+```
+Show me all schemas in the main catalog.
+```
+
+```
+List all tables in main.default and show their row counts.
+```
+
+```
+Get detailed schema information for the table main.sales.transactions — show me
+column names, types, and any comments.
+```
+
+```
+What tables exist in main.analytics? Show me the schema for each one.
+```
+
+```
+Query the system.access.audit table to show who accessed the
+main.production.customers table in the last 7 days.
+```
+
+```
+Query system.information_schema.tables to find the 20 largest tables by size
+across all catalogs.
+```
+
+```
+Show me the column-level lineage for main.gold.revenue_summary — what upstream
+tables feed into it?
+```
+
+```
+Query system.billing.usage to show my workspace's DBU consumption by SKU for
+the past 30 days.
+```
+
+---
+
+## Permissions & Security
+
+**MCP Tools:** `manage_uc_grants`, `manage_uc_security_policies`
+
+```
+Grant SELECT permission on main.analytics schema to the group "data-analysts".
+```
+
+```
+Show me all grants on the table main.production.customers.
+```
+
+```
+Set up row-level security on main.hr.employees so users can only see records
+from their own department.
+```
+
+```
+Create a column mask on main.finance.payroll to redact the salary column for
+non-finance users.
+```
+
+---
+
+## Tags & Metadata
+
+**MCP Tools:** `manage_uc_tags`
+
+```
+Add tags {"pii": "true", "data_owner": "privacy-team"} to the table
+main.customers.profiles.
+```
+
+```
+List all tables tagged with "pii" across the main catalog.
+```
+
+---
+
+## Volume File Operations
+
+**MCP Tools:** `list_volume_files`, `upload_to_volume`, `download_from_volume`, `create_volume_directory`, `delete_volume_file`, `delete_volume_directory`
+
+```
+List all files in /Volumes/main/raw/incoming/ and show their sizes and
+modification dates.
+```
+
+```
+Upload my local file data/export.csv to
+/Volumes/main/staging/uploads/export.csv.
+```
+
+```
+Download the file /Volumes/main/reports/quarterly_summary.pdf to my local
+machine.
+```
+
+```
+Create a new directory /Volumes/main/raw/2024-01/ for organizing incoming
+data files.
+```
+
+---
+
+## Iceberg Tables & Interoperability
+
+**Skills:** `databricks-iceberg`
+**MCP Tools:** `execute_sql`, `manage_uc_objects`
+
+```
+Create a managed Iceberg table in main.lake.events using the iceberg table
+format with partitioning on event_date.
+```
+
+```
+Enable External Iceberg Reads (UniForm) on my existing Delta table
+main.analytics.daily_metrics so external engines can read it as Iceberg.
+```
+
+```
+Configure the Iceberg REST Catalog (IRC) so my Spark on EMR cluster can read
+Unity Catalog tables as Iceberg tables.
+```
+
+```
+Set up a Streaming Table with compatibility mode enabled so it can be read as
+Iceberg by external engines.
+```
+
+```
+Show me how to read my Databricks Delta table from Snowflake using Unity Catalog
+as an Iceberg REST Catalog.
+```
+
+```
+Create an Iceberg table and demonstrate reading it with PyIceberg from a local
+Python environment.
+```
+
+---
+
+## Delta Sharing
+
+**MCP Tools:** `manage_uc_sharing`
+
+```
+Create a share called "partner_data" and add the tables
+main.analytics.product_metrics and main.analytics.daily_kpis to it.
+```
+
+```
+Add a recipient "partner-corp" to my Delta Share with token-based authentication.
+```
+
+---
+
+## Data Quality Monitoring
+
+**MCP Tools:** `manage_uc_monitors`
+
+```
+Create a quality monitor on main.production.orders that tracks data drift, null
+rates, and column statistics on a daily schedule.
+```
+
+---
+
+## External Connections
+
+**MCP Tools:** `manage_uc_connections`
+
+```
+Create a Lakehouse Federation connection to my external PostgreSQL database for
+cross-database querying.
+```

@@ -1,0 +1,105 @@
+---
+title: "ML Ops Pipeline"
+description: Generate synthetic data, train and evaluate a model with MLflow, deploy to a serving endpoint, and monitor with a dashboard.
+sidebar:
+  order: 5
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+## Overview
+
+Build a complete ML Ops pipeline from data generation through production monitoring. Generate synthetic training data, train and log a model with MLflow, evaluate it with GenAI scorers, deploy the best version to a serving endpoint, and track prediction quality with a monitoring dashboard.
+
+**Skills used:** `databricks-synthetic-data-gen`, `databricks-mlflow-evaluation`, `databricks-model-serving`, `databricks-aibi-dashboards`
+**MCP tools used:** `execute_sql`, `execute_databricks_command`, `query_serving_endpoint`, `list_serving_endpoints`, `get_serving_endpoint_status`, `create_or_update_dashboard`
+
+## Prerequisites
+
+- A Databricks workspace with Unity Catalog and Model Serving enabled
+- A catalog and schema for ML artifacts (e.g. `main.ml_demo`)
+- A cluster with MLflow and scikit-learn available
+- A SQL warehouse for the monitoring dashboard
+
+## Steps
+
+<Steps>
+
+1. **Generate synthetic training data**
+
+   Create a realistic dataset for model training and evaluation.
+
+   ```
+   Generate 100K rows of synthetic e-commerce transaction data with columns for
+   customer_id, product_category, quantity, price, discount_pct, day_of_week,
+   is_returning_customer, and a binary label "is_high_value" (1 if total > $200).
+   Write it to main.ml_demo.training_data as a Delta table. Include realistic
+   distributions and correlations between features.
+   ```
+
+2. **Train and log the model with MLflow**
+
+   Build a classifier, log it to MLflow, and register in Unity Catalog.
+
+   ```
+   Write a Python script that:
+   1. Reads main.ml_demo.training_data
+   2. Splits into train/test sets (80/20)
+   3. Trains a scikit-learn gradient boosting classifier to predict is_high_value
+   4. Logs the model, parameters, and metrics to MLflow
+   5. Registers the model as main.ml_demo.high_value_predictor in Unity Catalog
+   Run it on my Databricks cluster.
+   ```
+
+3. **Evaluate model quality**
+
+   Score the model with MLflow evaluation to validate performance before deployment.
+
+   ```
+   Run mlflow.genai.evaluate() on my model using a test dataset of 500 samples.
+   Score with built-in Correctness and Guidelines scorers. Log results to an
+   MLflow experiment called "high_value_predictor_eval" and show me the
+   precision, recall, and F1 metrics.
+   ```
+
+4. **Deploy to a serving endpoint**
+
+   Put the model into production with auto-scaling.
+
+   ```
+   Deploy my MLflow model from Unity Catalog
+   (models:/main.ml_demo.high_value_predictor/1) to a serving endpoint called
+   "high-value-predictor" with auto-scaling from 0 to 4 instances. Wait for it
+   to be ready and test with a sample prediction.
+   ```
+
+5. **Build a monitoring dashboard**
+
+   Track prediction quality and volume over time.
+
+   ```
+   Create an AI/BI dashboard called "ML Model Monitor" with:
+   - A counter showing total predictions served today
+   - A line chart of prediction volume over the last 30 days
+   - A bar chart of prediction distribution (high_value vs not) by day
+   - A table showing the latest 50 predictions with their confidence scores
+   Source the data from the serving endpoint's inference logs.
+   ```
+
+</Steps>
+
+## What You Get
+
+- **Training dataset** with 100K synthetic transactions in `main.ml_demo.training_data`
+- **Trained model** logged in MLflow and registered in Unity Catalog
+- **Evaluation results** with precision, recall, F1, and custom scorer outputs
+- **Serving endpoint** with auto-scaling and test predictions verified
+- **Monitoring dashboard** tracking prediction volume, distribution, and recent results
+
+## Next Steps
+
+- Add [Data Quality Monitoring](/aidevkit.github.io/skills/governance-catalog/unity-catalog/) on the training data table to detect drift
+- Set up a [Databricks Job](/aidevkit.github.io/skills/devops-config/jobs/) for automated retraining on a weekly schedule
+- Use [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/) to add feature lookup for real-time enrichment
+- Package the full pipeline as a [Databricks Asset Bundle](/aidevkit.github.io/skills/devops-config/asset-bundles/) for CI/CD deployment
+- Add [Lakebase](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/) to store prediction results for low-latency application access

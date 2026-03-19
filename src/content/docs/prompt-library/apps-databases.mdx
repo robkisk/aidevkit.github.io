@@ -1,0 +1,181 @@
+---
+title: "Apps & Databases"
+description: Prompts for building Python apps, AppKit TypeScript apps, and working with Lakebase databases.
+sidebar:
+  order: 4
+---
+
+## Databricks Apps (Python)
+
+**Skills:** `databricks-app-python`
+**MCP Tools:** `create_or_update_app`, `get_app`, `delete_app`
+
+### Framework-Specific Apps
+
+```
+Create a Streamlit app on Databricks that connects to a SQL warehouse, queries
+main.sales.transactions, and shows an interactive chart of revenue by month.
+```
+
+```
+Build a Gradio app that provides a chat interface using the Databricks foundation
+model API with the meta-llama/llama-4-maverick-17b-128e-instruct model.
+```
+
+```
+Create a FastAPI REST service on Databricks Apps that exposes endpoints for CRUD
+operations on a Lakebase PostgreSQL database.
+```
+
+```
+Build a Dash app that visualizes real-time streaming data from a Unity Catalog
+table with auto-refresh.
+```
+
+```
+Create a Flask app with user authentication that lets users query their own data
+through a form interface.
+```
+
+### App Management
+
+```
+Deploy my app to Databricks Apps and show me the URL when it's live.
+```
+
+```
+List all deployed Databricks Apps and show their status.
+```
+
+```
+Update my existing app "analytics-portal" with the latest code changes.
+```
+
+### Integration Patterns
+
+```
+Build a Streamlit app that:
+1. Connects to a SQL warehouse for reading analytics data
+2. Connects to Lakebase for storing user preferences
+3. Uses a model serving endpoint for AI-powered recommendations
+```
+
+```
+Create a Python app that uses Databricks OAuth (user-level auth) so each user
+sees only the data they have access to in Unity Catalog.
+```
+
+---
+
+## Databricks Apps (AppKit / TypeScript)
+
+**Skills:** `databricks-agent-skill-databricks-apps`
+**MCP Tools:** `create_or_update_app`, `get_app`
+
+```
+Scaffold a new AppKit application with analytics mode — I want to build a
+dashboard that queries Unity Catalog tables.
+```
+
+```
+Create an AppKit app in Lakebase mode with tRPC procedures for managing a task
+list stored in PostgreSQL.
+```
+
+```
+Build an AppKit app with SQL files that query main.sales.orders and
+main.sales.customers, then generate the TypeScript types automatically.
+```
+
+```
+Create an AppKit app with pre-built UI components showing a data table with
+pagination, filters, and a chart.
+```
+
+---
+
+## Lakebase Autoscale (Managed PostgreSQL)
+
+**Skills:** `databricks-lakebase-autoscale`, `databricks-agent-skill-databricks-lakebase`
+**MCP Tools:** `create_or_update_lakebase_branch`, `delete_lakebase_branch`, `create_or_update_lakebase_sync`, `delete_lakebase_sync`
+
+### Database Management
+
+```
+Create a new Lakebase Autoscaling project called "app-backend" with
+scale-to-zero enabled and autoscaling from 0.5 to 8 CU.
+```
+
+```
+Create a development branch of my Lakebase database for testing schema
+migrations without affecting production.
+```
+
+```
+Delete my dev branch "feature-xyz" after merging the schema changes to the
+main branch.
+```
+
+### Reverse ETL (Synced Tables)
+
+```
+Set up a reverse ETL sync from Delta table main.analytics.user_segments to my
+Lakebase database so my app always has the latest segment data.
+```
+
+```
+Remove the sync for the table "user_segments" from my Lakebase database.
+```
+
+### Connectivity
+
+```
+Generate OAuth credentials for connecting to my Lakebase database from a Python
+application.
+```
+
+```
+Show me how to connect to my Lakebase Autoscale database from a Databricks App
+using OAuth tokens.
+```
+
+```
+Build a FastAPI app on Databricks that uses Lakebase Autoscale as its OLTP
+backend with connection pooling.
+```
+
+---
+
+## Lakebase Provisioned (OLTP PostgreSQL)
+
+**Skills:** `databricks-lakebase-provisioned`
+**MCP Tools:** `create_or_update_lakebase_database`, `get_lakebase_database`, `delete_lakebase_database`, `generate_lakebase_credential`
+
+```
+Create a new Lakebase Provisioned database with CU_2 capacity for my
+application's transactional data.
+```
+
+```
+List all Lakebase databases in my workspace and show their status and
+capacity tier.
+```
+
+```
+Generate connection credentials for my Lakebase database so I can connect from
+my local development environment.
+```
+
+```
+Set up reverse ETL from main.gold.product_catalog to my Lakebase Provisioned
+database for serving low-latency lookups.
+```
+
+```
+Build a Streamlit app that uses Lakebase Provisioned for storing user session
+data and chat history for an AI agent.
+```
+
+```
+Delete my Lakebase test database "dev-scratch" and all its resources.
+```

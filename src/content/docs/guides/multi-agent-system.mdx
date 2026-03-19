@@ -1,0 +1,101 @@
+---
+title: "Multi-Agent System"
+description: Build a Supervisor Agent that orchestrates a Genie Space and Knowledge Assistant, deployed as a Gradio chat app.
+sidebar:
+  order: 3
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+## Overview
+
+Build a multi-agent customer service system where a Supervisor Agent intelligently routes questions between a Genie Space (for SQL-based data queries) and a Knowledge Assistant (for document-based policy answers). Deploy the system behind a Gradio chat interface on Databricks Apps.
+
+**Skills used:** `databricks-genie`, `databricks-agent-bricks`, `databricks-model-serving`, `databricks-app-python`
+**MCP tools used:** `create_or_update_genie`, `manage_ka`, `manage_mas`, `query_serving_endpoint`, `create_or_update_app`
+
+## Prerequisites
+
+- A Databricks workspace with Unity Catalog and Model Serving enabled
+- Tables for the Genie Space (e.g. `main.sales.transactions`, `main.sales.customers`)
+- PDF or text documents for the Knowledge Assistant (e.g. company policies in a Volume)
+- A SQL warehouse for Genie Space queries
+
+## Steps
+
+<Steps>
+
+1. **Create a Genie Space for data queries**
+
+   Set up the SQL-based agent that handles product, order, and revenue questions.
+
+   ```
+   Create a Genie Space called "Sales Explorer" that connects to
+   main.sales.transactions and main.sales.customers with sample questions:
+   "What was total revenue last month?", "Who are our top 10 customers?",
+   "Show monthly revenue trends".
+   ```
+
+2. **Create a Knowledge Assistant for documents**
+
+   Set up the RAG-based agent that handles policy and FAQ questions.
+
+   ```
+   Create a Knowledge Assistant that answers questions about our company's
+   policies using documents stored in /Volumes/main/support/policy_docs/.
+   Add instructions to always cite the specific document and section in
+   its answers.
+   ```
+
+3. **Build a Supervisor Agent**
+
+   Create the orchestration layer that routes questions to the right specialist.
+
+   ```
+   Create a Supervisor Agent that routes questions to:
+   1. A "Sales Analyst" Genie Space for revenue, order, and customer questions
+   2. A "Policy Assistant" Knowledge Assistant for company policy, HR, and
+      FAQ questions
+   Give the supervisor instructions to identify the question type before routing,
+   and to combine information from both agents when a question spans both domains.
+   ```
+
+4. **Verify the agent endpoint**
+
+   Test the Supervisor Agent is online and routing correctly.
+
+   ```
+   Check the status of my Supervisor Agent endpoint. Once it's online, test it
+   with these questions:
+   - "What was our top-selling product last quarter?" (should route to Genie)
+   - "What is our return policy?" (should route to KA)
+   - "How do refunds affect our revenue numbers?" (should use both)
+   ```
+
+5. **Deploy as a Gradio chat app**
+
+   Build a user-friendly chat interface for the multi-agent system.
+
+   ```
+   Build a Gradio app on Databricks that provides a chat interface to my
+   Supervisor Agent endpoint. Include:
+   - A chat window with message history
+   - An indicator showing which agent is answering each question
+   - A sidebar with suggested questions for each agent type
+   ```
+
+</Steps>
+
+## What You Get
+
+- **Genie Space** that converts natural language to SQL against your sales tables
+- **Knowledge Assistant** that answers questions from your policy documents with citations
+- **Supervisor Agent** that intelligently routes questions to the right specialist
+- **Gradio app** with a chat UI deployed on Databricks Apps
+
+## Next Steps
+
+- Add [MLflow Evaluation](/aidevkit.github.io/skills/ai-ml/mlflow-evaluation/) to measure routing accuracy and answer quality
+- Expand with additional agents: a [Model Serving](/aidevkit.github.io/skills/ai-ml/model-serving/) endpoint for product recommendations
+- Store conversation history in [Lakebase](/aidevkit.github.io/skills/apps-databases/lakebase-autoscale/) for analytics
+- Use [Vector Search](/aidevkit.github.io/skills/ai-ml/vector-search/) for a custom embedding index with more control over retrieval

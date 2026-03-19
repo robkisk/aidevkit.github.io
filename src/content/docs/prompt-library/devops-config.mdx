@@ -1,0 +1,254 @@
+---
+title: "DevOps & Config"
+description: Prompts for workspace authentication, Asset Bundles, Jobs, Python SDK, compute management, and documentation lookup.
+sidebar:
+  order: 6
+---
+
+## Workspace & Authentication
+
+**Skills:** `databricks-config`
+**MCP Tools:** `manage_workspace`, `get_current_user`
+
+```
+Which Databricks workspace am I currently connected to?
+```
+
+```
+List all available Databricks workspace profiles I can connect to.
+```
+
+```
+Switch my active workspace to the staging profile.
+```
+
+```
+Authenticate to a new Databricks workspace at
+https://my-workspace.cloud.databricks.com
+```
+
+```
+Show me the current authenticated user and their permissions.
+```
+
+---
+
+## Databricks Asset Bundles (DABs)
+
+**Skills:** `databricks-bundles`, `databricks-agent-skill-databricks`
+
+```
+Create a new Databricks Asset Bundle project structure with dev, staging, and
+prod targets.
+```
+
+```
+Add a pipeline resource to my existing databricks.yml bundle configuration that
+deploys to different catalogs per environment.
+```
+
+```
+Add a job resource to my bundle that runs a notebook on a schedule, with
+environment-specific parameters for dev vs prod.
+```
+
+```
+Create a bundle configuration that deploys an AI/BI dashboard, a pipeline, and a
+job as a complete analytics package.
+```
+
+```
+Set up a bundle with variable substitution so the catalog name, warehouse ID,
+and notification emails differ per target environment.
+```
+
+```
+Configure bundle permissions so developers can manage resources in dev, but only
+the service principal can deploy to prod.
+```
+
+```
+Validate my bundle configuration and show me any errors or warnings before
+I deploy.
+```
+
+```
+Show me how to structure a bundle that uses the Direct Deployment Engine for
+faster deployments.
+```
+
+---
+
+## Jobs & Workflow Orchestration
+
+**Skills:** `databricks-jobs`, `databricks-agent-skill-databricks-jobs`
+**MCP Tools:** `manage_jobs`, `manage_job_runs`
+
+### Creating Jobs
+
+```
+Create a Databricks job that runs a notebook at
+/Workspace/Users/me/etl_notebook every day at 6 AM UTC.
+```
+
+```
+Create a multi-task job with this DAG:
+1. Task "extract" runs a Python notebook
+2. Task "transform" runs after extract completes
+3. Task "load" runs after transform completes
+4. Task "validate" runs after load completes
+Configure it to retry failed tasks up to 2 times.
+```
+
+```
+Create a job that triggers on file arrival in /Volumes/main/raw/incoming/ and
+processes new files automatically.
+```
+
+```
+Create a job that triggers whenever the table main.bronze.events is updated.
+```
+
+```
+Set up a job with a for-each task that iterates over a list of region codes and
+runs a parameterized notebook for each region.
+```
+
+### Managing & Monitoring Jobs
+
+```
+List all jobs in my workspace and show their last run status.
+```
+
+```
+Trigger a run of the job named "daily_etl" and monitor it until completion.
+```
+
+```
+Show me the status of the latest run for job "nightly_aggregation" — did it
+succeed or fail?
+```
+
+```
+Check all currently running job runs and show their progress.
+```
+
+```
+Cancel the currently running instance of job "backfill_historical".
+```
+
+### Job Configuration
+
+```
+Update the job "daily_etl" to add email notifications on failure to
+team@company.com.
+```
+
+```
+Create a job that uses serverless compute with a Python wheel task that runs
+my_package.main.
+```
+
+```
+Set up a job with continuous scheduling that restarts automatically when
+it finishes.
+```
+
+---
+
+## Python SDK & Databricks Connect
+
+**Skills:** `databricks-python-sdk`
+**MCP Tools:** `execute_databricks_command`, `run_python_file_on_databricks`
+
+```
+Write a Python script using the Databricks SDK to list all clusters, find any
+that have been idle for more than 2 hours, and terminate them.
+```
+
+```
+Create a Python script that uses Databricks Connect to run a Spark job
+remotely — read from a Delta table, transform the data, and write results back.
+```
+
+```
+Write a Python script using the SDK to create a new Unity Catalog schema, create
+a table with a defined schema, and insert sample data.
+```
+
+```
+Build a Python automation that uses the Databricks SDK to:
+1. List all jobs that failed in the last 24 hours
+2. Collect their error messages
+3. Generate a summary report
+```
+
+```
+Write a Python script to manage model serving endpoints — list all endpoints,
+check their status, and query one with test input.
+```
+
+```
+Run a local Python file on my Databricks cluster that processes data with
+PySpark and writes results to Unity Catalog.
+```
+
+---
+
+## Compute Management
+
+**MCP Tools:** `list_clusters`, `get_best_cluster`, `start_cluster`, `get_cluster_status`, `execute_databricks_command`, `run_python_file_on_databricks`, `upload_file`, `upload_folder`
+
+```
+List all clusters in my workspace and show which are running, terminated,
+or pending.
+```
+
+```
+Start the cluster "dev-cluster" and wait for it to be ready.
+```
+
+```
+Find the best available cluster and run this Python code on it:
+from pyspark.sql import functions as F
+df = spark.table("main.default.my_table")
+df.groupBy("category").agg(F.count("*").alias("count")).show()
+```
+
+```
+Upload my local project folder ./src/ to the Databricks workspace at
+/Workspace/Users/me/my_project/.
+```
+
+```
+Check the status of cluster "shared-analytics" — is it running and how long has
+it been up?
+```
+
+---
+
+## Documentation Lookup
+
+**Skills:** `databricks-docs`
+
+```
+Look up the documentation for configuring Auto Loader with schema evolution.
+```
+
+```
+What are the supported file formats for the COPY INTO command?
+```
+
+```
+Show me the documentation for Databricks OAuth token federation with
+GitHub Actions.
+```
+
+```
+What are the configuration options for serverless SQL warehouses?
+```
+
+```
+Look up the latest documentation on Unity Catalog system tables — what tables
+are available and what data do they contain?
+```

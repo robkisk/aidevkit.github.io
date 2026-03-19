@@ -1,0 +1,94 @@
+---
+title: "End-to-End RAG Application"
+description: Build a Retrieval-Augmented Generation app from PDF ingestion to a Streamlit chat interface.
+sidebar:
+  order: 1
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+## Overview
+
+Build a complete RAG (Retrieval-Augmented Generation) application that parses PDF documents, creates semantic embeddings, and serves answers through a chat interface. By the end you will have a working Knowledge Assistant backed by Vector Search and deployed as a Databricks App.
+
+**Skills used:** `databricks-ai-functions`, `databricks-vector-search`, `databricks-agent-bricks`, `databricks-app-python`
+**MCP tools used:** `execute_sql`, `upload_to_volume`, `create_or_update_vs_endpoint`, `create_or_update_vs_index`, `manage_ka`, `create_or_update_app`
+
+## Prerequisites
+
+- A Databricks workspace with Unity Catalog enabled
+- A catalog and schema for storing documents (e.g. `main.rag_demo`)
+- PDF files to index (company docs, policies, technical manuals, etc.)
+- A SQL warehouse for running AI Functions
+
+## Steps
+
+<Steps>
+
+1. **Upload documents to a Volume**
+
+   Start by getting your source documents into Unity Catalog.
+
+   ```
+   Create a volume at /Volumes/main/rag_demo/documents/ and upload my local PDF
+   files from ./docs/ into it.
+   ```
+
+2. **Parse and chunk the documents**
+
+   Use AI Functions to extract text from PDFs and split into chunks suitable for embedding.
+
+   ```
+   Build a document parsing pipeline:
+   1. Use ai_parse_document to extract text from PDFs stored in
+      /Volumes/main/rag_demo/documents/
+   2. Chunk the extracted text into 500-token segments
+   3. Store the chunks in a table main.rag_demo.document_chunks ready for
+      Vector Search indexing
+   ```
+
+3. **Create a Vector Search endpoint and index**
+
+   Set up the semantic search infrastructure that powers retrieval.
+
+   ```
+   Create a storage-optimized Vector Search endpoint called "rag-demo-endpoint"
+   and then create a Delta Sync index on main.rag_demo.document_chunks that
+   automatically embeds the "content" column using databricks-bge-large-en.
+   ```
+
+4. **Build a Knowledge Assistant**
+
+   Create an agent that answers questions using the indexed documents.
+
+   ```
+   Create a Knowledge Assistant that answers questions using the Vector Search
+   endpoint "rag-demo-endpoint" and index on main.rag_demo.document_chunks.
+   Add instructions to cite specific document names in its answers.
+   ```
+
+5. **Deploy as a Streamlit app**
+
+   Wrap the Knowledge Assistant in a user-friendly chat interface.
+
+   ```
+   Build a Streamlit app on Databricks that provides a chat interface to my
+   Knowledge Assistant. Include a sidebar showing source documents for each
+   answer and a "clear conversation" button.
+   ```
+
+</Steps>
+
+## What You Get
+
+- **Document chunks table** in `main.rag_demo.document_chunks` with parsed, chunked text
+- **Vector Search index** with automatic embedding and sync from the chunks table
+- **Knowledge Assistant** agent that retrieves relevant chunks and generates cited answers
+- **Streamlit app** with a chat UI deployed on Databricks Apps
+
+## Next Steps
+
+- Add [MLflow Evaluation](/aidevkit.github.io/skills/ai-ml/mlflow-evaluation/) to score answer quality with Correctness and RetrievalGroundedness scorers
+- Use [Metric Views](/aidevkit.github.io/skills/sql-analytics/metric-views/) to track usage metrics
+- Package everything as a [Databricks Asset Bundle](/aidevkit.github.io/skills/devops-config/asset-bundles/) for repeatable deployment
+- Scale up with a [Supervisor Agent](/aidevkit.github.io/skills/ai-ml/agent-bricks/supervisor-agents/) that routes between the KA and a Genie Space

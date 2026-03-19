@@ -1,0 +1,260 @@
+---
+title: "AI & ML"
+description: Prompts for Model Serving, Vector Search, MLflow Evaluation, Agent Bricks, and synthetic data generation.
+sidebar:
+  order: 3
+---
+
+## Model Serving & GenAI Agents
+
+**Skills:** `databricks-model-serving`
+**MCP Tools:** `list_serving_endpoints`, `get_serving_endpoint_status`, `query_serving_endpoint`
+
+### Querying Endpoints
+
+```
+List all model serving endpoints in my workspace and show which ones are ready.
+```
+
+```
+Check the status of the serving endpoint "my-agent-endpoint" — is it ready to
+receive traffic?
+```
+
+```
+Query my model serving endpoint "product-recommender" with this input:
+{"user_id": "12345", "context": "electronics"}
+```
+
+```
+Send a chat completion request to my agent endpoint with the message:
+"What were the top selling products last quarter?"
+```
+
+### Building Agents
+
+```
+Write a ChatAgent using MLflow that integrates a Unity Catalog function for SQL
+execution and a Vector Search index for document retrieval.
+```
+
+```
+Create a ResponsesAgent that uses the Responses API with tool definitions for
+querying a SQL warehouse and searching a knowledge base.
+```
+
+```
+Build an AI agent with LangGraph that:
+1. Takes a user question
+2. Searches a Vector Search index for relevant context
+3. Generates an answer using a foundation model
+4. Cites its sources
+```
+
+```
+Write a custom pyfunc model that wraps a scikit-learn classifier, logs it to
+MLflow, and deploy it to a serving endpoint.
+```
+
+```
+Deploy my MLflow model from Unity Catalog (models:/main.ml.my_model/1) to a
+serving endpoint with auto-scaling from 0 to 4 instances.
+```
+
+---
+
+## Vector Search & RAG
+
+**Skills:** `databricks-vector-search`
+**MCP Tools:** `create_or_update_vs_endpoint`, `get_vs_endpoint`, `delete_vs_endpoint`, `create_or_update_vs_index`, `get_vs_index`, `delete_vs_index`, `query_vs_index`, `manage_vs_data`
+
+### Endpoints
+
+```
+Create a storage-optimized Vector Search endpoint called "rag-endpoint" for
+large-scale document search.
+```
+
+```
+Create a standard Vector Search endpoint called "low-latency-search" for
+real-time similarity matching.
+```
+
+```
+List all Vector Search endpoints and show their status.
+```
+
+### Indexes
+
+```
+Create a Delta Sync Vector Search index on main.docs.articles that automatically
+embeds the "content" column using databricks-bge-large-en and syncs from the
+source table.
+```
+
+```
+Create a self-managed embedding index where I provide my own embedding vectors
+in the column "embedding_vector" of table main.ml.document_embeddings.
+```
+
+```
+Create a Direct Access index called "product-search" for real-time upserts with
+1536-dimensional embeddings.
+```
+
+### Querying & RAG
+
+```
+Search my Vector Search index "docs-index" for documents similar to "how to
+configure auto-scaling" and return the top 5 results with scores.
+```
+
+```
+Query the vector index with hybrid search (combining keyword + semantic) for
+"quarterly revenue report" with a filter on department = 'finance'.
+```
+
+```
+Build an end-to-end RAG pipeline:
+1. Create a Vector Search endpoint
+2. Create a Delta Sync index on my documents table with automatic embedding
+3. Write a function that queries the index and feeds context to a foundation model
+```
+
+### Data Management
+
+```
+Upsert 100 new documents with embeddings into my Direct Access vector index.
+```
+
+```
+Delete documents from my vector index where the source_id matches a list of
+removed files.
+```
+
+```
+Trigger a manual sync of my Delta Sync index to pick up new data.
+```
+
+---
+
+## MLflow Evaluation & Scoring
+
+**Skills:** `databricks-mlflow-evaluation`
+**MCP Tools:** `execute_sql`, `query_serving_endpoint`
+
+```
+Write a custom MLflow scorer function that evaluates whether my agent's
+responses include proper source citations.
+```
+
+```
+Run mlflow.genai.evaluate() on my agent using the built-in Guidelines,
+Correctness, and Safety scorers with a dataset of 50 test questions and
+expected answers.
+```
+
+```
+Create an evaluation dataset from production traces for my agent endpoint,
+selecting 100 representative conversations for human review.
+```
+
+```
+Set up RetrievalGroundedness scoring to evaluate whether my RAG agent's answers
+are actually grounded in the retrieved documents.
+```
+
+```
+Use optimize_prompts() with GEPA to automatically improve my agent's system
+prompt based on evaluation results.
+```
+
+```
+Build an evaluation pipeline that:
+1. Generates responses from my agent for a test dataset
+2. Scores them with Guidelines and Correctness scorers
+3. Logs results to an MLflow experiment
+4. Compares against the previous version's scores
+```
+
+```
+Set up trace ingestion from my production serving endpoint so I can monitor
+agent quality over time.
+```
+
+```
+Use MemAlign to align my evaluation judges with domain expert feedback — I have
+200 human-labeled examples.
+```
+
+---
+
+## Agent Bricks
+
+**Skills:** `databricks-agent-bricks`
+**MCP Tools:** `manage_ka`, `manage_mas`, `create_or_update_genie`
+
+### Knowledge Assistants
+
+```
+Create a Knowledge Assistant that answers questions about our company's HR
+policies using documents stored in /Volumes/main/hr/policy_docs/.
+```
+
+```
+Build a Knowledge Assistant with a Vector Search index as its knowledge source,
+using the endpoint "docs-endpoint" and index "policy-index".
+```
+
+### Supervisor Agents (Multi-Agent)
+
+```
+Create a Supervisor Agent that routes questions to:
+1. A "Sales Analyst" Genie Space for revenue and transaction questions
+2. A "HR Assistant" Knowledge Assistant for policy questions
+3. A custom model serving endpoint for product recommendations
+```
+
+```
+Build a multi-agent system where a supervisor coordinates between a SQL agent
+(Genie), a document Q&A agent (KA), and an external API agent.
+```
+
+```
+Create a Supervisor Agent that combines two Genie Spaces (Sales and Finance)
+and a Knowledge Assistant (Company Policies) into a single conversational
+interface.
+```
+
+---
+
+## Synthetic Data Generation
+
+**Skills:** `databricks-synthetic-data-gen`
+**MCP Tools:** `execute_sql`, `execute_databricks_command`, `upload_to_volume`
+
+```
+Generate 1 million rows of realistic e-commerce transaction data with columns
+for order_id, customer_id, product, quantity, price, and timestamp. Write it to
+main.demo.transactions as a Delta table.
+```
+
+```
+Create a synthetic healthcare dataset with patient records, diagnoses, and lab
+results — 100K patients with realistic distributions. Write to main.demo schema.
+```
+
+```
+Generate synthetic IoT sensor data for 500 devices over 30 days with
+temperature, humidity, and pressure readings including realistic anomalies.
+```
+
+```
+Generate a small (5K rows) synthetic financial transactions dataset locally and
+upload it to /Volumes/main/demo/data/ as Parquet.
+```
+
+```
+Create synthetic data for a supply chain demo: suppliers, purchase orders,
+shipments, and inventory levels across 10 warehouses.
+```

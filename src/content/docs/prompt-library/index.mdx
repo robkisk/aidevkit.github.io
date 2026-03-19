@@ -1,0 +1,98 @@
+---
+title: Prompt Library
+description: 130+ copy-paste prompts for building on Databricks with AI Dev Kit.
+sidebar:
+  order: 0
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+A curated collection of **130+ ready-to-use prompts** for working with Databricks through Claude Code and the AI Dev Kit. Each prompt is tested, copy-paste ready, and designed to leverage the right combination of skills and MCP tools automatically.
+
+## How to Use
+
+1. Browse a category below or use the sidebar to navigate
+2. Find a prompt that matches your task
+3. Copy it into Claude Code (or any agent with AI Dev Kit installed)
+4. Claude activates the appropriate skills and MCP tools to complete the task
+
+:::tip
+You don't need to specify which skill or tool to use. Claude reads the prompt, matches it to the relevant skill, and calls the right MCP tools automatically.
+:::
+
+## Categories
+
+<CardGrid>
+  <LinkCard title="Data Engineering" description="SDP pipelines, Spark Streaming, Zerobus Ingest, and custom data sources. 24 prompts." href="/aidevkit.github.io/prompt-library/data-engineering/" />
+  <LinkCard title="SQL & Analytics" description="SQL execution, AI Functions, dashboards, Genie Spaces, and Metric Views. 26 prompts." href="/aidevkit.github.io/prompt-library/sql-analytics/" />
+  <LinkCard title="AI & ML" description="Model Serving, Vector Search, MLflow Evaluation, Agent Bricks, and synthetic data. 25 prompts." href="/aidevkit.github.io/prompt-library/ai-ml/" />
+  <LinkCard title="Apps & Databases" description="Python apps, AppKit, Lakebase Autoscale, and Lakebase Provisioned. 21 prompts." href="/aidevkit.github.io/prompt-library/apps-databases/" />
+  <LinkCard title="Governance & Catalog" description="Unity Catalog, permissions, tags, volumes, Iceberg, Delta Sharing, and monitoring. 21 prompts." href="/aidevkit.github.io/prompt-library/governance-catalog/" />
+  <LinkCard title="DevOps & Config" description="Workspace auth, Asset Bundles, Jobs, Python SDK, and compute management. 23 prompts." href="/aidevkit.github.io/prompt-library/devops-config/" />
+</CardGrid>
+
+## Cross-Cutting Scenarios
+
+These prompts span multiple skills and tools for end-to-end workflows. Each one triggers a multi-step build across different parts of the Databricks platform.
+
+### End-to-End Data Platform
+
+```
+Build a complete data platform:
+1. Create a medallion pipeline (bronze/silver/gold) using Spark Declarative Pipelines
+2. Schedule it with a Databricks Job that runs every hour
+3. Create an AI/BI dashboard that visualizes the gold layer
+4. Package everything as a Databricks Asset Bundle for deployment
+```
+
+**Skills involved:** `databricks-spark-declarative-pipelines`, `databricks-jobs`, `databricks-aibi-dashboards`, `databricks-bundles`
+
+### RAG Application
+
+```
+Build an end-to-end RAG application:
+1. Parse PDF documents from a volume using ai_parse_document
+2. Chunk the text and create embeddings with a Vector Search index
+3. Build a Knowledge Assistant that answers questions using the index
+4. Deploy it as a Streamlit app on Databricks Apps
+```
+
+**Skills involved:** `databricks-ai-functions`, `databricks-vector-search`, `databricks-agent-bricks`, `databricks-app-python`
+
+### Real-Time Analytics
+
+```
+Build a real-time analytics system:
+1. Ingest events using Zerobus Ingest
+2. Process them with a Spark Structured Streaming pipeline
+3. Write aggregated results to a Lakebase database for low-latency serving
+4. Create a Genie Space for business users to ask questions about the data
+```
+
+**Skills involved:** `databricks-zerobus-ingest`, `databricks-spark-structured-streaming`, `databricks-lakebase-autoscale`, `databricks-genie`
+
+### ML Ops Pipeline
+
+```
+Set up an ML pipeline:
+1. Generate synthetic training data
+2. Train a model and log it with MLflow
+3. Evaluate the model using MLflow GenAI evaluation with custom scorers
+4. Deploy the best model to a serving endpoint
+5. Create a monitoring dashboard that tracks prediction quality
+```
+
+**Skills involved:** `databricks-synthetic-data-gen`, `databricks-mlflow-evaluation`, `databricks-model-serving`, `databricks-aibi-dashboards`
+
+### Multi-Agent System
+
+```
+Build a multi-agent customer service system:
+1. Create a Genie Space for SQL-based product and order queries
+2. Create a Knowledge Assistant for policy and FAQ documents
+3. Build a Supervisor Agent that routes customer questions to the right agent
+4. Deploy the supervisor as a serving endpoint
+5. Build a Gradio chat app as the customer-facing interface
+```
+
+**Skills involved:** `databricks-genie`, `databricks-agent-bricks`, `databricks-model-serving`, `databricks-app-python`

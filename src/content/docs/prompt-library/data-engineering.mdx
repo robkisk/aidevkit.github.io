@@ -1,0 +1,179 @@
+---
+title: "Data Engineering"
+description: Prompts for building pipelines, streaming jobs, real-time ingestion, and custom data sources on Databricks.
+sidebar:
+  order: 1
+---
+
+## Spark Declarative Pipelines (SDP)
+
+**Skills:** `databricks-spark-declarative-pipelines`, `databricks-agent-skill-databricks-pipelines`
+**MCP Tools:** `create_or_update_pipeline`, `get_pipeline`, `start_update`, `get_update`, `stop_pipeline`, `get_pipeline_events`
+
+### Creating Pipelines
+
+```
+Create a new Spark Declarative Pipeline called "sales_ingestion" that reads JSON
+files from a cloud storage volume using Auto Loader and writes to a streaming
+table in main.bronze.
+```
+
+```
+Build a medallion architecture pipeline with:
+- Bronze: Auto Loader ingestion from /Volumes/main/raw/csv_files
+- Silver: cleaned and deduplicated data with expectations
+- Gold: aggregated daily summary materialized view
+```
+
+```
+Create an SDP pipeline in Python that implements CDC (Change Data Capture) from
+a source table to a target streaming table with SCD Type 2 tracking.
+```
+
+```
+Write a SQL-based Spark Declarative Pipeline that:
+1. Ingests from cloud storage using Auto Loader
+2. Applies data quality expectations (non-null ID, valid dates)
+3. Creates a materialized view with business aggregations
+```
+
+### Managing Pipelines
+
+```
+List all pipelines in my workspace and show their current status.
+```
+
+```
+Start a full refresh on the pipeline named "sales_ingestion".
+```
+
+```
+Check the status of the latest update for my pipeline and show any errors.
+```
+
+```
+Show me recent events and errors for the pipeline "etl_daily" — help me debug
+why it failed.
+```
+
+```
+Stop the currently running pipeline "streaming_ingest".
+```
+
+```
+Run a validation (dry-run) on my pipeline to check for errors without
+materializing data.
+```
+
+### Advanced Patterns
+
+```
+Create an SDP pipeline that uses Auto CDC to capture changes from a source table
+and maintain a Type 2 slowly-changing dimension.
+```
+
+```
+Build a pipeline with data quality expectations that quarantine bad records to a
+separate table instead of failing the pipeline.
+```
+
+```
+Create a streaming table that reads from Kafka using Spark Structured Streaming
+inside an SDP pipeline.
+```
+
+---
+
+## Spark Structured Streaming
+
+**Skills:** `databricks-spark-structured-streaming`
+**MCP Tools:** `execute_databricks_command`, `run_python_file_on_databricks`
+
+```
+Write a Spark Structured Streaming job that reads from Kafka topic "events",
+deserializes JSON payloads, and writes to a Delta table with checkpointing.
+```
+
+```
+Build a streaming pipeline with a 10-minute watermark and windowed aggregation
+that computes event counts per 5-minute tumbling window.
+```
+
+```
+Create a stream-stream join between an "orders" stream and a "shipments" stream
+with a 1-hour time window for matching.
+```
+
+```
+Write a streaming job that reads from a Delta table using Change Data Feed and
+writes updates to two sink tables (a summary table and an audit log).
+```
+
+```
+Build a streaming pipeline with Real-Time Mode (sub-second latency) for a live
+dashboard use case.
+```
+
+```
+Create a streaming job with `availableNow` trigger for cost-efficient
+micro-batch processing of accumulated data.
+```
+
+```
+Write a Spark Streaming job with foreachBatch that performs an upsert (MERGE)
+into a Delta table on each micro-batch.
+```
+
+---
+
+## Zerobus Ingest (Real-Time gRPC)
+
+**Skills:** `databricks-zerobus-ingest`
+**MCP Tools:** `execute_sql`, `get_table_details`
+
+```
+Build a Python Zerobus Ingest producer that streams events directly into the
+Delta table main.raw.click_events using gRPC.
+```
+
+```
+Generate a Protobuf schema from my Unity Catalog table main.events.user_actions
+for use with Zerobus Ingest.
+```
+
+```
+Create a Zerobus Ingest client in TypeScript that writes IoT sensor readings to
+main.iot.sensor_data with ACK handling and retry logic.
+```
+
+```
+Set up a production Zerobus Ingest pipeline with proper error handling,
+backpressure management, and dead-letter routing.
+```
+
+---
+
+## Custom Spark Data Sources
+
+**Skills:** `spark-python-data-source`
+**MCP Tools:** `execute_databricks_command`, `run_python_file_on_databricks`
+
+```
+Build a custom PySpark DataSource that reads data from a REST API, handling
+pagination and authentication, and returns it as a DataFrame.
+```
+
+```
+Create a Spark DataSource writer that takes a DataFrame and pushes it to an
+external PostgreSQL database.
+```
+
+```
+Write a streaming DataSource reader that connects to a WebSocket endpoint and
+yields new records as they arrive.
+```
+
+```
+Build a PySpark DataSource for reading data from MongoDB with partition-aware
+reads and predicate pushdown.
+```

@@ -1,0 +1,111 @@
+---
+title: "Medallion Pipeline with CI/CD"
+description: Build a Bronze/Silver/Gold pipeline with Spark Declarative Pipelines, wrap it in a Job, and deploy via Asset Bundles with GitHub Actions.
+sidebar:
+  order: 2
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+## Overview
+
+Build a production-ready medallion architecture (Bronze, Silver, Gold) using Spark Declarative Pipelines, schedule it with a Databricks Job, and package everything as an Asset Bundle for CI/CD deployment through GitHub Actions.
+
+**Skills used:** `databricks-spark-declarative-pipelines`, `databricks-jobs`, `databricks-aibi-dashboards`, `databricks-bundles`
+**MCP tools used:** `create_or_update_pipeline`, `start_update`, `manage_jobs`, `create_or_update_dashboard`, `execute_sql`
+
+## Prerequisites
+
+- A Databricks workspace with Unity Catalog enabled
+- Source data files in a Volume (CSV, JSON, or Parquet)
+- A GitHub repository for the Asset Bundle code
+- GitHub Actions configured with Databricks OIDC authentication
+
+## Steps
+
+<Steps>
+
+1. **Create the medallion pipeline**
+
+   Build a three-layer SDP pipeline with ingestion, cleaning, and aggregation.
+
+   ```
+   Build a medallion architecture pipeline with:
+   - Bronze: Auto Loader ingestion from /Volumes/main/raw/csv_files
+   - Silver: cleaned and deduplicated data with expectations (non-null ID,
+     valid dates, positive amounts)
+   - Gold: aggregated daily summary materialized view
+   Name it "sales_medallion" targeting the main catalog.
+   ```
+
+2. **Add data quality expectations**
+
+   Strengthen the pipeline with quality gates that quarantine bad records.
+
+   ```
+   Update my "sales_medallion" pipeline to add expectations that quarantine
+   bad records to a separate table instead of failing the pipeline. Track
+   null rates and schema violations.
+   ```
+
+3. **Run and validate the pipeline**
+
+   Trigger a full refresh and verify the data flows correctly.
+
+   ```
+   Start a full refresh on the pipeline "sales_medallion" and monitor it
+   until completion. Then show me row counts for each layer
+   (bronze, silver, gold).
+   ```
+
+4. **Schedule with a Databricks Job**
+
+   Wrap the pipeline in a Job with monitoring and retry logic.
+
+   ```
+   Create a Databricks job that:
+   1. Triggers the "sales_medallion" pipeline on an hourly schedule
+   2. Runs a validation notebook after the pipeline completes
+   3. Retries failed tasks up to 2 times
+   4. Sends email notifications on failure to team@company.com
+   ```
+
+5. **Build an analytics dashboard**
+
+   Visualize the Gold layer with an AI/BI dashboard.
+
+   ```
+   Create an AI/BI dashboard with a dataset querying the gold layer and add:
+   - A counter widget showing total revenue
+   - A bar chart showing revenue by product category
+   - A line chart showing daily revenue trends over the last 90 days
+   ```
+
+6. **Package as a Databricks Asset Bundle**
+
+   Define the entire stack as infrastructure-as-code for repeatable deployment.
+
+   ```
+   Create a Databricks Asset Bundle that packages:
+   - The "sales_medallion" pipeline
+   - The scheduling job with notifications
+   - The analytics dashboard
+   With separate dev and prod targets using different catalogs and warehouse IDs.
+   ```
+
+</Steps>
+
+## What You Get
+
+- **SDP pipeline** with Bronze (Auto Loader), Silver (cleaned + deduplicated), and Gold (aggregated) layers
+- **Data quality expectations** that quarantine bad records for review
+- **Databricks Job** running hourly with retry logic and failure alerts
+- **AI/BI dashboard** visualizing the Gold layer
+- **Asset Bundle** (`databricks.yml`) ready for CI/CD deployment to dev and prod
+
+## Next Steps
+
+- Set up [GitHub Actions CI/CD](https://docs.databricks.com/aws/en/dev-tools/ci-cd/github) to deploy the bundle on merge
+- Add [Genie Spaces](/aidevkit.github.io/skills/sql-analytics/genie-spaces/) for natural-language exploration of the Gold layer
+- Configure [Data Quality Monitoring](/aidevkit.github.io/skills/governance-catalog/unity-catalog/) on the production tables
+- Use [Metric Views](/aidevkit.github.io/skills/sql-analytics/metric-views/) to define governed KPIs on the Gold tables
