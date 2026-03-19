@@ -1,47 +1,69 @@
 ---
 title: Views
-description: Temporary views for pipeline-private logic and persistent views published to Unity Catalog.
+description: Define pipeline-private logic with temporary views or publish reusable queries to Unity Catalog with persistent views.
 sidebar:
   order: 6
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+## What You Can Build
 
-Views in SDP pipelines come in two flavors: temporary views that exist only during pipeline execution for intermediate logic, and persistent views published to Unity Catalog for downstream consumers. Use temporary views for shared filtering and preprocessing; use persistent views when other queries or dashboards need to reference the result.
+Views in Spark Declarative Pipelines come in two forms. Temporary views exist only during pipeline execution — use them for intermediate filtering, shared logic, or preprocessing before Auto CDC. Persistent views get published to Unity Catalog so dashboards and external queries can reference them directly.
 
-## Temporary Views (Pipeline-Private)
+## In Action
 
-Not persisted, not published to catalog. Use for intermediate preprocessing, shared logic, or filtering before Auto CDC.
+> "Create a Python temporary view that filters test events out of the raw stream before downstream tables consume it"
 
-<Tabs>
-  <TabItem label="Python">
 ```python
 @dp.temporary_view()
-def filtered_source():
-    return spark.readStream.table("raw_events") \
+def filtered_events():
+    return (
+        spark.readStream.table("raw_events")
         .filter("event_type != 'test'")
+    )
 ```
-  </TabItem>
-  <TabItem label="SQL">
-```sql
-CREATE TEMPORARY VIEW filtered_source
-AS SELECT * FROM STREAM(raw_events) WHERE event_type != 'test';
-```
-  </TabItem>
-</Tabs>
 
-## Persistent Views (SQL Only)
+**Key decisions:**
+- **Temporary view over a streaming table** — this intermediate filter doesn't need to be persisted or queried outside the pipeline. A temporary view avoids storage costs and keeps the catalog clean.
+- **Streaming read inside a view** — temporary views can wrap either batch or streaming reads. Downstream tables inherit the read mode, so a streaming table reading from this view still gets incremental processing.
 
-Published to Unity Catalog for external queries. Not materialized -- runs the query on each read.
+## More Patterns
+
+### Publish a query to Unity Catalog for external consumers
+> "Create a persistent SQL view of active customers that dashboards can query directly"
 
 ```sql
 CREATE VIEW catalog.schema.active_customers
 AS SELECT * FROM customers WHERE status = 'active';
 ```
 
-## When to Use Which
+Persistent views run the query on each read — nothing is stored physically. Use them when external consumers need a stable interface to filtered or transformed data without materializing the result.
 
-- **Temporary View**: intermediate/preprocessing logic, pipeline-private helpers
-- **Persistent View**: reusable SQL published to Unity Catalog for external consumption
-- **Materialized View**: expensive computation that should be stored physically
-- Only consider a Private MV/ST (`private=True` / `CREATE PRIVATE ...`) when computation is expensive and materializing once saves significant reprocessing
+### Preprocess data before Auto CDC
+> "Use a temporary view to clean and enrich raw orders before applying SCD Type 1 deduplication, in Python"
+
+```python
+@dp.temporary_view()
+def orders_cleaned():
+    return (
+        spark.readStream.table("bronze.orders")
+        .filter(col("order_id").isNotNull())
+        .withColumn("order_total", col("quantity") * col("unit_price"))
+    )
+
+dp.create_streaming_table(name="orders_current")
+
+dp.create_auto_cdc_flow(
+    target="orders_current",
+    source="orders_cleaned",
+    keys=["order_id"],
+    sequence_by="order_date",
+    stored_as_scd_type="1"
+)
+```
+
+Temporary views are the standard way to insert transformation logic before an Auto CDC flow. The view runs during pipeline execution and feeds directly into the CDC target — no intermediate table to manage or pay storage for.
+
+## Watch Out For
+- **Temporary views are invisible outside the pipeline** — they don't appear in Unity Catalog and can't be queried by notebooks, dashboards, or other pipelines. If something else needs the result, use a streaming table or materialized view instead.
+- **Persistent views are SQL only** — `CREATE VIEW catalog.schema.name` works in SQL pipeline files. Python pipelines don't have an equivalent decorator for persistent views.
+- **Don't materialize what should be a view** — if the logic is lightweight filtering or renaming and nothing outside the pipeline reads it, a temporary view is the right choice. A streaming table or materialized view for the same purpose wastes storage and adds unnecessary refresh overhead.

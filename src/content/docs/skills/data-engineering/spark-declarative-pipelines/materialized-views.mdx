@@ -1,84 +1,85 @@
 ---
 title: Materialized Views
-description: Physically stored query results with incremental refresh — aggregations, gold-layer tables, and batch transformations.
+description: Pre-compute aggregations and gold-layer tables that refresh automatically — stored query results without managing refresh logic yourself.
 sidebar:
   order: 2
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+## What You Can Build
 
-Materialized views recompute their full result set on each refresh. Use them for aggregations, joins, and gold-layer tables. On serverless pipelines, they support automatic incremental refresh.
+Materialized views store the results of a query physically on disk and refresh when the pipeline runs. Use them for aggregations, joins, and any gold-layer table where you need fast reads from a pre-computed result. On serverless pipelines, they support automatic incremental refresh — only reprocessing what changed upstream.
 
-## Basic Materialized View
+## In Action
 
-<Tabs>
-  <TabItem label="Python">
-```python
-@dp.materialized_view()
-def daily_revenue():
-    return spark.read.table("silver.orders") \
-        .groupBy("order_date") \
-        .agg(sum("amount").alias("total_revenue"), count("*").alias("order_count"))
-```
-  </TabItem>
-  <TabItem label="SQL">
+> "Create a SQL materialized view that summarizes daily revenue and order counts from the silver orders table"
+
 ```sql
 CREATE OR REFRESH MATERIALIZED VIEW daily_revenue
-AS SELECT order_date, SUM(amount) AS total_revenue, COUNT(*) AS order_count
+AS SELECT
+  order_date,
+  SUM(amount) AS total_revenue,
+  COUNT(*) AS order_count
 FROM silver.orders
 GROUP BY order_date;
 ```
-  </TabItem>
-</Tabs>
 
-## Gold Layer from Streaming Table
+**Key decisions:**
+- **Materialized view over streaming table** — aggregations like `SUM` and `COUNT` need the full dataset, not just new records. Materialized views recompute the result on each refresh; streaming tables only process new data.
+- **No `STREAM()` wrapper** — this is a batch read from `silver.orders`. Using `STREAM()` here would make this a streaming table instead, which can't do full re-aggregation.
+- **`CLUSTER BY` omitted** — for a simple date-grouped summary that BI tools scan sequentially, clustering adds no benefit. Add it when you have high-cardinality filters like `customer_id`.
 
-Read a streaming table in batch mode for aggregation:
+## More Patterns
 
-<Tabs>
-  <TabItem label="Python">
+### Build a customer-level summary from a streaming silver table
+> "Aggregate total spend and transaction counts per customer from the silver transactions table, using Python"
+
 ```python
 @dp.materialized_view()
 def customer_summary():
-    return spark.read.table("silver.transactions") \
-        .groupBy("customer_id") \
-        .agg(sum("amount").alias("total_spend"), count("*").alias("transaction_count"))
+    return (
+        spark.read.table("silver.transactions")
+        .groupBy("customer_id")
+        .agg(
+            sum("amount").alias("total_spend"),
+            count("*").alias("transaction_count")
+        )
+    )
 ```
-  </TabItem>
-  <TabItem label="SQL">
-```sql
-CREATE OR REFRESH MATERIALIZED VIEW customer_summary
-AS SELECT customer_id, SUM(amount) AS total_spend, COUNT(*) AS transaction_count
-FROM silver.transactions
-GROUP BY customer_id;
-```
-  </TabItem>
-</Tabs>
 
-## With Liquid Clustering
+Notice `spark.read.table` — not `spark.readStream.table`. Materialized views always use batch reads, even when the source is a streaming table. The framework reads the current snapshot of the upstream table and recomputes the aggregate on each refresh.
 
-<Tabs>
-  <TabItem label="Python">
-```python
-@dp.materialized_view(cluster_by=["customer_id"])
-def customer_summary():
-    return spark.read.table("silver.transactions") \
-        .groupBy("customer_id").agg(sum("amount").alias("total"))
-```
-  </TabItem>
-  <TabItem label="SQL">
+### Optimize query performance with liquid clustering
+> "Create a customer summary materialized view clustered by customer_id for fast lookups, in SQL"
+
 ```sql
 CREATE OR REFRESH MATERIALIZED VIEW customer_summary
 CLUSTER BY (customer_id)
-AS SELECT customer_id, SUM(amount) AS total
-FROM silver.transactions GROUP BY customer_id;
+AS SELECT
+  customer_id,
+  SUM(amount) AS total_spend,
+  COUNT(*) AS transaction_count
+FROM silver.transactions
+GROUP BY customer_id;
 ```
-  </TabItem>
-</Tabs>
 
-## Key Rules
+`CLUSTER BY` organizes the physical layout so that queries filtering on `customer_id` skip irrelevant files. Worth adding when downstream dashboards or APIs look up individual customers from this table.
 
-- Materialized views use `spark.read` (Python) or `SELECT ... FROM table` without `STREAM()` (SQL)
-- Never use `spark.readStream` in a materialized view -- that creates a streaming table
-- Gold layer aggregation from a streaming table must use batch reads
-- Incremental refresh is automatic on serverless pipelines
+### Expose current state from an SCD Type 2 history table
+> "Create a materialized view that shows only the current version of each customer from the SCD Type 2 history table, in SQL"
+
+```sql
+CREATE OR REFRESH MATERIALIZED VIEW dim_customers_current
+AS SELECT
+  customer_id, customer_name, email, phone,
+  __START_AT AS valid_from
+FROM customers_history
+WHERE __END_AT IS NULL;
+```
+
+SCD Type 2 tables accumulate every version of every row. This materialized view pre-filters to current records only, so downstream consumers get a simple dimension table without needing to understand the temporal model.
+
+## Watch Out For
+- **Never use `spark.readStream` in a materialized view** — that creates a streaming table, not a materialized view. Materialized views use `spark.read` (Python) or plain `SELECT ... FROM table` without `STREAM()` (SQL).
+- **Incremental refresh requires row tracking on the source** — on serverless pipelines, materialized views can refresh incrementally. But the source table needs Delta row tracking enabled, and the query must use supported aggregation patterns.
+- **Materialized views recompute on every refresh** — if your source table is very large and you only care about recent data, add a time filter in the query to avoid reprocessing the full history each time.
+- **Avoid confusion with streaming tables** — if you need to process only new records (append-only, exactly-once), use a streaming table. If you need a full-result recompute (aggregations, joins, any query with `GROUP BY`), use a materialized view.

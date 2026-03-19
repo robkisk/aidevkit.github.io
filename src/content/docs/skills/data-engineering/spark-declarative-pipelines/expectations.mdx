@@ -1,87 +1,60 @@
 ---
 title: Expectations
-description: Define and enforce data quality constraints — warn, drop invalid rows, or fail the pipeline on violations.
+description: Enforce data quality inline — warn on violations, drop bad rows, or fail the pipeline before corrupt data reaches downstream tables.
 sidebar:
   order: 5
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+## What You Can Build
 
-Expectations define data quality constraints on pipeline tables. Three enforcement levels are available.
+Expectations are data quality constraints you declare directly on pipeline tables. Each row is evaluated against your rules, and you choose the enforcement level: log the violation and keep the row, silently drop it, or halt the pipeline entirely. No separate validation framework, no after-the-fact auditing — quality enforcement happens at write time.
 
-## Expect (Warn)
+## In Action
 
-Records violating the constraint are included but flagged in monitoring.
+> "Add row-level validation to a SQL silver table that drops orders with negative amounts and null customer IDs"
 
-<Tabs>
-  <TabItem label="Python">
+```sql
+CREATE STREAMING TABLE silver_orders (
+  CONSTRAINT valid_amount EXPECT (amount > 0) ON VIOLATION DROP ROW,
+  CONSTRAINT valid_customer EXPECT (customer_id IS NOT NULL) ON VIOLATION DROP ROW
+)
+AS SELECT * FROM STREAM(bronze_orders);
+```
+
+**Key decisions:**
+- **`DROP ROW`** over `FAIL UPDATE` — for a silver table, you want to keep the pipeline running and route bad data out. Failing the entire pipeline on one malformed row is usually too aggressive unless the data is safety-critical.
+- **Named constraints** — `valid_amount` and `valid_customer` show up in the pipeline UI monitoring, so you can track violation rates per rule over time.
+- **Inline with the table definition** — expectations are part of the DDL, not a separate validation step. This means they can't be skipped or forgotten when someone modifies the query.
+
+## More Patterns
+
+### Log violations without dropping data
+> "Track how many events have null timestamps without filtering them out, using Python"
+
 ```python
 @dp.expect("valid_timestamp", "col('timestamp') IS NOT NULL")
 @dp.table()
 def silver_events():
     return spark.readStream.table("bronze_events")
 ```
-  </TabItem>
-  <TabItem label="SQL">
-```sql
-CREATE STREAMING TABLE silver_events (
-  CONSTRAINT valid_timestamp EXPECT (timestamp IS NOT NULL)
-)
-AS SELECT * FROM STREAM(bronze_events);
-```
-  </TabItem>
-</Tabs>
 
-## Expect or Drop
+The `expect` decorator (without `_or_drop` or `_or_fail`) lets every row through but records the violation in pipeline monitoring. Use this when you're still learning the shape of your data and want visibility before enforcing hard rules.
 
-Invalid rows are silently dropped from the output.
+### Halt the pipeline on critical violations
+> "Fail the pipeline immediately if any record arrives with a null primary key, in SQL"
 
-<Tabs>
-  <TabItem label="Python">
-```python
-@dp.expect_or_drop("valid_amount", "amount > 0")
-@dp.table()
-def silver_orders():
-    return spark.readStream.table("bronze_orders")
-```
-  </TabItem>
-  <TabItem label="SQL">
-```sql
-CREATE STREAMING TABLE silver_orders (
-  CONSTRAINT valid_amount EXPECT (amount > 0) ON VIOLATION DROP ROW
-)
-AS SELECT * FROM STREAM(bronze_orders);
-```
-  </TabItem>
-</Tabs>
-
-## Expect or Fail
-
-Pipeline fails immediately when a violation is detected.
-
-<Tabs>
-  <TabItem label="Python">
-```python
-@dp.expect_or_fail("unique_id", "id IS NOT NULL")
-@dp.table()
-def critical_data():
-    return spark.readStream.table("source")
-```
-  </TabItem>
-  <TabItem label="SQL">
 ```sql
 CREATE STREAMING TABLE critical_data (
-  CONSTRAINT unique_id EXPECT (id IS NOT NULL) ON VIOLATION FAIL UPDATE
+  CONSTRAINT require_id EXPECT (id IS NOT NULL) ON VIOLATION FAIL UPDATE
 )
 AS SELECT * FROM STREAM(source);
 ```
-  </TabItem>
-</Tabs>
 
-## Multiple Expectations
+`FAIL UPDATE` stops the pipeline the moment a violation is detected. Reserve this for invariants that, if broken, mean something is fundamentally wrong upstream — like a null primary key that would corrupt every downstream join.
 
-<Tabs>
-  <TabItem label="Python">
+### Apply multiple constraints as a group
+> "Drop rows that fail any of three validation rules on an orders table using Python"
+
 ```python
 @dp.expect_all_or_drop({
     "valid_amount": "amount > 0",
@@ -92,22 +65,25 @@ AS SELECT * FROM STREAM(source);
 def clean_orders():
     return spark.readStream.table("bronze_orders")
 ```
-  </TabItem>
-  <TabItem label="SQL">
-```sql
-CREATE STREAMING TABLE clean_orders (
-  CONSTRAINT valid_amount EXPECT (amount > 0) ON VIOLATION DROP ROW,
-  CONSTRAINT valid_customer EXPECT (customer_id IS NOT NULL) ON VIOLATION DROP ROW,
-  CONSTRAINT valid_date EXPECT (order_date >= '2020-01-01') ON VIOLATION DROP ROW
-)
-AS SELECT * FROM STREAM(bronze_orders);
+
+`expect_all_or_drop` is a convenience that applies the same enforcement level to every rule in the dictionary. A row is dropped if it fails any single constraint. Each rule still appears individually in the monitoring dashboard so you can see which one is triggering most often.
+
+### Mix enforcement levels on the same table
+> "Warn on missing emails, drop rows with invalid amounts, and fail on null IDs — all on the same table, in Python"
+
+```python
+@dp.expect("has_email", "email IS NOT NULL")
+@dp.expect_or_drop("valid_amount", "amount > 0")
+@dp.expect_or_fail("has_id", "id IS NOT NULL")
+@dp.table()
+def validated_orders():
+    return spark.readStream.table("bronze_orders")
 ```
-  </TabItem>
-</Tabs>
 
-## Key Rules
+You can stack decorators with different enforcement levels. The pipeline evaluates all of them on each row — a row that fails the `expect_or_fail` check halts the pipeline regardless of whether it passes the other two.
 
-- Expectations can be applied to both streaming tables and materialized views
-- Multiple expectations can be combined on the same table
-- Use `expect_all` variants for bulk constraint definitions in Python
-- Expectation results are visible in the pipeline UI monitoring
+## Watch Out For
+- **Expectations work on both streaming tables and materialized views** — they're not streaming-only. Apply them anywhere you want row-level quality checks.
+- **`expect_all` variants require a dictionary** — `expect_all_or_drop({"name": "expr", ...})` in Python. If you pass a single string instead of a dict, you'll get a confusing type error.
+- **Constraint expressions use SQL syntax even in Python** — the second argument to `@dp.expect` is a SQL expression string (`"amount > 0"`), not a Python expression. Column references follow SQL rules.
+- **Dropping rows is silent** — `DROP ROW` doesn't raise errors or warnings in logs. The only way to see how many rows were dropped is through the pipeline UI or the expectations metrics table. If your drop rate spikes, you won't know unless you're monitoring.

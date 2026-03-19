@@ -1,45 +1,40 @@
 ---
 title: Streaming Tables
-description: Create streaming tables that process data incrementally with exactly-once semantics — append flows, backfill, and multi-source patterns.
+description: Ingest data continuously with exactly-once guarantees — from simple file ingestion to multi-source fan-in with historical backfill.
 sidebar:
   order: 1
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+## What You Can Build
 
-Streaming tables process data continuously as it arrives, providing exactly-once guarantees with automatic checkpointing.
+Streaming tables let you set up continuous data ingestion that tracks what's been processed and only picks up new records. You describe the source and the shape you want — your AI coding assistant handles the pipeline wiring, checkpointing, and exactly-once semantics.
 
-## Basic Streaming Table
+## In Action
 
-<Tabs>
-  <TabItem label="Python">
-```python
-@dp.table()
-def bronze():
-    return spark.readStream.format("cloudFiles") \
-        .option("cloudFiles.format", "json") \
-        .load("/path/to/data")
+> "Build a SQL streaming pipeline that ingests JSON events from /Volumes/retail/raw/events/ into a bronze table, then create a silver table that filters out records with null IDs"
 
-@dp.table()
-def silver():
-    return spark.readStream.table("bronze").filter("id IS NOT NULL")
-```
-  </TabItem>
-  <TabItem label="SQL">
 ```sql
 CREATE STREAMING TABLE bronze
-AS SELECT * FROM STREAM(read_files('/path/to/data', format => 'json'));
+AS SELECT * FROM STREAM(read_files(
+  '/Volumes/retail/raw/events/',
+  format => 'json'
+));
 
 CREATE STREAMING TABLE silver
-AS SELECT * FROM STREAM(bronze) WHERE id IS NOT NULL;
+AS SELECT * FROM STREAM(bronze)
+WHERE id IS NOT NULL;
 ```
-  </TabItem>
-</Tabs>
 
-## Multi-Source Aggregation (Append Flows)
+**Key decisions:**
+- **`read_files` with Auto Loader** over manual file listing — it tracks which files have been processed, so you never double-count or miss arrivals.
+- **Bronze/silver separation** — filtering happens in a downstream table rather than at ingestion. This preserves the raw data for debugging and reprocessing if business rules change.
+- **`CLUSTER BY` omitted intentionally** — for a simple ingestion this adds overhead without benefit. Add it on the silver table once you know your query patterns.
 
-<Tabs>
-  <TabItem label="Python">
+## More Patterns
+
+### Combine multiple event streams into one table
+> "I have mobile and web event streams that need to land in a single `all_events` table using Python"
+
 ```python
 dp.create_streaming_table(name="all_events")
 
@@ -51,39 +46,12 @@ def mobile():
 def web():
     return spark.readStream.table("web.events")
 ```
-  </TabItem>
-  <TabItem label="SQL">
-```sql
-CREATE STREAMING TABLE all_events (
-  event_id STRING, event_type STRING, event_timestamp TIMESTAMP, source STRING
-);
 
-CREATE FLOW mobile_flow AS INSERT INTO all_events BY NAME
-SELECT *, 'mobile' as source FROM STREAM(mobile.events);
+Append flows let you fan multiple sources into one target without managing union logic yourself. Each flow runs independently — if the mobile source falls behind, web events keep flowing.
 
-CREATE FLOW web_flow AS INSERT INTO all_events BY NAME
-SELECT *, 'web' as source FROM STREAM(web.events);
-```
-  </TabItem>
-</Tabs>
+### Backfill historical data alongside a live stream
+> "Set up a one-time historical backfill from our archive table while the live transaction stream keeps running, in SQL"
 
-## One-Time Backfill
-
-<Tabs>
-  <TabItem label="Python">
-```python
-dp.create_streaming_table(name="transactions")
-
-@dp.append_flow(target="transactions", name="live_stream")
-def live():
-    return spark.readStream.table("source.transactions")
-
-@dp.append_flow(target="transactions", name="backfill", once=True)
-def backfill():
-    return spark.read.table("archive.historical_transactions")
-```
-  </TabItem>
-  <TabItem label="SQL">
 ```sql
 CREATE STREAMING TABLE transactions;
 
@@ -93,36 +61,26 @@ SELECT * FROM STREAM(source.transactions);
 CREATE FLOW backfill AS INSERT INTO ONCE transactions
 SELECT * FROM archive.historical_transactions;
 ```
-  </TabItem>
-</Tabs>
 
-## Stream-Static Join
+The `ONCE` keyword makes the backfill flow run exactly one time, then stop. The live stream continues independently.
 
-<Tabs>
-  <TabItem label="Python">
+### Enrich streaming events with dimension lookups
+> "Join my streaming transactions with the customers dimension table using Python"
+
 ```python
 @dp.table()
 def enriched_transactions():
     transactions = spark.readStream.table("transactions")
     customers = spark.read.table("customers")
-    return transactions.join(customers, transactions.customer_id == customers.id)
+    return transactions.join(
+        customers,
+        transactions.customer_id == customers.id
+    )
 ```
-  </TabItem>
-  <TabItem label="SQL">
-```sql
-CREATE OR REFRESH STREAMING TABLE enriched_transactions
-AS SELECT t.*, c.name, c.email
-FROM STREAM(transactions) t
-JOIN customers c ON t.customer_id = c.id;
-```
-  </TabItem>
-</Tabs>
 
-## Key Rules
+The static side (`customers`) is re-read each microbatch, so dimension updates propagate automatically.
 
-- Streaming tables use `spark.readStream` (Python) or `STREAM()` (SQL)
-- Never use `.writeStream`, `.start()`, or checkpoint options -- Databricks manages these
-- For streaming flows (`once=False`): use streaming reads
-- For one-time flows (`once=True`): use batch reads
-- Use `skipChangeCommits` when reading from STs with updates/deletes
-- `CLUSTER BY` is recommended over `PARTITIONED BY`
+## Watch Out For
+- **Never use `.writeStream`, `.start()`, or checkpoint options** — Databricks manages all of this for you. Adding checkpoint config will conflict with the managed pipeline and cause failures.
+- **Use `skipChangeCommits` when reading from tables with updates/deletes** — without it, upstream DELETE or UPDATE operations cause the downstream streaming read to fail.
+- **One-time flows must use batch reads** — `once=True` flows use `spark.read`, not `spark.readStream`. Using a streaming read in a one-time flow will hang indefinitely.
