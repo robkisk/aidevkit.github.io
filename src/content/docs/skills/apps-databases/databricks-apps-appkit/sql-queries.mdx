@@ -1,39 +1,42 @@
 ---
 title: SQL Query Files
-description: Write parameterized SQL query files for AppKit with type generation, Databricks SQL dialect, and date handling patterns.
+description: Write parameterized SQL queries for AppKit with type generation and Databricks SQL dialect patterns.
 sidebar:
   order: 1
 ---
 
-Store all SQL queries in `config/queries/`. Reference by filename (without extension) in `useAnalyticsQuery` or as `queryKey` in visualization components.
+## What You Can Build
 
-## Type Generation
+You can write parameterized SQL query files that AppKit automatically type-checks, connects to visualization components, and executes against a SQL warehouse. Store queries in `config/queries/`, reference them by filename, and get auto-generated TypeScript types -- no manual fetch logic or type definitions needed.
 
-Types auto-regenerate during dev whenever SQL files change. Quick workflow: Add SQL files, types auto-generate, types appear in `client/src/appKitTypes.d.ts`.
+## In Action
 
-## SQL Type Handling
+> "Using SQL and TypeScript, write a parameterized query that filters orders by date range and category, then wire it to an AppKit chart."
 
-Auto-generated types map `BIGINT`, `INT`, `DECIMAL` to TypeScript `number`, but some types arrive as strings at runtime. Always convert:
-
-```typescript
-// Always convert to number first
-<span>{Number(row.total_amount).toFixed(2)}</span>
+```sql
+-- config/queries/orders_by_category.sql
+SELECT
+  category,
+  SUM(total_amount) AS revenue,
+  COUNT(*) AS order_count
+FROM catalog.schema.orders
+WHERE order_date BETWEEN :start_date AND :end_date
+  AND (:category = '' OR LOWER(category) = LOWER(:category))
+GROUP BY category
+ORDER BY revenue DESC
 ```
 
-## Databricks SQL Dialect
+**Key decisions:**
+- Parameters use colon prefix (`:parameter_name`) -- AppKit binds them at execution time
+- Types auto-regenerate during dev whenever SQL files change, appearing in `client/src/appKitTypes.d.ts`
+- Use Databricks SQL dialect (based on Spark SQL), not PostgreSQL -- function syntax differs for date math, string aggregation, and case-insensitive matching
+- Reference this query as `queryKey="orders_by_category"` in any visualization component
 
-Databricks uses Databricks SQL (based on Spark SQL), not PostgreSQL:
+## More Patterns
 
-| PostgreSQL | Databricks SQL |
-|------------|---------------|
-| `DATEDIFF(date1, date2)` | `DATEDIFF(DAY, date2, date1)` (3 args) |
-| `NOW()` | `CURRENT_TIMESTAMP()` |
-| `STRING_AGG(col, ',')` | `CONCAT_WS(',', COLLECT_LIST(col))` |
-| `ILIKE` | `LOWER(col) LIKE LOWER(pattern)` |
+### Type-safe parameter binding
 
-## Query Parameterization
-
-Parameters use colon prefix (`:parameter_name`). Use `sql.*` helpers from `@databricks/appkit-ui/js`:
+> "Using TypeScript, pass typed parameters to a SQL query using the sql.* helpers."
 
 ```typescript
 import { sql } from "@databricks/appkit-ui/js";
@@ -41,31 +44,79 @@ import { sql } from "@databricks/appkit-ui/js";
 const params = {
   min_value: sql.number(minValue),
   category: sql.string(category),
-  start_date: sql.date('2024-01-01'),
-  optional_filter: sql.string(optionalFilter || ''),
+  start_date: sql.date("2024-01-01"),
+  optional_filter: sql.string(optionalFilter || ""),
 };
 ```
 
-### Optional Date Parameters
+Each `sql.*` helper ensures the parameter is sent with the correct type. Available helpers: `sql.string()`, `sql.number()`, `sql.boolean()`, `sql.date()` (YYYY-MM-DD), `sql.timestamp()`, and `sql.binary()`. There is no `sql.null()`, `sql.array()`, `sql.int()`, or `sql.float()`.
 
-Use sentinel dates (not empty strings) for optional date filters:
+### Handling optional date filters with sentinel values
+
+> "Using SQL, write a query with optional date bounds that default to 'all time' when not specified."
+
+```sql
+-- config/queries/filtered_events.sql
+SELECT event_name, event_date, attendees
+FROM catalog.schema.events
+WHERE event_date >= :start_date
+  AND event_date <= :end_date
+```
 
 ```typescript
+// Use sentinel dates for "no filter" instead of empty strings
 const params = {
-  start_date: sql.date('1900-01-01'),  // No lower bound
-  end_date: sql.date('9999-12-31'),    // No upper bound
+  start_date: sql.date("1900-01-01"), // No lower bound
+  end_date: sql.date("9999-12-31"),   // No upper bound
 };
 ```
 
-## Available sql.* Helpers
+Empty strings break date parameters. Sentinel dates let the query run without conditional logic while returning all rows when no filter is active.
 
-```typescript
-sql.string(value)      // STRING parameters
-sql.number(value)      // NUMERIC parameters
-sql.boolean(value)     // BOOLEAN parameters
-sql.date(value)        // DATE parameters (YYYY-MM-DD)
-sql.timestamp(value)   // TIMESTAMP parameters
-sql.binary(value)      // BINARY (returns hex string)
+### Converting Databricks SQL from PostgreSQL syntax
+
+> "Translate common PostgreSQL functions to their Databricks SQL equivalents."
+
+```sql
+-- PostgreSQL: DATEDIFF(date1, date2)
+-- Databricks SQL: DATEDIFF(DAY, date2, date1) -- three arguments, unit first
+SELECT DATEDIFF(DAY, start_date, end_date) AS days_elapsed
+FROM catalog.schema.projects;
+
+-- PostgreSQL: NOW()
+-- Databricks SQL: CURRENT_TIMESTAMP()
+SELECT * FROM catalog.schema.events
+WHERE event_date > CURRENT_TIMESTAMP();
+
+-- PostgreSQL: STRING_AGG(col, ',')
+-- Databricks SQL: CONCAT_WS(',', COLLECT_LIST(col))
+SELECT department, CONCAT_WS(',', COLLECT_LIST(employee_name)) AS members
+FROM catalog.schema.employees
+GROUP BY department;
+
+-- PostgreSQL: ILIKE
+-- Databricks SQL: LOWER(col) LIKE LOWER(pattern)
+SELECT * FROM catalog.schema.products
+WHERE LOWER(name) LIKE LOWER('%widget%');
 ```
 
-`sql.null()`, `sql.array()`, `sql.int()`, and `sql.float()` do not exist.
+These are the most frequent dialect mismatches your AI coding assistant will encounter when generating SQL for AppKit. Databricks SQL is based on Spark SQL, so aggregate functions and date operations use different signatures than PostgreSQL.
+
+### Displaying numeric values from query results
+
+> "Using TypeScript, safely render a numeric value from a SQL query result."
+
+```typescript
+// BIGINT, INT, and DECIMAL auto-map to TypeScript `number`,
+// but they may arrive as strings at runtime. Always convert:
+<span>{Number(row.total_amount).toFixed(2)}</span>
+```
+
+Runtime type coercion is a common source of rendering bugs. Wrapping in `Number()` before formatting ensures consistent display regardless of how the SQL connector serializes the value.
+
+## Watch Out For
+
+- **Using PostgreSQL syntax in query files** -- AppKit queries run on Databricks SQL (Spark SQL). Functions like `DATEDIFF`, `NOW()`, `STRING_AGG`, and `ILIKE` have different signatures or do not exist. Check the dialect translation above.
+- **Passing empty strings for date parameters** -- `sql.date('')` produces invalid SQL. Use sentinel dates (`1900-01-01` / `9999-12-31`) for optional date filters.
+- **Writing queries outside `config/queries/`** -- AppKit's type generator only watches that directory. Queries placed elsewhere will not get auto-generated types and cannot be referenced via `queryKey`.
+- **Assuming numeric columns are numbers** -- auto-generated types say `number`, but the wire format may deliver a string. Always call `Number()` before arithmetic or formatting.

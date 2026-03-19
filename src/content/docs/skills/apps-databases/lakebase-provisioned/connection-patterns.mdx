@@ -1,71 +1,89 @@
 ---
 title: Connection Patterns
-description: Connect to Lakebase Provisioned with psycopg, SQLAlchemy token refresh, static URLs, and DNS workarounds.
+description: Connect to Lakebase Provisioned with psycopg, SQLAlchemy token refresh, and DNS workarounds.
 sidebar:
   order: 1
 ---
 
-Lakebase Provisioned exposes a managed PostgreSQL interface with OAuth-based token authentication. This page provides connection patterns using psycopg, SQLAlchemy with automatic token refresh, static connection URLs, and DNS workarounds for environments where workspace resolution is unavailable.
+## What You Can Build
 
-## Direct psycopg Connection
+You can connect applications, notebooks, and external tools to Lakebase Provisioned using standard PostgreSQL drivers. Like Lakebase Autoscaling, authentication uses OAuth tokens that expire after one hour, so production apps need a token refresh strategy. This page covers the connection patterns -- from quick scripts to production-grade pooled connections with background refresh.
+
+## In Action
+
+> "Using Python, connect to a Lakebase Provisioned instance from a notebook."
 
 ```python
 import psycopg
 from databricks.sdk import WorkspaceClient
 import uuid
 
-def get_connection(instance_name, database_name="postgres"):
-    w = WorkspaceClient()
-    instance = w.database.get_database_instance(name=instance_name)
-    cred = w.database.generate_database_credential(
-        request_id=str(uuid.uuid4()),
-        instance_names=[instance_name]
-    )
-    conn_string = (
-        f"host={instance.read_write_dns} dbname={database_name} "
-        f"user={w.current_user.me().user_name} "
-        f"password={cred.token} sslmode=require"
-    )
-    return psycopg.connect(conn_string)
+w = WorkspaceClient()
+
+instance = w.database.get_database_instance(name="my-lakebase-instance")
+cred = w.database.generate_database_credential(
+    request_id=str(uuid.uuid4()),
+    instance_names=["my-lakebase-instance"],
+)
+
+conn_string = (
+    f"host={instance.read_write_dns} "
+    f"dbname=postgres "
+    f"user={w.current_user.me().user_name} "
+    f"password={cred.token} sslmode=require"
+)
+with psycopg.connect(conn_string) as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT version()")
+        print(cur.fetchone())
 ```
 
-## SQLAlchemy with Token Refresh
+**Key decisions:**
+- Lakebase Provisioned uses `w.database` (not `w.postgres` -- that is Autoscaling). The SDK modules are different.
+- `generate_database_credential` requires a `request_id` (UUID) and an `instance_names` list -- the API uses these for audit logging
+- Tokens expire after 1 hour. For notebook sessions, generate a fresh token at the start. For long-running apps, implement a background refresh loop.
+- Always use `sslmode=require` -- unencrypted connections are rejected
 
-For production apps, inject tokens via SQLAlchemy event hooks and refresh every 50 minutes:
+## More Patterns
+
+### Production token refresh with SQLAlchemy
+
+> "Using Python, set up a SQLAlchemy async engine that refreshes tokens every 50 minutes."
 
 ```python
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine
 
-engine = create_async_engine(url, pool_recycle=3600, connect_args={"sslmode": "require"})
+engine = create_async_engine(
+    f"postgresql+psycopg://{username}@{instance.read_write_dns}:5432/{database}",
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=3600,
+    connect_args={"sslmode": "require"},
+)
 
 @event.listens_for(engine.sync_engine, "do_connect")
 def provide_token(dialect, conn_rec, cargs, cparams):
-    cparams["password"] = _current_token
+    cparams["password"] = _current_token  # Refreshed every 50 minutes in a background task
 ```
 
-## Environment Variables
+The `do_connect` event injects a fresh token into every new physical connection. A background asyncio task generates a new token every 50 minutes (before the 1-hour expiry). This pattern ensures connections never fail due to expired credentials.
 
-| Variable | Description |
-|----------|-------------|
-| `LAKEBASE_PG_URL` | Static PostgreSQL URL (local dev) |
-| `LAKEBASE_INSTANCE_NAME` | Instance name |
-| `LAKEBASE_DATABASE_NAME` | Database name |
-| `DB_POOL_SIZE` | Connection pool size (default: 5) |
+### Reverse ETL from Delta tables
 
-## Reverse ETL
-
-Sync Delta tables to PostgreSQL with snapshot, triggered, or continuous modes:
+> "Using Python, create a synced table that copies data from Unity Catalog to Lakebase Provisioned."
 
 ```python
 from databricks.sdk.service.database import (
-    SyncedDatabaseTable, SyncedTableSpec, SyncedTableSchedulingPolicy,
+    SyncedDatabaseTable,
+    SyncedTableSpec,
+    SyncedTableSchedulingPolicy,
 )
 
 w.database.create_synced_database_table(
     SyncedDatabaseTable(
         name="lakebase_catalog.schema.synced_table",
-        database_instance_name="my-instance",
+        database_instance_name="my-lakebase-instance",
         spec=SyncedTableSpec(
             source_table_full_name="analytics.gold.user_profiles",
             primary_key_columns=["user_id"],
@@ -75,4 +93,66 @@ w.database.create_synced_database_table(
 )
 ```
 
-Triggered and Continuous modes require Change Data Feed enabled on the source table.
+Lakebase Provisioned reverse ETL uses `database_instance_name` to identify the target (Autoscaling uses project/branch paths instead). Triggered and Continuous modes require Change Data Feed enabled on the source table.
+
+### Static URL for local development
+
+> "Using Python, connect to Lakebase via a static URL during local development."
+
+```python
+import os
+from sqlalchemy.ext.asyncio import create_async_engine
+
+def get_database_url() -> str:
+    url = os.environ.get("LAKEBASE_PG_URL")
+    if url and url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+engine = create_async_engine(
+    get_database_url(),
+    pool_size=5,
+    connect_args={"sslmode": "require"},
+)
+```
+
+Set `LAKEBASE_PG_URL` in your `.env` file for local development. The `postgresql://` to `postgresql+psycopg://` conversion switches to the psycopg3 async driver, which SQLAlchemy 2.x requires for async operations.
+
+### DNS workaround for macOS
+
+> "Using Python, resolve Lakebase hostnames when Python's socket module fails on macOS."
+
+```python
+import subprocess
+import socket
+
+def resolve_hostname(hostname: str) -> str:
+    try:
+        return socket.gethostbyname(hostname)
+    except socket.gaierror:
+        pass
+    result = subprocess.run(
+        ["dig", "+short", hostname],
+        capture_output=True, text=True, timeout=5,
+    )
+    ips = result.stdout.strip().split("\n")
+    for ip in ips:
+        if ip and not ip.startswith(";"):
+            return ip
+    raise RuntimeError(f"Could not resolve hostname: {hostname}")
+
+conn_params = {
+    "host": hostname,           # For TLS SNI
+    "hostaddr": resolve_hostname(hostname),  # Resolved IP
+    "sslmode": "require",
+}
+```
+
+Python's `socket.getaddrinfo()` truncates long hostnames on macOS. Passing `hostaddr` with the resolved IP bypasses the issue while keeping `host` for TLS certificate validation.
+
+## Watch Out For
+
+- **Using `w.postgres` instead of `w.database`** -- Lakebase Provisioned uses the `w.database` SDK module. The `w.postgres` module is for Lakebase Autoscaling. Mixing them produces "not found" errors that are hard to diagnose.
+- **Omitting `request_id` from `generate_database_credential`** -- the Provisioned API requires a UUID `request_id` parameter. Autoscaling does not. Forgetting it causes an API validation error.
+- **Running an instance stopped to save cost and forgetting to restart it** -- stopped instances reject all connections. Check `instance.state` before connecting, or call `w.database.start_database_instance()` first.
+- **Skipping `sslmode=require`** -- unencrypted connections are rejected by default. Without SSL, you get a "connection refused" error that looks like a network issue rather than a configuration problem.

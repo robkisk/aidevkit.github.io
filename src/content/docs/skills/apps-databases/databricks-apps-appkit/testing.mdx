@@ -5,41 +5,110 @@ sidebar:
   order: 7
 ---
 
-AppKit projects include Vitest for unit testing and Playwright for browser-level smoke tests. This page covers test organization, what to test (and what to skip), and how to update the default smoke test selectors after customizing your app.
+## What You Can Build
 
-## Unit Tests (Vitest)
+You can test AppKit apps at two levels: unit tests with Vitest for isolated logic and smoke tests with Playwright for verifying the app loads correctly in a browser. The AppKit template ships with both configured, but you need to update the default selectors after customizing your app.
 
-Place tests next to the code (e.g., `src/*.test.ts`). Do not write tests for SQL files or generated types.
+## In Action
+
+> "Using TypeScript, write a Vitest unit test for a data transformation function."
 
 ```typescript
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 
-describe('Feature Name', () => {
-  it('should do something', () => {
-    expect(true).toBe(true);
+function formatRevenue(amount: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amount);
+}
+
+describe("formatRevenue", () => {
+  it("formats a positive number as USD currency", () => {
+    expect(formatRevenue(1234.5)).toBe("$1,234.50");
+  });
+
+  it("handles zero", () => {
+    expect(formatRevenue(0)).toBe("$0.00");
   });
 });
 ```
 
-## Smoke Test (Playwright)
+**Key decisions:**
+- Place test files next to the code they test (e.g., `src/utils.test.ts` alongside `src/utils.ts`)
+- Do not write tests for SQL files or auto-generated types -- those are validated by the type generator and the SQL warehouse at runtime
+- Focus unit tests on data transformations, formatters, and business logic functions
+- Keep smoke tests simple: verify the app loads and renders initial content
 
-The template includes `tests/smoke.spec.ts`. You **must update** the selectors after customizing:
+## More Patterns
+
+### Updating the default Playwright smoke test
+
+> "Using TypeScript, fix the template's smoke test to match your app's actual heading."
 
 ```typescript
-// Template default -- will fail
-await expect(page.getByRole('heading', { name: 'Minimal Databricks App' })).toBeVisible();
+import { test, expect } from "@playwright/test";
 
-// Update to match YOUR app
-await expect(page.getByRole('heading', { name: 'Your App Title' })).toBeVisible();
+test("app loads and displays dashboard", async ({ page }) => {
+  await page.goto("/");
+
+  // Template default (will fail after you customize):
+  // await expect(page.getByRole("heading", { name: "Minimal Databricks App" })).toBeVisible();
+
+  // Update to match YOUR app's heading:
+  await expect(
+    page.getByRole("heading", { name: "Revenue Dashboard" })
+  ).toBeVisible();
+});
 ```
 
-### Playwright Strict Mode
+The template ships with a smoke test that checks for the default heading text. After you rename your app, the test fails. Update the selector to match your actual heading.
 
-Selectors matching multiple elements will fail. Use in this priority:
+### Handling Playwright strict mode
 
-1. `getByRole('heading', { name: 'Title' })` -- most reliable
-2. `getByRole('button', { name: 'Submit' })` -- interactive elements
-3. `getByText('Unique text', { exact: true })` -- exact match
-4. `getByText('Common text').first()` -- last resort
+> "Using TypeScript, write Playwright selectors that avoid strict mode violations."
 
-Keep smoke tests simple: verify the app loads and displays initial data in under 5 seconds.
+```typescript
+// Strict mode fails when a selector matches multiple elements.
+// Use these in priority order:
+
+// 1. Role + name (most reliable)
+await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+
+// 2. Role for interactive elements
+await expect(page.getByRole("button", { name: "Submit" })).toBeVisible();
+
+// 3. Exact text match
+await expect(page.getByText("Total Revenue", { exact: true })).toBeVisible();
+
+// 4. First match (last resort)
+await expect(page.getByText("Loading").first()).toBeVisible();
+```
+
+Playwright's strict mode throws when a selector matches more than one element. Start with `getByRole` -- it is the most specific and resilient to layout changes.
+
+### Keeping smoke tests fast
+
+> "Using TypeScript, write a smoke test that validates initial data rendering without waiting for slow queries."
+
+```typescript
+test("data table renders within 5 seconds", async ({ page }) => {
+  await page.goto("/");
+
+  // Wait for the table to appear (SQL warehouse queries may take a moment)
+  await expect(page.getByRole("table")).toBeVisible({ timeout: 5000 });
+
+  // Verify at least one data row rendered
+  const rows = page.getByRole("row");
+  await expect(rows).not.toHaveCount(0);
+});
+```
+
+Smoke tests should verify the app loads and displays initial data -- not exercise every feature. Keep them under 5 seconds. If a query takes longer, the issue is in your SQL or warehouse configuration, not the test.
+
+## Watch Out For
+
+- **Leaving the default heading selector unchanged** -- the template's smoke test checks for "Minimal Databricks App". After you customize your app title, the test fails silently in CI. Update the selector immediately after scaffolding.
+- **Testing SQL query files or generated types** -- SQL files are validated by the SQL warehouse at runtime, and types are generated automatically. Writing unit tests for either adds maintenance cost without meaningful coverage.
+- **Broad Playwright selectors that match multiple elements** -- `page.getByText("Submit")` fails in strict mode if there are two submit buttons. Use `getByRole` with a name parameter for uniqueness.
+- **Setting long timeouts to mask slow queries** -- if your smoke test needs a 30-second timeout, the problem is the query, not the test. Investigate SQL performance or warehouse sizing before increasing timeouts.

@@ -5,24 +5,20 @@ sidebar:
   order: 3
 ---
 
-Connecting to Lakebase Autoscaling requires choosing between OAuth tokens (short-lived, interactive) and native Postgres passwords (persistent, long-running). This page covers both authentication methods along with psycopg, SQLAlchemy, and production token-refresh patterns for reliable connectivity.
+## What You Can Build
 
-## Authentication Methods
+You can connect applications and notebooks to Lakebase Autoscaling using standard PostgreSQL drivers. The key difference from a vanilla Postgres setup is authentication: Lakebase uses OAuth tokens that expire after one hour, so production apps must implement token refresh. This page covers the full spectrum -- from a quick notebook connection to a production-grade SQLAlchemy pool with background refresh.
 
-| Method | Token Lifetime | Best For |
-|--------|---------------|----------|
-| **OAuth tokens** | 1 hour (must refresh) | Interactive sessions, workspace apps |
-| **Native Postgres passwords** | No expiry | Long-running processes |
+## In Action
 
-All connections have a 24-hour idle timeout and 3-day max lifetime.
-
-## Direct Connection (Scripts)
+> "Using Python, connect to Lakebase Autoscaling from a notebook using the Databricks SDK for token generation."
 
 ```python
 import psycopg
 from databricks.sdk import WorkspaceClient
 
 w = WorkspaceClient()
+
 endpoint = w.postgres.get_endpoint(
     name="projects/my-app/branches/production/endpoints/ep-primary"
 )
@@ -42,36 +38,92 @@ with psycopg.connect(conn_string) as conn:
         print(cur.fetchone())
 ```
 
-## Production Token Refresh (SQLAlchemy)
+**Key decisions:**
+- OAuth tokens expire after 1 hour. For scripts and notebooks, generate a fresh token before each session. For long-running apps, implement a background refresh loop.
+- Native Postgres passwords (no expiry) are available for tools that cannot rotate tokens, but OAuth is preferred for security.
+- Always use `sslmode=require` -- Lakebase rejects unencrypted connections.
+- All connections have a 24-hour idle timeout and 3-day maximum lifetime, regardless of auth method.
 
-For long-running apps, inject fresh tokens via SQLAlchemy event hooks and refresh every 50 minutes:
+## More Patterns
+
+### Production token refresh with SQLAlchemy
+
+> "Using Python, set up a SQLAlchemy async engine that refreshes OAuth tokens every 50 minutes."
 
 ```python
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine
 
-engine = create_async_engine(url, pool_recycle=3600, connect_args={"sslmode": "require"})
+engine = create_async_engine(
+    f"postgresql+psycopg://{username}@{host}:5432/{database}",
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=3600,
+    connect_args={"sslmode": "require"},
+)
 
 @event.listens_for(engine.sync_engine, "do_connect")
 def inject_token(dialect, conn_rec, cargs, cparams):
     cparams["password"] = current_token  # Refreshed in background task
 ```
 
-## DNS Workaround (macOS)
+The `do_connect` event fires on every new physical connection. By injecting the token at connect time (rather than baking it into the URL), you ensure each connection gets the latest credential. Refresh tokens every 50 minutes -- well before the 1-hour expiry.
 
-Python's `socket.getaddrinfo()` can fail with long Lakebase hostnames on macOS. Use `dig` as a fallback and pass `hostaddr` to psycopg:
+### DNS workaround for macOS
+
+> "Using Python, resolve long Lakebase hostnames that fail with Python's socket module on macOS."
 
 ```python
+import subprocess
+import socket
+
+def resolve_hostname(hostname: str) -> str:
+    """Use dig as fallback when Python's resolver fails on long hostnames."""
+    try:
+        return socket.gethostbyname(hostname)
+    except socket.gaierror:
+        pass
+    result = subprocess.run(
+        ["dig", "+short", hostname],
+        capture_output=True, text=True, timeout=5,
+    )
+    ips = result.stdout.strip().split("\n")
+    for ip in ips:
+        if ip and not ip.startswith(";"):
+            return ip
+    raise RuntimeError(f"Could not resolve hostname: {hostname}")
+
+# Pass both host (for TLS SNI) and hostaddr (resolved IP) to psycopg
 conn_params = {
-    "host": hostname,       # For TLS SNI
-    "hostaddr": resolved_ip,  # From dig command
-    "sslmode": "require"
+    "host": hostname,
+    "hostaddr": resolve_hostname(hostname),
+    "sslmode": "require",
 }
 ```
 
-## Best Practices
+Python's `socket.getaddrinfo()` truncates hostnames longer than 255 bytes on macOS, causing DNS resolution failures. The `dig` fallback resolves the IP directly, and passing `hostaddr` alongside `host` lets psycopg use the IP for the connection while preserving the hostname for TLS Server Name Indication.
 
-1. Always use `sslmode=require`
-2. Refresh tokens at 50 minutes (before 1-hour expiry)
-3. Use connection pooling (avoid new connections per request)
-4. Handle scale-to-zero wake-up with retry logic
+### Choosing between OAuth and native passwords
+
+> "When should I use OAuth tokens versus native Postgres passwords?"
+
+```python
+# OAuth tokens (preferred)
+# - 1-hour expiry, must refresh
+# - Best for: interactive sessions, workspace-integrated apps
+# - SDK: w.postgres.generate_database_credential(endpoint=...)
+
+# Native Postgres passwords (alternative)
+# - No expiry
+# - Best for: long-running processes, external tools without token rotation
+# - Created via Lakebase UI or SDK role management
+```
+
+Use OAuth for anything running inside the Databricks ecosystem. Use native passwords only when the client application cannot implement token rotation (e.g., third-party BI tools with static connection strings).
+
+## Watch Out For
+
+- **Letting tokens expire during long queries** -- a 1-hour token can expire mid-transaction if your workload runs long. Implement a background refresh task that generates a new token every 50 minutes, and use SQLAlchemy's `do_connect` event to inject it.
+- **Skipping `sslmode=require`** -- Lakebase requires SSL. Connections without `sslmode=require` are rejected, producing a confusing "connection refused" error that looks like a network issue.
+- **Creating new connections per request** -- without connection pooling, each HTTP request opens and closes a Postgres connection. Use SQLAlchemy's pool or psycopg's `ConnectionPool` to reuse connections.
+- **Ignoring the 24-hour idle timeout** -- connections idle for 24 hours are closed by the server. Your application should handle reconnection gracefully, either through pool recycling (`pool_recycle=3600`) or explicit retry logic.

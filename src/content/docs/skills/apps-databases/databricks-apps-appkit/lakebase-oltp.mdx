@@ -1,42 +1,48 @@
 ---
 title: Lakebase OLTP
-description: Use Lakebase (PostgreSQL) in AppKit apps for CRUD operations, persistent state, and forms with tRPC patterns.
+description: Add persistent read/write storage to AppKit apps using Lakebase PostgreSQL with tRPC CRUD patterns.
 sidebar:
   order: 4
 ---
 
-Use Lakebase when your app needs persistent read/write storage. For analytics dashboards reading from a SQL warehouse, use `config/queries/` instead.
+## What You Can Build
 
-## Scaffolding
+You can add persistent read/write storage to your AppKit app using Lakebase, which exposes a standard PostgreSQL interface. While `config/queries/` handles read-only analytics from a SQL warehouse, Lakebase handles the transactional side -- user submissions, app state, form data, and any table your app creates and modifies at runtime.
+
+## In Action
+
+> "Using TypeScript, scaffold an AppKit app with both Lakebase and analytics, then set up the connection pool."
 
 ```bash
-# Lakebase only
-databricks apps init --name <NAME> --features lakebase \
-  --set "lakebase.postgres.branch=<BRANCH_NAME>" \
-  --set "lakebase.postgres.database=<DATABASE_NAME>" \
-  --run none --profile <PROFILE>
-
-# Both Lakebase and analytics
-databricks apps init --name <NAME> --features analytics,lakebase \
+databricks apps init --name my-app --features analytics,lakebase \
   --set "analytics.sql-warehouse.id=<WAREHOUSE_ID>" \
   --set "lakebase.postgres.branch=<BRANCH_NAME>" \
   --set "lakebase.postgres.database=<DATABASE_NAME>" \
   --run none --profile <PROFILE>
 ```
 
-## createLakebasePool API
-
 ```typescript
 import { createLakebasePool } from "@databricks/lakebase";
 
-const pool = createLakebasePool(); // reads env vars automatically
+// Call once at module level -- not inside request handlers
+const pool = createLakebasePool();
 ```
 
-Call `createLakebasePool()` once at module level, not inside request handlers.
+**Key decisions:**
+- `createLakebasePool()` reads connection environment variables automatically -- no manual config needed
+- Initialize the pool once at module scope. Creating it per-request causes connection exhaustion.
+- Lakebase uses standard PostgreSQL syntax -- not Databricks SQL. Parameters are positional (`$1`, `$2`), not named (`:param`).
+- The service principal cannot access the `public` schema. Create a custom schema at startup.
 
-## tRPC CRUD Pattern
+## More Patterns
+
+### tRPC CRUD endpoints
+
+> "Using TypeScript, add list and create endpoints backed by Lakebase."
 
 ```typescript
+import { z } from "zod";
+
 export const appRouter = t.router({
   listItems: t.procedure.query(async () => {
     const { rows } = await pool.query(
@@ -57,28 +63,63 @@ export const appRouter = t.router({
 });
 ```
 
-## Schema Initialization
+Read operations use `.query()`, write operations use `.mutation()`. The Lakebase pool handles connection management and returns results in standard `{ rows }` format.
 
-The Service Principal cannot access the `public` schema. Always create a custom schema at startup:
+### Schema initialization at startup
+
+> "Using TypeScript, create the app's schema and tables on first deploy."
 
 ```typescript
-await pool.query(`
-  CREATE SCHEMA IF NOT EXISTS app_data;
-  CREATE TABLE IF NOT EXISTS app_data.items (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  );
-`);
+async function initializeSchema() {
+  await pool.query(`
+    CREATE SCHEMA IF NOT EXISTS app_data;
+    CREATE TABLE IF NOT EXISTS app_data.items (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+}
+
+// Call during app startup
+initializeSchema();
 ```
 
-## Key Differences from Analytics
+The `IF NOT EXISTS` clauses make this idempotent -- safe to run on every deploy. Always use a custom schema name (not `public`) because the Lakebase service principal typically lacks access to the default schema.
 
-| | Analytics | Lakebase |
-|--|-----------|---------|
-| SQL dialect | Databricks SQL | Standard PostgreSQL |
-| Query location | `config/queries/*.sql` | `pool.query()` in tRPC |
-| Data retrieval | `useAnalyticsQuery` | tRPC query procedure |
-| Params | Named (`:param`) | Positional (`$1, $2`) |
+### Mixing analytics and Lakebase in one app
 
-**Never** use `useAnalyticsQuery` for Lakebase data. **Never** put Lakebase SQL in `config/queries/`.
+> "Using TypeScript, build a dashboard that reads from a SQL warehouse and writes to Lakebase."
+
+```tsx
+// Read analytics data via query file + component
+<BarChart queryKey="revenue_by_region" parameters={{}} xKey="region" yKey="revenue" />
+
+// Write user feedback to Lakebase via tRPC
+const handleSubmit = async (feedback: string) => {
+  await trpc.submitFeedback.mutate({ text: feedback, region: selectedRegion });
+};
+```
+
+```typescript
+// Server-side tRPC endpoint
+submitFeedback: t.procedure
+  .input(z.object({ text: z.string(), region: z.string() }))
+  .mutation(async ({ input }) => {
+    await pool.query(
+      "INSERT INTO app_data.feedback (text, region) VALUES ($1, $2)",
+      [input.text, input.region]
+    );
+    return { success: true };
+  }),
+```
+
+Analytics (read-only, aggregated) comes from the SQL warehouse via `queryKey`. User-generated content (read/write, transactional) goes to Lakebase via tRPC. This separation keeps each backend doing what it does well.
+
+## Watch Out For
+
+- **Using `useAnalyticsQuery` for Lakebase data** -- `useAnalyticsQuery` routes queries to the SQL warehouse, not Lakebase. For Lakebase reads, use tRPC query procedures that call `pool.query()`.
+- **Putting Lakebase SQL in `config/queries/`** -- query files are executed against the SQL warehouse using Databricks SQL dialect. Lakebase uses standard PostgreSQL. Mixing them causes syntax errors.
+- **Using named parameters (`:param`) for Lakebase** -- Lakebase uses PostgreSQL's positional parameter syntax (`$1`, `$2`). Named parameters like `:param_name` are a Databricks SQL convention that does not work here.
+- **Creating the pool inside request handlers** -- `createLakebasePool()` opens a set of connections. Calling it per-request opens new pools on every interaction, exhausting connections within minutes. Initialize once at module scope.

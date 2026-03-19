@@ -1,58 +1,120 @@
 ---
 title: Other Frameworks
-description: Setup guide for non-AppKit Databricks Apps using Streamlit, FastAPI, Flask, Gradio, Dash, Django, Next.js, and more.
+description: Deploy non-AppKit apps (Streamlit, FastAPI, Flask, Gradio, Django) to Databricks Apps with correct port and config.
 sidebar:
   order: 6
 ---
 
-Setup guide for non-AppKit apps deployed to Databricks Apps.
+## What You Can Build
 
-## Port and Host Configuration
+You can deploy any Python or Node.js web application to Databricks Apps, not just AppKit projects. Streamlit, FastAPI, Flask, Gradio, Dash, Django, Next.js -- they all work as long as you follow the platform's port binding rules and dependency conventions. This page covers the configuration patterns that apply when you are not using AppKit.
 
-The number one cause of 502 Bad Gateway errors. Apps must bind to `0.0.0.0` on `DATABRICKS_APP_PORT`:
+## In Action
+
+> "Using Python and FastAPI, configure a non-AppKit app to bind to the correct port and avoid 502 errors."
 
 ```python
-# FastAPI / Uvicorn
-port = int(os.environ.get("DATABRICKS_APP_PORT", 8000))
-uvicorn.run(app, host="0.0.0.0", port=port)
+import os
+import uvicorn
+from fastapi import FastAPI
 
-# Flask
-app.run(host="0.0.0.0", port=int(os.environ.get("DATABRICKS_APP_PORT", 8000)))
+app = FastAPI(title="My API")
 
-# Gradio
-demo.launch(server_name="0.0.0.0",
-            server_port=int(os.environ.get("DATABRICKS_APP_PORT", 8000)))
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+if __name__ == "__main__":
+    port = int(os.environ.get("DATABRICKS_APP_PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 ```
 
-## app.yaml vs databricks.yml
+**Key decisions:**
+- Bind to `0.0.0.0` on the `DATABRICKS_APP_PORT` environment variable -- this is the number one cause of 502 Bad Gateway errors when deploying to Databricks Apps
+- The platform sets `DATABRICKS_APP_PORT` at runtime. Default to 8000, never 8080.
+- Only `requirements.txt` (Python) and `package.json` (Node.js) are natively supported for dependency management
+- Do not include `node_modules/` in source code -- each file has a 10 MB limit
 
-| File | Purpose |
-|------|---------|
-| `app.yaml` | Runtime config: start command, env vars, `valueFrom` |
-| `databricks.yml` | Bundle/deployment config: app resource for DABs |
+## More Patterns
 
-Always run `bundle deploy` then `bundle run` -- deploy alone does not apply config changes.
+### Disabling Streamlit's CORS and XSRF protection
 
-## Streamlit Gotchas
-
-Both CORS and XSRF must be disabled:
+> "Using YAML, configure a Streamlit app to work behind the Databricks Apps reverse proxy."
 
 ```yaml
+# app.yaml
+command:
+  - "streamlit"
+  - "run"
+  - "app.py"
 env:
   - name: STREAMLIT_SERVER_ENABLE_CORS
     value: "false"
   - name: STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION
     value: "false"
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
 ```
 
-Use `@st.cache_resource` for database connections to prevent connection exhaustion.
+Both CORS and XSRF must be disabled for Streamlit to work behind the platform's reverse proxy. Without these settings, the app loads but WebSocket connections fail, causing blank pages or frozen UIs.
 
-## Dependency Management
+### Port binding for each framework
 
-Only `requirements.txt` (Python) and `package.json` (Node.js) are natively supported. Do not include `node_modules/` in source code (10 MB file limit).
+> "Show the correct port configuration for Flask, Gradio, and Django."
 
-## Networking
+```python
+# Flask -- use app.yaml command instead of app.run()
+# app.yaml: ["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]
 
-- CORS headers are not customizable on the reverse proxy
-- Keep frontend and backend in a single app to avoid CORS issues
-- Egress policy changes require app restart
+# Gradio
+import os
+import gradio as gr
+
+demo = gr.Interface(fn=predict, inputs="text", outputs="text")
+demo.launch(
+    server_name="0.0.0.0",
+    server_port=int(os.environ.get("DATABRICKS_APP_PORT", 8000))
+)
+
+# Django -- in app.yaml:
+# ["gunicorn", "myproject.wsgi:application", "-b", "0.0.0.0:8000"]
+```
+
+Every framework must bind to `0.0.0.0` (not `127.0.0.1` or `localhost`) on the platform-provided port. Streamlit handles this automatically via its runtime configuration.
+
+### Understanding app.yaml versus databricks.yml
+
+> "What goes in each config file for a non-AppKit app?"
+
+```yaml
+# app.yaml -- runtime config
+# Controls: start command, environment variables, valueFrom resource bindings
+command:
+  - "uvicorn"
+  - "app:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+```
+
+```yaml
+# databricks.yml -- deployment config (only needed for DABs)
+# Controls: app resource definition, target environments
+resources:
+  apps:
+    my_app:
+      source_code_path: ./src/app
+```
+
+For CLI-only deployments you only need `app.yaml`. The `databricks.yml` file is required only when deploying through Asset Bundles. Always run `bundle deploy` then `bundle run` when using DABs -- deploy alone does not restart the app with new config.
+
+## Watch Out For
+
+- **Binding to `localhost` or `127.0.0.1`** -- the platform's reverse proxy routes traffic to `0.0.0.0`. An app bound to localhost refuses connections from the proxy, resulting in a 502 Bad Gateway.
+- **Using port 8080** -- the platform expects your app on `DATABRICKS_APP_PORT` (default 8000). Port 8080 is not forwarded.
+- **Bundling `node_modules/` in source code** -- individual files cannot exceed 10 MB, and `node_modules/` often contains large binaries. Add dependencies to `package.json` and let the runtime install them.
+- **Customizing CORS headers** -- CORS headers are not configurable on the reverse proxy. Keep frontend and backend in a single app to avoid cross-origin issues. If you change egress policy, the app requires a restart for the change to take effect.

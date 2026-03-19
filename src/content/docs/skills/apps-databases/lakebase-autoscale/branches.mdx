@@ -1,68 +1,120 @@
 ---
 title: Branches
-description: Create isolated database environments with copy-on-write branching, TTL expiration, protection, and reset workflows.
+description: Create isolated database environments with copy-on-write branching, TTL expiration, and reset workflows.
 sidebar:
   order: 1
 ---
 
-Branches are isolated database environments that share storage via copy-on-write. They enable Git-like workflows for databases.
+## What You Can Build
 
-## Creating a Branch
+You can create isolated database environments that share storage with their parent through copy-on-write -- like Git branches, but for your Postgres database. Spin up a development branch with production data in seconds, test schema migrations safely, run CI/CD against a fresh copy, and tear it all down automatically with TTL expiration.
+
+## In Action
+
+> "Using Python, create a development branch from production with a 7-day expiration."
 
 ```python
+from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.postgres import Branch, BranchSpec, Duration
 
-# With 7-day expiration
+w = WorkspaceClient()
+
 result = w.postgres.create_branch(
     parent="projects/my-app",
-    branch=Branch(spec=BranchSpec(
-        source_branch="projects/my-app/branches/production",
-        ttl=Duration(seconds=604800)
-    )),
-    branch_id="development"
+    branch=Branch(
+        spec=BranchSpec(
+            source_branch="projects/my-app/branches/production",
+            ttl=Duration(seconds=604800),  # 7 days
+        )
+    ),
+    branch_id="development",
 ).wait()
 
-# Permanent (no expiration)
+print(f"Branch created: {result.name}")
+print(f"Expires: {result.status.expire_time}")
+```
+
+**Key decisions:**
+- Branches use copy-on-write storage, so creating a branch is near-instant regardless of data size -- you are not copying data, just creating a logical fork
+- TTL-based expiration automatically cleans up branches. Set it based on the use case: hours for CI, days for feature work, up to 30 days maximum.
+- All create/update/delete operations are long-running -- always call `.wait()` on the result to block until complete
+- Maximum 10 unarchived branches per project
+
+## More Patterns
+
+### Creating a permanent staging branch
+
+> "Using Python, create a branch that does not expire for use as a persistent staging environment."
+
+```python
 result = w.postgres.create_branch(
     parent="projects/my-app",
-    branch=Branch(spec=BranchSpec(
-        source_branch="projects/my-app/branches/production",
-        no_expiry=True
-    )),
-    branch_id="staging"
+    branch=Branch(
+        spec=BranchSpec(
+            source_branch="projects/my-app/branches/production",
+            no_expiry=True,
+        )
+    ),
+    branch_id="staging",
 ).wait()
 ```
 
-## Protecting a Branch
+Use `no_expiry=True` for branches that serve as persistent environments (staging, QA). For ephemeral branches (feature work, CI), always set a TTL to avoid hitting the 10-branch limit.
+
+### Protecting a branch from accidental deletion
+
+> "Using Python, protect the production branch so it cannot be deleted or reset."
 
 ```python
 from databricks.sdk.service.postgres import Branch, BranchSpec, FieldMask
 
 w.postgres.update_branch(
     name="projects/my-app/branches/production",
-    branch=Branch(name="projects/my-app/branches/production",
-                  spec=BranchSpec(is_protected=True)),
-    update_mask=FieldMask(field_mask=["spec.is_protected"])
+    branch=Branch(
+        name="projects/my-app/branches/production",
+        spec=BranchSpec(is_protected=True),
+    ),
+    update_mask=FieldMask(field_mask=["spec.is_protected"]),
 ).wait()
 ```
 
-## Resetting a Branch
+Protected branches cannot be deleted, reset, or archived. Every update operation requires an `update_mask` specifying which fields to modify -- omitting it causes the request to fail.
 
-Completely replaces a branch's data with the latest from its parent:
+### Resetting a branch to match its parent
+
+> "Using Python, reset a development branch to the latest production state."
 
 ```python
-w.postgres.reset_branch(name="projects/my-app/branches/development").wait()
+w.postgres.reset_branch(
+    name="projects/my-app/branches/development"
+).wait()
 ```
 
-Root branches and branches with children cannot be reset.
+Reset completely replaces the branch's data with the latest from its parent. All local changes are lost, and active connections are interrupted during the operation. Root branches (like `production`) and branches with children cannot be reset.
 
-## Expiration Guidelines
+### Choosing the right TTL
 
-| Use Case | TTL |
-|----------|-----|
-| CI/CD environments | 2-4 hours |
-| Demos | 24-48 hours |
-| Feature development | 1-7 days |
-| Long-term testing | up to 30 days |
+> "What expiration should I set for different branch use cases?"
 
-Maximum 10 unarchived branches per project. Maximum expiration: 30 days.
+```python
+# CI/CD environments -- short-lived, auto-cleanup
+ttl_ci = Duration(seconds=14400)        # 4 hours
+
+# Demos and POCs
+ttl_demo = Duration(seconds=172800)     # 48 hours
+
+# Feature development
+ttl_feature = Duration(seconds=604800)  # 7 days
+
+# Long-term testing
+ttl_testing = Duration(seconds=2592000) # 30 days (maximum)
+```
+
+When a branch expires, all compute resources attached to it are deleted as well. Protected and default branches cannot have expiration set.
+
+## Watch Out For
+
+- **Hitting the 10-branch limit** -- only 10 unarchived branches are allowed per project. If you run CI pipelines that create branches, make sure they set short TTLs and clean up on completion.
+- **Forgetting `.wait()` on branch operations** -- create, update, delete, and reset are all long-running operations. Without `.wait()`, your code continues before the operation finishes, and subsequent operations on the branch may fail.
+- **Resetting a branch with child branches** -- the reset operation fails if the target branch has children. Delete the child branches first, then reset.
+- **Skipping the `update_mask` on updates** -- all update operations require an explicit `FieldMask` listing the fields to modify. Omitting it produces an API error, not a no-op.

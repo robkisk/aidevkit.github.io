@@ -1,15 +1,17 @@
 ---
 title: Foundation Model Integration
-description: Call Databricks foundation model APIs from apps using OAuth M2M auth, OpenAI-compatible clients, token caching, and parallel execution patterns.
+description: Call Databricks foundation model APIs from apps with OAuth auth, OpenAI-compatible clients, and structured outputs.
 sidebar:
   order: 6
 ---
 
-Production patterns for integrating Databricks foundation model APIs into apps, including OAuth M2M authentication, OpenAI SDK wiring, token caching, structured outputs, and parallel execution.
+## What You Can Build
 
-## LLM Configuration
+You can integrate Databricks-hosted foundation models into your apps using the OpenAI-compatible API. This means chat completions, structured JSON extraction, and parallel inference calls -- all authenticated through the service principal credentials the platform injects automatically. Your app code stays portable between Databricks model serving endpoints and any OpenAI-compatible provider.
 
-The `llm_config` module provides dual-mode auth (OAuth M2M in Apps, PAT for local dev), OpenAI client wiring, and token caching:
+## In Action
+
+> "Using Python, call a Databricks foundation model endpoint from an app with automatic OAuth M2M authentication."
 
 ```python
 from llm_config import create_foundation_model_client, get_model_name
@@ -19,26 +21,41 @@ model = get_model_name()
 
 resp = client.chat.completions.create(
     model=model,
-    messages=[{"role": "user", "content": "Hello!"}],
+    messages=[{"role": "user", "content": "Summarize Q3 revenue trends."}],
     max_tokens=1000,
     temperature=0.7,
 )
+print(resp.choices[0].message.content)
 ```
 
-### Required Environment Variables
+**Key decisions:**
+- `create_foundation_model_client()` returns an OpenAI-compatible client wired to your Databricks workspace -- it handles OAuth M2M in deployed apps and PAT fallback for local dev
+- The model name comes from the `DATABRICKS_MODEL` environment variable, which maps to a serving endpoint name
+- Set `temperature=0.0` for deterministic structured outputs; use `0.2-0.7` for creative or conversational tasks
+- The client manages token caching and refresh internally
 
-| Variable | Description |
-|----------|-------------|
-| `DATABRICKS_SERVING_BASE_URL` | `https://<workspace>/serving-endpoints` |
-| `DATABRICKS_MODEL` | Serving endpoint name |
-| `DATABRICKS_CLIENT_ID` + `DATABRICKS_CLIENT_SECRET` | OAuth M2M (auto-injected in Apps) |
-| `DATABRICKS_TOKEN` | PAT (local dev fallback) |
+## More Patterns
 
-## Structured Outputs
+### Structured JSON extraction with retry
 
-Use `temperature=0.0` for deterministic structured outputs with retry on parse failure:
+> "Using Python, extract structured JSON from an LLM response with robust parsing."
 
 ```python
+import json
+import re
+
+def parse_json_object(text):
+    """Extract JSON from LLM output, handling code fences and smart quotes."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n", "", text)
+        text = re.sub(r"```$", "", text).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        text = text[start : end + 1]
+    text = text.replace("\u201c", '"').replace("\u201d", '"')
+    return json.loads(text)
+
 def llm_structured_call(client, system_prompt, user_prompt):
     response = client.chat.completions.create(
         model=get_model_name(),
@@ -50,35 +67,14 @@ def llm_structured_call(client, system_prompt, user_prompt):
         temperature=0.0,
     )
     content = response.choices[0].message.content
-    # Parse JSON, retry with stricter prompt if needed
     return parse_json_object(content)
 ```
 
-### Robust JSON Parsing
+LLMs commonly wrap JSON in markdown code fences, include smart quotes, or add explanatory text around the object. The parser handles all three. Use `temperature=0.0` and an explicit JSON schema in your system prompt for reliable structured outputs.
 
-Handle common failure modes: markdown code fences, smart quotes, extra text around JSON:
+### Parallel inference for independent tasks
 
-```python
-import json, re
-
-def parse_json_object(text):
-    text = text.strip()
-    # Strip markdown code fences
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n", "", text)
-        text = re.sub(r"```$", "", text).strip()
-    # Extract first {...} block
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        text = text[start:end + 1]
-    # Normalize smart quotes
-    text = text.replace("\u201c", '"').replace("\u201d", '"')
-    return json.loads(text)
-```
-
-## Parallel Execution
-
-Run multiple independent LLM calls concurrently for improved performance:
+> "Using Python, run multiple LLM calls concurrently to reduce total latency."
 
 ```python
 from llm_config import run_jobs_parallel
@@ -90,15 +86,35 @@ jobs = {
 }
 
 results, errors = run_jobs_parallel(jobs)
-# Serial: 3 calls x 2s = 6s; Parallel: ~2-3s
+# Serial: 3 calls x 2s = 6s
+# Parallel: ~2-3s
 ```
 
-Control concurrency with the `LLM_MAX_CONCURRENCY` environment variable (default: 5).
+`run_jobs_parallel` uses a thread pool to execute independent LLM calls concurrently. Control the concurrency limit with the `LLM_MAX_CONCURRENCY` environment variable (default: 5). This works because the OpenAI client is thread-safe.
 
-## Best Practices
+### Caching expensive LLM calls in Streamlit
 
-- Use `temperature=0.0` for structured outputs, `0.2-0.7` for creative tasks
-- Cache expensive calls with `@st.cache_data(ttl=3600)` in Streamlit
-- Set `timeout=30` on all HTTP requests to prevent hanging connections
-- Use explicit JSON schemas in system prompts for reliable structured outputs
-- Implement retry logic for parse failures with stricter prompts
+> "Using Python and Streamlit, cache LLM responses to avoid re-running inference on every rerun."
+
+```python
+import streamlit as st
+
+@st.cache_data(ttl=3600)
+def get_summary(client, model, document_text):
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": f"Summarize: {document_text}"}],
+        max_tokens=500,
+        temperature=0.2,
+    )
+    return resp.choices[0].message.content
+```
+
+`@st.cache_data(ttl=3600)` caches the result for one hour. Without caching, Streamlit re-executes the LLM call on every user interaction -- expensive, slow, and wasteful.
+
+## Watch Out For
+
+- **Forgetting to set a timeout on HTTP requests** -- LLM calls can hang indefinitely if the serving endpoint is overloaded. Set `timeout=30` on all requests to prevent your app from becoming unresponsive.
+- **Using high temperature for structured outputs** -- `temperature=0.7` introduces randomness that breaks JSON parsing. Use `0.0` when you need deterministic, parseable responses.
+- **Retrying on parse failure without adjusting the prompt** -- if the LLM returns malformed JSON, retrying the same prompt rarely helps. Add a stricter system prompt that includes the exact JSON schema you expect.
+- **Creating a new client per request** -- the OpenAI client handles connection pooling and token caching. Instantiate it once at module level or in a cached initializer, not inside each request handler.

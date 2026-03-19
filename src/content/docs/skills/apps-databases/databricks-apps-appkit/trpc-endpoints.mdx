@@ -1,25 +1,23 @@
 ---
 title: tRPC Endpoints
-description: Add server-side endpoints for mutations, Databricks API calls, and Lakebase CRUD operations using tRPC.
+description: Add server-side mutations, API calls, and business logic to AppKit apps with tRPC.
 sidebar:
   order: 3
 ---
 
-Use tRPC only for mutations, external API calls, and complex business logic. **Never use tRPC for SQL SELECT queries** -- use `config/queries/` + `useAnalyticsQuery` instead.
+## What You Can Build
 
-## When to Use tRPC
+You can add server-side logic to your AppKit app using tRPC for operations that SQL query files cannot handle -- mutations (INSERT, UPDATE, DELETE), Databricks API calls (serving endpoints, jobs, MLflow), multi-step workflows, and custom computations. tRPC gives you end-to-end type safety between your server and client code without writing REST boilerplate.
 
-- Creating, updating, or deleting data (INSERT, UPDATE, DELETE)
-- Calling Databricks APIs (serving endpoints, jobs, MLflow)
-- Multi-step operations requiring TypeScript logic
-- File operations and custom computations
+## In Action
 
-## Server-Side Pattern
+> "Using TypeScript, create a tRPC endpoint that calls a Databricks model serving endpoint and returns the response."
 
 ```typescript
-import { initTRPC } from '@trpc/server';
-import { getExecutionContext } from '@databricks/appkit';
-import { z } from 'zod';
+import { initTRPC } from "@trpc/server";
+import { getExecutionContext } from "@databricks/appkit";
+import { z } from "zod";
+import superjson from "superjson";
 
 const t = initTRPC.create({ transformer: superjson });
 
@@ -29,32 +27,91 @@ export const appRouter = t.router({
     .query(async ({ input: { prompt } }) => {
       const { serviceDatabricksClient: client } = getExecutionContext();
       return await client.servingEndpoints.query({
-        name: 'your-endpoint',
-        messages: [{ role: 'user', content: prompt }],
+        name: "your-endpoint",
+        messages: [{ role: "user", content: prompt }],
       });
-    }),
-
-  createRecord: t.procedure
-    .input(z.object({ name: z.string() }))
-    .mutation(async ({ input }) => {
-      return { success: true, id: 123 };
     }),
 });
 ```
 
-## Client-Side Pattern
+**Key decisions:**
+- Never use tRPC for SQL SELECT queries -- use `config/queries/` + `useAnalyticsQuery` instead, which gives you auto-generated types and built-in caching
+- `getExecutionContext()` provides a pre-authenticated Databricks client -- no manual token management
+- Use `z.object()` from Zod for input validation -- tRPC rejects malformed requests before your handler runs
+- tRPC procedures are either `query` (read-only, cacheable) or `mutation` (side effects)
+
+## More Patterns
+
+### CRUD mutation for user-generated data
+
+> "Using TypeScript, add a tRPC mutation that creates a record and returns it."
 
 ```typescript
-import { trpc } from '@/lib/trpc';
-
-const handleCreate = async () => {
-  await trpc.createRecord.mutate({ name: "test" });
-};
+export const appRouter = t.router({
+  createRecord: t.procedure
+    .input(z.object({ name: z.string().min(1), category: z.string() }))
+    .mutation(async ({ input }) => {
+      // Write to Lakebase, call an API, or run business logic
+      const id = crypto.randomUUID();
+      return { success: true, id, name: input.name };
+    }),
+});
 ```
 
-## Decision Tree
+Use `.mutation()` for any operation that changes state. The client calls it with `trpc.createRecord.mutate({ name: "test", category: "demo" })`. Zod validates the input before your handler executes.
 
-1. **Display data from SQL?** -- Use visualization components or `useAnalyticsQuery`
-2. **Call Databricks API?** -- Use tRPC (serving endpoints, MLflow, Jobs)
-3. **Modify data?** -- Use tRPC mutations
-4. **Non-SQL custom logic?** -- Use tRPC
+### Client-side usage
+
+> "Using TypeScript and React, call a tRPC endpoint from a component."
+
+```typescript
+import { trpc } from "@/lib/trpc";
+
+function ModelQueryForm() {
+  const handleSubmit = async (prompt: string) => {
+    const result = await trpc.queryModel.query({ prompt });
+    // result is fully typed based on your router definition
+    console.log(result);
+  };
+
+  const handleCreate = async () => {
+    await trpc.createRecord.mutate({ name: "New Item", category: "demo" });
+  };
+}
+```
+
+The `trpc` client infers types from your router -- no separate type definitions or API contracts needed. Queries use `.query()`, mutations use `.mutate()`.
+
+### Multi-step workflow with error handling
+
+> "Using TypeScript, chain multiple Databricks API calls in a single tRPC procedure."
+
+```typescript
+export const appRouter = t.router({
+  runAnalysis: t.procedure
+    .input(z.object({ tableId: z.string(), modelEndpoint: z.string() }))
+    .mutation(async ({ input }) => {
+      const { serviceDatabricksClient: client } = getExecutionContext();
+
+      // Step 1: Fetch metadata
+      const table = await client.tables.get({ full_name: input.tableId });
+
+      // Step 2: Run inference
+      const prediction = await client.servingEndpoints.query({
+        name: input.modelEndpoint,
+        messages: [{ role: "user", content: `Analyze: ${table.name}` }],
+      });
+
+      return { table: table.name, analysis: prediction };
+    }),
+});
+```
+
+Multi-step operations belong in tRPC because they need server-side orchestration. If any step fails, the error propagates to the client with a typed error response.
+
+## Watch Out For
+
+- **Using tRPC for SELECT queries** -- SQL query files in `config/queries/` give you auto-generated types, built-in caching, and direct wiring to visualization components. tRPC adds unnecessary complexity for read-only data display.
+- **Forgetting the `superjson` transformer** -- without it, Date objects, BigInt values, and other non-JSON types will not serialize correctly between server and client.
+- **Mixing query and mutation semantics** -- use `.query()` for idempotent reads and `.mutation()` for operations with side effects. Marking a write operation as a query breaks client-side caching assumptions.
+- **Skipping Zod validation** -- tRPC without input schemas accepts any payload. Always define a `z.object()` schema to catch malformed requests before they reach your business logic.

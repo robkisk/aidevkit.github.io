@@ -1,70 +1,134 @@
 ---
 title: Frontend Components
-description: AppKit chart and table component reference with query mode, data mode, anti-patterns, and layout guidelines.
+description: Build dashboards with AppKit chart and table components using query-driven and static data modes.
 sidebar:
   order: 2
 ---
 
-AppKit ships pre-built chart and table components that connect directly to SQL warehouse queries or accept static data. This page covers the two data modes (query-driven and static), available component types, layout rules, and common anti-patterns to avoid when building dashboards.
+## What You Can Build
 
-## Chart Data Modes
+You can build interactive dashboards using AppKit's pre-built chart and table components that connect directly to SQL warehouse queries or accept static data. Pass a `queryKey` and the component handles fetching, loading states, and rendering -- no manual data fetching or state management required.
 
-All chart/data components support two modes:
+## In Action
 
-- **Query mode:** pass `queryKey` + `parameters` -- component fetches data automatically
-- **Data mode:** pass static data via `data` prop -- no `queryKey`/`parameters` needed
+> "Using TypeScript and React, build a dashboard page with a bar chart driven by a SQL query and a data table below it."
 
 ```tsx
-// Query mode (recommended for Databricks SQL)
-<BarChart queryKey="sales_by_region" parameters={{}} />
+import { BarChart, DataTable, Card, CardHeader, CardTitle, CardContent } from "@databricks/appkit-ui";
 
-// Data mode (static/pre-fetched data)
-<BarChart data={myData} xKey="category" yKey="count" />
+export function RevenueDashboard() {
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Revenue by Region</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <BarChart
+            queryKey="revenue_by_region"
+            parameters={{}}
+            xKey="region"
+            yKey="revenue"
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Order Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DataTable queryKey="recent_orders" parameters={{}} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 ```
 
-`parameters` is **required** even when empty (`parameters={{}}`).
+**Key decisions:**
+- `queryKey` references a SQL file in `config/queries/` (without the `.sql` extension) -- the component fetches data automatically
+- `parameters` is required even when empty (`parameters={{}}`) -- omitting it causes a runtime error
+- `DataTable` auto-generates columns from the query result -- do not pass a `columns` prop
+- Use `xKey` and `yKey` (not `xAxisKey` or `dataKey`) -- AppKit uses ECharts, not Recharts
 
-## Common Anti-Patterns
+## More Patterns
 
-| Mistake | Why | Fix |
-|---------|-----|-----|
-| `xAxisKey`, `dataKey` | Recharts naming | Use `xKey`, `yKey` |
-| `<XAxis>`, `<YAxis>` children | ECharts-based, not Recharts | Configure via props only |
-| `columns` on DataTable | Auto-generates columns | Use `queryKey` + `parameters` |
-| Double-fetching | Components handle their own fetching | Just pass `queryKey` |
+### Static data mode for pre-fetched results
 
-## Data Components
+> "Using TypeScript and React, render a chart with data you already have in state."
 
-| Component | Extra Props | Use For |
-|-----------|-------------|---------|
-| `BarChart` | `xKey`, `yKey`, `orientation`, `stacked` | Categorical comparisons |
-| `LineChart` | `xKey`, `yKey`, `smooth`, `showSymbol` | Time series, trends |
-| `AreaChart` | `xKey`, `yKey`, `smooth`, `stacked` | Cumulative trends |
-| `PieChart` | `xKey`, `yKey`, `innerRadius`, `showLabels` | Part-of-whole |
-| `ScatterChart` | `xKey`, `yKey`, `symbolSize` | Correlation |
-| `HeatmapChart` | `xKey`, `yKey`, `min`, `max` | Matrix-style |
-| `DataTable` | `filterColumn`, `pageSize`, `transform` | Tabular data |
+```tsx
+<BarChart
+  data={salesData}
+  xKey="category"
+  yKey="count"
+  orientation="horizontal"
+  stacked={false}
+/>
+```
 
-## UI Components
+Data mode accepts an array of objects directly. Use it when your data comes from a tRPC endpoint, a computed transformation, or any source outside `config/queries/`. Do not pass `queryKey` and `data` on the same component.
 
-| Component | Common Props |
-|-----------|-------------|
-| `Card`, `CardHeader`, `CardTitle`, `CardContent` | Standard container |
-| `Badge` | `variant`: default, secondary, destructive, outline |
-| `Button` | `variant`, `size`, `onClick` |
-| `Select`, `SelectTrigger`, `SelectContent`, `SelectItem` | Dropdown (value cannot be "") |
-| `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | Tabbed interface |
-| `Skeleton` | Loading states |
+### Custom KPI cards with useAnalyticsQuery
 
-## useAnalyticsQuery Hook
-
-Use only for custom layouts (KPIs, cards). For charts/tables, pass `queryKey` directly.
+> "Using TypeScript and React, fetch query results for a custom KPI layout."
 
 ```typescript
-// Memoize parameters to prevent infinite loops
-const params = useMemo(() => ({ id: sql.string(selectedId) }), [selectedId]);
-const { data, loading, error } = useAnalyticsQuery('query', params);
+import { useMemo } from "react";
+import { useAnalyticsQuery } from "@databricks/appkit-ui";
+import { sql } from "@databricks/appkit-ui/js";
 
-// Conditional queries: use autoStart: false
-const { data } = useAnalyticsQuery('query', params, { autoStart: false });
+function KPICards({ selectedRegion }: { selectedRegion: string }) {
+  const params = useMemo(
+    () => ({ region: sql.string(selectedRegion) }),
+    [selectedRegion]
+  );
+  const { data, loading, error } = useAnalyticsQuery("kpi_metrics", params);
+
+  if (loading) return <Skeleton className="h-24" />;
+  if (!data?.length) return null;
+
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      <Card>
+        <CardContent>
+          <p className="text-2xl font-bold">{Number(data[0].total_revenue).toFixed(0)}</p>
+          <p className="text-sm text-muted-foreground">Total Revenue</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 ```
+
+`useAnalyticsQuery` is for custom layouts where pre-built components do not fit. Memoize the `params` object -- without `useMemo`, React creates a new object on every render, triggering an infinite fetch loop. Use `autoStart: false` for conditional queries.
+
+### Available chart types
+
+> "Using TypeScript and React, show different chart types for different data patterns."
+
+```tsx
+{/* Time series trends */}
+<LineChart queryKey="daily_revenue" parameters={{}} xKey="date" yKey="revenue" smooth />
+
+{/* Cumulative totals */}
+<AreaChart queryKey="cumulative_users" parameters={{}} xKey="month" yKey="users" stacked />
+
+{/* Part-of-whole breakdown */}
+<PieChart queryKey="category_share" parameters={{}} xKey="category" yKey="percentage" showLabels />
+
+{/* Correlation analysis */}
+<ScatterChart queryKey="price_vs_rating" parameters={{}} xKey="price" yKey="rating" />
+
+{/* Matrix visualization */}
+<HeatmapChart queryKey="hourly_traffic" parameters={{}} xKey="hour" yKey="day" />
+```
+
+Each chart type supports the same `queryKey`/`parameters` pattern plus type-specific props like `smooth`, `stacked`, `showLabels`, `innerRadius`, and `symbolSize`.
+
+## Watch Out For
+
+- **Using Recharts prop names** -- AppKit wraps ECharts, not Recharts. Props like `xAxisKey`, `dataKey`, `<XAxis>`, and `<YAxis>` do not exist. Use `xKey` and `yKey` and configure everything through props, not JSX children.
+- **Omitting `parameters` on query-driven components** -- even if your query has no parameters, you must pass `parameters={{}}`. The component throws at runtime without it.
+- **Double-fetching by combining `useAnalyticsQuery` with query components** -- `BarChart`, `LineChart`, and friends handle their own data fetching when given a `queryKey`. Do not fetch the same data with `useAnalyticsQuery` and pass it as `data` -- you will execute the query twice.
+- **Creating params objects inline without `useMemo`** -- `useAnalyticsQuery("query", { id: sql.string(val) })` creates a new object reference every render, causing infinite refetching. Always memoize.

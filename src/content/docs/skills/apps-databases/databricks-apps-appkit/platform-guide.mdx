@@ -1,15 +1,17 @@
 ---
 title: Platform Guide
-description: Universal platform rules for Databricks Apps including permissions, resource injection, authentication, deployment, and runtime constraints.
+description: Understand runtime constraints, permissions, and configuration rules for all Databricks Apps.
 sidebar:
   order: 5
 ---
 
-Universal platform rules that apply to all Databricks Apps regardless of framework.
+## What You Can Build
 
-## Service Principal Permissions
+Every Databricks App -- regardless of framework or language -- runs within the same managed platform. Understanding the constraints upfront saves you from debugging cryptic deployment failures. This page covers the universal rules: service principal permissions, authentication modes, runtime limits, and the relationship between `app.yaml` and `databricks.yml`.
 
-When you declare a resource in `databricks.yml` with a `permission` field, the platform auto-grants that permission to the app's SP on deployment:
+## In Action
+
+> "Using YAML, declare a SQL warehouse resource in a DABs bundle with auto-granted permissions for the app's service principal."
 
 ```yaml
 resources:
@@ -22,39 +24,78 @@ resources:
             permission: CAN_USE
 ```
 
-### Default Permissions by Resource Type
+**Key decisions:**
+- The `permission` field auto-grants that permission to the app's service principal on deployment -- no manual UI step needed
+- Default permissions vary by resource type: `CAN_USE` for SQL warehouses, `CAN_QUERY` for serving endpoints, `CAN_CONNECT_AND_CREATE` for Lakebase, `READ_VOLUME` for UC volumes, `READ` for secrets
+- Service principal permissions control what the app can do. User permissions (via on-behalf-of auth) control what individual users can see.
+- Grant the minimum permission level needed -- `CAN_USE` instead of `CAN_MANAGE` for SQL warehouses
 
-| Resource Type | Default Permission |
-|---------------|-------------------|
-| SQL Warehouse | CAN_USE |
-| Model Serving Endpoint | CAN_QUERY |
-| Lakebase Database | CAN_CONNECT_AND_CREATE |
-| Volume (UC) | READ_VOLUME |
-| Secret Scope | READ |
+## More Patterns
 
-## Authentication: OBO vs Service Principal
+### Choosing between OBO and service principal auth
 
-| Context | Token Source | Use Case |
-|---------|-------------|----------|
-| **Service Principal** | Auto-injected env vars | Background tasks, shared data |
-| **On-Behalf-Of** | `x-forwarded-access-token` header | User-specific data, audit trails |
+> "When should I use on-behalf-of user auth versus the default service principal?"
 
-## Runtime Environment
+```python
+# Service Principal (default) -- auto-injected, no user interaction needed
+from databricks.sdk.core import Config
+cfg = Config()  # Picks up DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET
 
-| Constraint | Value |
-|------------|-------|
-| Max file size | 10 MB per file |
-| Compute | Medium (6 GB, 2 vCPU) or Large (12 GB, 4 vCPU) |
-| Startup deadline | 10 minutes |
-| Max apps per workspace | 100 |
-| HTTP request timeout | 120 seconds (proxy-enforced) |
-| Graceful shutdown | SIGTERM, 15 seconds, then SIGKILL |
+# On-Behalf-Of (user) -- per-user identity from the forwarded token
+user_token = request.headers.get("x-forwarded-access-token")
+```
 
-## Common Errors
+Use the service principal for background tasks, shared data access, and logging. Use on-behalf-of when you need Unity Catalog row/column filters to apply per user or when audit trails must trace to individual identities.
 
-| Error | Fix |
-|-------|-----|
-| `PERMISSION_DENIED` after deploy | Grant SP access to declared resources |
-| App deploys but config unchanged | Also run `bundle run` after `bundle deploy` |
-| `File is larger than 10485760 bytes` | Use requirements.txt / package.json |
-| 504 Gateway Timeout | Use WebSockets for operations exceeding 120s |
+### Understanding runtime limits
+
+> "What are the hard limits I need to design around?"
+
+```yaml
+# Runtime constraints for all Databricks Apps
+compute:
+  medium: 6 GB RAM, 2 vCPU
+  large: 12 GB RAM, 4 vCPU
+limits:
+  max_file_size: 10 MB per file
+  startup_deadline: 10 minutes
+  max_apps_per_workspace: 100
+  http_request_timeout: 120 seconds (proxy-enforced)
+  graceful_shutdown: SIGTERM, 15 seconds, then SIGKILL
+```
+
+The 120-second HTTP timeout is proxy-enforced -- your app cannot extend it. For operations that run longer than two minutes, use WebSockets or background job patterns.
+
+### Configuring app.yaml versus databricks.yml
+
+> "Where do environment variables and start commands go?"
+
+```yaml
+# app.yaml -- runtime config (start command, env vars, valueFrom)
+command:
+  - "streamlit"
+  - "run"
+  - "app.py"
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+  - name: USE_MOCK_BACKEND
+    value: "false"
+```
+
+```yaml
+# databricks.yml -- bundle/deployment config (app resource for DABs)
+resources:
+  apps:
+    my_app:
+      source_code_path: ./src/app
+```
+
+Environment variables belong in `app.yaml`. The bundle file (`databricks.yml`) manages the deployment target and resource declarations. Always run `bundle deploy` then `bundle run` -- deploy alone does not apply configuration changes.
+
+## Watch Out For
+
+- **`PERMISSION_DENIED` after deploy** -- the service principal needs explicit access to every declared resource. Declaring a resource in `app.yaml` or `databricks.yml` does not automatically grant permissions unless you include the `permission` field in a DABs bundle.
+- **App deploys but config does not change** -- with Asset Bundles, `bundle deploy` pushes code and config, but `bundle run` applies the changes and restarts the app. Running only `deploy` leaves the old config active.
+- **`File is larger than 10485760 bytes`** -- the platform rejects files over 10 MB. Move large dependencies to `requirements.txt` (Python) or `package.json` (Node.js) and let the runtime install them. Never include `node_modules/` in your source.
+- **504 Gateway Timeout on long-running requests** -- the reverse proxy enforces a 120-second HTTP timeout. For long operations, switch to WebSockets, return a job ID and poll, or offload to a Databricks job.

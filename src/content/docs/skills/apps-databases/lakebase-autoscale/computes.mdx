@@ -1,49 +1,108 @@
 ---
 title: Computes
-description: Configure autoscaling compute sizing (0.5-112 CU), scale-to-zero, and read replicas for Lakebase Autoscaling.
+description: Configure autoscaling compute sizing, scale-to-zero, and read replicas for Lakebase Autoscaling.
 sidebar:
   order: 2
 ---
 
-A compute is a virtualized service that runs Postgres for a branch. Each branch has one primary R/W compute and optional read replicas.
+## What You Can Build
 
-## Compute Sizing
+You can size your Lakebase database compute from 0.5 CU (1 GB RAM) to 112 CU (224 GB RAM), enable autoscaling within a range, and configure scale-to-zero to suspend idle databases automatically. Each branch gets one primary read-write compute and optional read replicas for distributing query load.
 
-Each CU allocates approximately 2 GB of RAM.
+## In Action
 
-| Compute Units | RAM | Max Connections |
-|--------------|-----|-----------------|
-| 0.5 CU | ~1 GB | 104 |
-| 4 CU | ~8 GB | 839 |
-| 8 CU | ~16 GB | 1,678 |
-| 32 CU | ~64 GB | 4,000 |
-| 112 CU | ~224 GB | 4,000 |
-
-## Autoscaling
-
-- Range: 0.5-32 CU
-- Constraint: Max - Min cannot exceed 8 CU
-- Valid: 4-8 CU, 8-16 CU. Invalid: 0.5-32 CU.
+> "Using Python, resize a Lakebase compute to autoscale between 2 and 8 CU."
 
 ```python
+from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.postgres import Endpoint, EndpointSpec, FieldMask
+
+w = WorkspaceClient()
 
 w.postgres.update_endpoint(
     name="projects/my-app/branches/production/endpoints/ep-primary",
     endpoint=Endpoint(
         name="projects/my-app/branches/production/endpoints/ep-primary",
-        spec=EndpointSpec(autoscaling_limit_min_cu=2.0, autoscaling_limit_max_cu=8.0)
+        spec=EndpointSpec(
+            autoscaling_limit_min_cu=2.0,
+            autoscaling_limit_max_cu=8.0,
+        ),
     ),
-    update_mask=FieldMask(field_mask=[
-        "spec.autoscaling_limit_min_cu", "spec.autoscaling_limit_max_cu"
-    ])
+    update_mask=FieldMask(
+        field_mask=["spec.autoscaling_limit_min_cu", "spec.autoscaling_limit_max_cu"]
+    ),
 ).wait()
 ```
 
-## Scale-to-Zero
+**Key decisions:**
+- Each Compute Unit (CU) allocates approximately 2 GB of RAM -- different from Lakebase Provisioned, which uses 16 GB per CU
+- Autoscaling range: 0.5-32 CU, with the constraint that max minus min cannot exceed 8 CU (e.g., 4-8 CU is valid, 0.5-32 CU is not)
+- Large fixed-size computes (36-112 CU) do not autoscale
+- All update operations require an `update_mask` -- the API rejects requests without it
+- Resource names follow hierarchical paths: `projects/{id}/branches/{id}/endpoints/{id}`
 
-Automatically suspends compute after inactivity. Default timeout: 5 minutes (minimum: 60 seconds).
+## More Patterns
 
-When a connection arrives on a suspended compute, it starts automatically in a few hundred milliseconds. Applications should implement connection retry logic for the brief reactivation period.
+### Understanding compute sizing
 
-Session context (statistics, temp tables, prepared statements) resets on reactivation.
+> "How much RAM and how many connections do I get at each size?"
+
+```python
+# Representative sizing -- each CU provides ~2 GB RAM
+#
+# 0.5 CU  ->  ~1 GB RAM,   104 max connections
+# 4 CU    ->  ~8 GB RAM,   839 max connections
+# 8 CU    ->  ~16 GB RAM,  1,678 max connections
+# 32 CU   ->  ~64 GB RAM,  4,000 max connections
+# 112 CU  ->  ~224 GB RAM, 4,000 max connections
+#
+# Connection limits are based on the maximum CU in the autoscaling range.
+# Set minimum CU large enough to cache your working set in memory.
+```
+
+Performance may degrade after a scale-up event until the compute re-caches data in memory. If your workload is latency-sensitive, set a higher minimum to avoid cold-cache periods.
+
+### Configuring scale-to-zero
+
+> "Using Python, check the current scale-to-zero configuration for a compute."
+
+```python
+endpoint = w.postgres.get_endpoint(
+    name="projects/my-app/branches/production/endpoints/ep-primary"
+)
+
+print(f"State: {endpoint.status.current_state}")
+print(f"Min CU: {endpoint.status.autoscaling_limit_min_cu}")
+print(f"Max CU: {endpoint.status.autoscaling_limit_max_cu}")
+```
+
+Scale-to-zero suspends the compute after a configurable inactivity timeout (default: 5 minutes, minimum: 60 seconds). The `production` branch defaults to always-active (scale-to-zero disabled). Other branches can be configured to suspend.
+
+### Handling scale-to-zero wake-up in application code
+
+> "Using Python, implement retry logic for the brief reactivation period after scale-to-zero."
+
+```python
+import psycopg
+import time
+
+def connect_with_retry(conn_string, max_retries=3, delay=2):
+    """Handle scale-to-zero wake-up with exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            return psycopg.connect(conn_string)
+        except psycopg.OperationalError:
+            if attempt < max_retries - 1:
+                time.sleep(delay * (2 ** attempt))
+            else:
+                raise
+```
+
+When a connection arrives on a suspended compute, it starts automatically in a few hundred milliseconds. The first connection attempt may fail during reactivation. Session context (temp tables, prepared statements, statistics) resets after reactivation.
+
+## Watch Out For
+
+- **Setting an autoscaling range wider than 8 CU** -- the platform enforces a max-minus-min constraint of 8 CU. A range like 0.5-32 CU is rejected. Use 4-8, 8-16, or 16-24.
+- **Expecting session state to survive scale-to-zero** -- when a compute suspends and reactivates, temporary tables, prepared statements, cached statistics, and active transactions are all lost. Design your app to recreate session state on reconnect, or disable scale-to-zero for stateful workloads.
+- **Forgetting retry logic for suspended computes** -- the first connection after an idle period may fail during the brief reactivation window. Without retry logic, your app surfaces a connection error to the user instead of waiting a few hundred milliseconds.
+- **Sizing too small for your working set** -- autoscaling handles demand spikes, but the minimum CU determines baseline cache capacity. If your minimum is too low, every scale event triggers a cold-cache penalty.
