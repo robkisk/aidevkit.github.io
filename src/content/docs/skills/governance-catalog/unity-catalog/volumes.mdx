@@ -1,0 +1,64 @@
+---
+title: Volumes
+description: Work with Unity Catalog Volumes for governed file storage -- upload, download, list, and manage files with SDK and SQL.
+sidebar:
+  order: 2
+---
+
+Volumes provide governed file storage in Unity Catalog. Files are accessible at `/Volumes/<catalog>/<schema>/<volume>/` paths.
+
+## Volume Types
+
+| Type | Storage | Use Case |
+|------|---------|----------|
+| **Managed** | UC-managed location | Default; no external storage needed |
+| **External** | User-provided cloud storage | Existing data in S3/ADLS/GCS |
+
+## File Operations (SDK)
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Upload
+w.files.upload(
+    file_path="/Volumes/main/raw/uploads/data.csv",
+    contents=open("local_file.csv", "rb"),
+    overwrite=True
+)
+
+# Download
+with w.files.download("/Volumes/main/raw/uploads/data.csv") as f:
+    content = f.read()
+
+# List directory
+for entry in w.files.list_directory_contents("/Volumes/main/raw/uploads/"):
+    print(f"{entry.name}: {'dir' if entry.is_directory else 'file'}")
+```
+
+## SQL Operations
+
+```sql
+-- Create managed volume
+CREATE VOLUME IF NOT EXISTS my_catalog.my_schema.my_volume;
+
+-- List files
+LIST '/Volumes/my_catalog/my_schema/my_volume/';
+
+-- Copy files between volumes
+COPY INTO '/Volumes/target/schema/vol/file.csv'
+FROM '/Volumes/source/schema/vol/file.csv';
+```
+
+## Permissions
+
+| Permission | Description |
+|------------|-------------|
+| `READ_VOLUME` | Read files |
+| `WRITE_VOLUME` | Write and delete files |
+| `ALL_PRIVILEGES` | Full access |
+
+```sql
+GRANT READ_VOLUME ON VOLUME my_catalog.my_schema.my_volume TO `user@example.com`;
+```

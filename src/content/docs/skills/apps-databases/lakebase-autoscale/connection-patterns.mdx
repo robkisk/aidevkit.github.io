@@ -1,0 +1,75 @@
+---
+title: Connection Patterns
+description: Connect to Lakebase Autoscaling with psycopg, SQLAlchemy, and production token refresh patterns.
+sidebar:
+  order: 3
+---
+
+## Authentication Methods
+
+| Method | Token Lifetime | Best For |
+|--------|---------------|----------|
+| **OAuth tokens** | 1 hour (must refresh) | Interactive sessions, workspace apps |
+| **Native Postgres passwords** | No expiry | Long-running processes |
+
+All connections have a 24-hour idle timeout and 3-day max lifetime.
+
+## Direct Connection (Scripts)
+
+```python
+import psycopg
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+endpoint = w.postgres.get_endpoint(
+    name="projects/my-app/branches/production/endpoints/ep-primary"
+)
+cred = w.postgres.generate_database_credential(
+    endpoint="projects/my-app/branches/production/endpoints/ep-primary"
+)
+
+conn_string = (
+    f"host={endpoint.status.hosts.host} "
+    f"dbname=databricks_postgres "
+    f"user={w.current_user.me().user_name} "
+    f"password={cred.token} sslmode=require"
+)
+with psycopg.connect(conn_string) as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT version()")
+        print(cur.fetchone())
+```
+
+## Production Token Refresh (SQLAlchemy)
+
+For long-running apps, inject fresh tokens via SQLAlchemy event hooks and refresh every 50 minutes:
+
+```python
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import create_async_engine
+
+engine = create_async_engine(url, pool_recycle=3600, connect_args={"sslmode": "require"})
+
+@event.listens_for(engine.sync_engine, "do_connect")
+def inject_token(dialect, conn_rec, cargs, cparams):
+    cparams["password"] = current_token  # Refreshed in background task
+```
+
+## DNS Workaround (macOS)
+
+Python's `socket.getaddrinfo()` can fail with long Lakebase hostnames on macOS. Use `dig` as a fallback and pass `hostaddr` to psycopg:
+
+```python
+conn_params = {
+    "host": hostname,       # For TLS SNI
+    "hostaddr": resolved_ip,  # From dig command
+    "sslmode": "require"
+}
+```
+
+## Best Practices
+
+1. Always use `sslmode=require`
+2. Refresh tokens at 50 minutes (before 1-hour expiry)
+3. Use connection pooling (avoid new connections per request)
+4. Handle scale-to-zero wake-up with retry logic

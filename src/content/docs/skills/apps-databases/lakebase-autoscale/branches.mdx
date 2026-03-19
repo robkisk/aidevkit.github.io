@@ -1,0 +1,68 @@
+---
+title: Branches
+description: Create isolated database environments with copy-on-write branching, TTL expiration, protection, and reset workflows.
+sidebar:
+  order: 1
+---
+
+Branches are isolated database environments that share storage via copy-on-write. They enable Git-like workflows for databases.
+
+## Creating a Branch
+
+```python
+from databricks.sdk.service.postgres import Branch, BranchSpec, Duration
+
+# With 7-day expiration
+result = w.postgres.create_branch(
+    parent="projects/my-app",
+    branch=Branch(spec=BranchSpec(
+        source_branch="projects/my-app/branches/production",
+        ttl=Duration(seconds=604800)
+    )),
+    branch_id="development"
+).wait()
+
+# Permanent (no expiration)
+result = w.postgres.create_branch(
+    parent="projects/my-app",
+    branch=Branch(spec=BranchSpec(
+        source_branch="projects/my-app/branches/production",
+        no_expiry=True
+    )),
+    branch_id="staging"
+).wait()
+```
+
+## Protecting a Branch
+
+```python
+from databricks.sdk.service.postgres import Branch, BranchSpec, FieldMask
+
+w.postgres.update_branch(
+    name="projects/my-app/branches/production",
+    branch=Branch(name="projects/my-app/branches/production",
+                  spec=BranchSpec(is_protected=True)),
+    update_mask=FieldMask(field_mask=["spec.is_protected"])
+).wait()
+```
+
+## Resetting a Branch
+
+Completely replaces a branch's data with the latest from its parent:
+
+```python
+w.postgres.reset_branch(name="projects/my-app/branches/development").wait()
+```
+
+Root branches and branches with children cannot be reset.
+
+## Expiration Guidelines
+
+| Use Case | TTL |
+|----------|-----|
+| CI/CD environments | 2-4 hours |
+| Demos | 24-48 hours |
+| Feature development | 1-7 days |
+| Long-term testing | up to 30 days |
+
+Maximum 10 unarchived branches per project. Maximum expiration: 30 days.

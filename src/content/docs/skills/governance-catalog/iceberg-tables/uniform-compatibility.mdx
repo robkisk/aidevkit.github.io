@@ -1,0 +1,34 @@
+---
+title: UniForm and Compatibility Mode
+description: Make Delta tables readable as Iceberg by external engines without converting to native Iceberg format.
+sidebar:
+  order: 2
+---
+
+UniForm and Compatibility Mode make Delta tables readable as Iceberg externally. Data is written as Delta, but Iceberg metadata is generated automatically.
+
+## UniForm (Regular Delta Tables)
+
+```sql
+ALTER TABLE my_catalog.my_schema.customers
+SET TBLPROPERTIES (
+  'delta.columnMapping.mode' = 'name',
+  'delta.enableIcebergCompatV2' = 'true',
+  'delta.universalFormat.enabledFormats' = 'iceberg'
+);
+```
+
+Requires deletion vectors to be disabled. Iceberg metadata generation is asynchronous -- brief delay before external engines see latest data.
+
+## Compatibility Mode (Streaming Tables and MVs)
+
+For streaming tables and materialized views in SDP pipelines, use Compatibility Mode instead of UniForm.
+
+## When to Use What
+
+| Scenario | Approach |
+|----------|---------|
+| New table, full external R/W | Managed Iceberg (`USING ICEBERG`) |
+| Existing Delta, external reads only | UniForm |
+| SDP streaming table/MV, external reads | Compatibility Mode |
+| Need CDF + external reads | Delta + UniForm |

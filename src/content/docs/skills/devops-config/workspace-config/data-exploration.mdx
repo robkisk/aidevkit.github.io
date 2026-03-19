@@ -1,0 +1,55 @@
+---
+title: Data Exploration
+description: Discover table schemas and execute SQL queries using the Databricks CLI for data exploration.
+sidebar:
+  order: 3
+---
+
+## Finding Tables by Keyword
+
+Search `information_schema` to discover tables:
+
+```bash
+databricks sql execute --warehouse-id <WH_ID> \
+  --statement "
+    SELECT table_catalog, table_schema, table_name
+    FROM system.information_schema.tables
+    WHERE LOWER(table_name) LIKE '%customer%'
+    ORDER BY table_catalog, table_schema, table_name
+  " --profile <PROFILE>
+```
+
+## Schema Discovery
+
+Get column details for a table:
+
+```bash
+databricks sql execute --warehouse-id <WH_ID> \
+  --statement "DESCRIBE TABLE EXTENDED my_catalog.my_schema.my_table" \
+  --profile <PROFILE>
+```
+
+## Executing Queries
+
+```bash
+databricks sql execute --warehouse-id <WH_ID> \
+  --statement "SELECT * FROM my_catalog.my_schema.my_table LIMIT 10" \
+  --profile <PROFILE>
+```
+
+## Warehouse Discovery
+
+Find an available SQL warehouse:
+
+```bash
+databricks warehouses list --profile <PROFILE>
+
+# Or get the default AI tools warehouse
+databricks experimental aitools tools get-default-warehouse --profile <PROFILE>
+```
+
+## Best Practices
+
+- Always search `information_schema` before writing queries against unknown tables
+- Check date ranges on sample datasets before filtering with `CURRENT_DATE()`
+- Use `DESCRIBE TABLE EXTENDED` to see column types, partitioning, and table properties

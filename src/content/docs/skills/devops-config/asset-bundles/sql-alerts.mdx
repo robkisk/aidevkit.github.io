@@ -1,0 +1,45 @@
+---
+title: SQL Alerts
+description: Configure SQL alert resources in Databricks Asset Bundles with schema validation and notification channels.
+sidebar:
+  order: 2
+---
+
+## Schema Validation First
+
+Always inspect the schema before creating alert resources:
+
+```bash
+databricks bundle schema | jq '.properties.resources.properties.alerts'
+```
+
+## Alert Resource
+
+```yaml
+resources:
+  alerts:
+    data_freshness_alert:
+      display_name: "Data Freshness Check"
+      query_id: ${resources.queries.freshness_check.id}
+      condition:
+        op: GREATER_THAN
+        operand:
+          column:
+            name: hours_since_update
+        threshold:
+          value:
+            double_value: 24.0
+      custom_subject: "Data Freshness Alert: {{ALERT_STATUS}}"
+      custom_body: "Hours since last update: {{QUERY_RESULT_VALUE}}"
+      notify_on_ok: true
+```
+
+## Notification Channels
+
+Alerts support email and webhook destinations. Configure in the `notifications` section of the alert resource.
+
+## Best Practices
+
+- Always reference queries via `${resources.queries.name.id}` for portability
+- Use `notify_on_ok: true` to confirm recovery
+- Test alerts in dev target before deploying to prod

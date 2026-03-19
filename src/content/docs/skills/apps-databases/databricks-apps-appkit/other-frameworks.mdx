@@ -1,0 +1,58 @@
+---
+title: Other Frameworks
+description: Setup guide for non-AppKit Databricks Apps using Streamlit, FastAPI, Flask, Gradio, Dash, Django, Next.js, and more.
+sidebar:
+  order: 6
+---
+
+Setup guide for non-AppKit apps deployed to Databricks Apps.
+
+## Port and Host Configuration
+
+The number one cause of 502 Bad Gateway errors. Apps must bind to `0.0.0.0` on `DATABRICKS_APP_PORT`:
+
+```python
+# FastAPI / Uvicorn
+port = int(os.environ.get("DATABRICKS_APP_PORT", 8000))
+uvicorn.run(app, host="0.0.0.0", port=port)
+
+# Flask
+app.run(host="0.0.0.0", port=int(os.environ.get("DATABRICKS_APP_PORT", 8000)))
+
+# Gradio
+demo.launch(server_name="0.0.0.0",
+            server_port=int(os.environ.get("DATABRICKS_APP_PORT", 8000)))
+```
+
+## app.yaml vs databricks.yml
+
+| File | Purpose |
+|------|---------|
+| `app.yaml` | Runtime config: start command, env vars, `valueFrom` |
+| `databricks.yml` | Bundle/deployment config: app resource for DABs |
+
+Always run `bundle deploy` then `bundle run` -- deploy alone does not apply config changes.
+
+## Streamlit Gotchas
+
+Both CORS and XSRF must be disabled:
+
+```yaml
+env:
+  - name: STREAMLIT_SERVER_ENABLE_CORS
+    value: "false"
+  - name: STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION
+    value: "false"
+```
+
+Use `@st.cache_resource` for database connections to prevent connection exhaustion.
+
+## Dependency Management
+
+Only `requirements.txt` (Python) and `package.json` (Node.js) are natively supported. Do not include `node_modules/` in source code (10 MB file limit).
+
+## Networking
+
+- CORS headers are not customizable on the reverse proxy
+- Keep frontend and backend in a single app to avoid CORS issues
+- Egress policy changes require app restart

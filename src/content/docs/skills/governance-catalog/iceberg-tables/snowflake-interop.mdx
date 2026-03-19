@@ -1,0 +1,18 @@
+---
+title: Snowflake Interoperability
+description: Bidirectional Snowflake-Databricks integration via Iceberg catalog integration, foreign catalogs, and vended credentials.
+sidebar:
+  order: 4
+---
+
+Databricks and Snowflake can share Iceberg data bidirectionally: Snowflake reading Databricks-managed tables, and Databricks reading Snowflake-managed Iceberg tables.
+
+## Snowflake Reading Databricks Tables
+
+Snowflake's Iceberg catalog integration connects to Unity Catalog's IRC endpoint. Configure a catalog integration in Snowflake pointing to the Databricks workspace, then create Iceberg tables in Snowflake referencing Databricks-managed data.
+
+Key limitation: Snowflake can only see the last 1,000 Iceberg commits. High-frequency writers must compact metadata.
+
+## Databricks Reading Snowflake Tables
+
+Create a foreign catalog in Databricks using `CREATE FOREIGN CATALOG` with a Snowflake connection. This enables reading Snowflake-managed Iceberg tables directly from Databricks SQL and notebooks.

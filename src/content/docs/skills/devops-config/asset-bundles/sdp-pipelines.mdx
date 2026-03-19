@@ -1,0 +1,59 @@
+---
+title: SDP Pipeline Configuration
+description: Configure Spark Declarative Pipeline resources in Databricks Asset Bundles with streaming and batch patterns.
+sidebar:
+  order: 1
+---
+
+## Key Decisions
+
+When configuring SDP pipelines in bundles, determine:
+
+1. Streaming or batch oriented?
+2. Continuous or triggered execution?
+3. Which catalog/schema for output tables?
+4. Serverless or classic compute?
+
+## Pipeline Resource
+
+```yaml
+resources:
+  pipelines:
+    my_pipeline:
+      name: my-etl-pipeline
+      catalog: my_catalog
+      target: my_schema
+      libraries:
+        - notebook:
+            path: ./src/pipeline.py
+      continuous: false
+      development: true
+      channel: CURRENT
+```
+
+## Execution Modes
+
+| Mode | Setting | Use Case |
+|------|---------|----------|
+| **Triggered** | `continuous: false` | Batch ETL, scheduled runs |
+| **Continuous** | `continuous: true` | Real-time streaming |
+| **Development** | `development: true` | Testing (no production retries) |
+
+## Environment Overrides
+
+```yaml
+targets:
+  dev:
+    resources:
+      pipelines:
+        my_pipeline:
+          development: true
+          catalog: dev_catalog
+  prod:
+    resources:
+      pipelines:
+        my_pipeline:
+          development: false
+          continuous: true
+          catalog: prod_catalog
+```

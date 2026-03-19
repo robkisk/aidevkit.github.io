@@ -1,0 +1,93 @@
+---
+title: Databricks Apps (AppKit)
+description: Build TypeScript/React Databricks applications using AppKit with type-safe SQL queries, built-in components, tRPC endpoints, and Lakebase integration.
+sidebar:
+  order: 1
+---
+
+## Overview
+
+The Databricks Apps AppKit skill teaches Claude Code how to build full-stack TypeScript/React applications on the Databricks Apps platform using the AppKit framework. It covers scaffolding with `databricks apps init`, type-safe SQL queries via `config/queries/`, visualization components (ECharts-based), tRPC for mutations and API calls, Lakebase OLTP integration, platform permissions, testing with Playwright, and deployment.
+
+## Capabilities
+
+- Scaffold AppKit projects with `databricks apps manifest` and `databricks apps init`
+- Write SQL query files with parameterization and type generation
+- Use built-in chart and table components (BarChart, LineChart, DataTable, etc.)
+- Add tRPC endpoints for mutations, Databricks API calls, and Lakebase CRUD
+- Integrate Lakebase (PostgreSQL) for persistent read/write storage
+- Configure platform permissions, service principal auth, and OBO tokens
+- Write smoke tests with Playwright and validate before deployment
+- Deploy via CLI or Asset Bundles with multi-environment targets
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_or_update_app` | Create or deploy a Databricks App |
+| `get_app` | Get app details, status, and logs |
+| `delete_app` | Delete an app |
+
+## Example Prompts
+
+```
+Scaffold an AppKit analytics app connected to my SQL warehouse
+that shows trip statistics in a bar chart
+```
+
+```
+Add a Lakebase feature to my AppKit app for storing user
+preferences with CRUD endpoints
+```
+
+```
+Create SQL query files for monthly revenue trends with
+date range parameters and display in a line chart
+```
+
+## Key Concepts
+
+### Data Patterns
+
+| Pattern | When to Use | Init Command |
+|---------|-------------|-------------|
+| **Analytics** (read-only) | Dashboards, charts, KPIs | `--features analytics --set analytics.sql-warehouse.id=<ID>` |
+| **Lakebase** (read/write) | CRUD forms, persistent state | `--features lakebase --set lakebase.postgres.branch=<BRANCH>` |
+| **Both** | Dashboard + user data | `--features analytics,lakebase` with all `--set` flags |
+
+### Project Structure
+
+```
+my-app/
+├── server/server.ts          # Backend entry point (tRPC)
+├── client/src/App.tsx         # Main React component
+├── config/queries/*.sql       # SQL query files (queryKey = filename)
+├── client/src/appKitTypes.d.ts # Auto-generated types
+├── tests/smoke.spec.ts        # Smoke test (must update selectors)
+├── app.yaml                   # Deployment config
+└── package.json
+```
+
+### Development Workflow
+
+1. Create SQL files in `config/queries/`
+2. Run `npm run typegen` -- verify all queries show a checkmark
+3. Read `client/src/appKitTypes.d.ts` to see generated types
+4. Write `App.tsx` using the generated types
+5. Update `tests/smoke.spec.ts` selectors
+6. Run `databricks apps validate --profile <PROFILE>`
+
+**Do not** write UI code before running typegen -- types will not exist.
+
+### Critical Rules
+
+- SQL for data retrieval: Use `config/queries/` + visualization components. Never tRPC for SELECT.
+- Numeric types: SQL numbers may return as strings. Always convert: `Number(row.amount)`
+- Type imports: Use `import type { ... }` (verbatimModuleSyntax enabled)
+- Charts are ECharts: No Recharts children -- use props (`xKey`, `yKey`, `colors`)
+- Never use `useAnalyticsQuery` for Lakebase data -- it queries the SQL warehouse only
+
+## References
+
+- [AppKit Docs](https://apps-cookbook.dev/) -- official examples and recipes
+- [Databricks Apps Overview](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/)

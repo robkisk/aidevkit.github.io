@@ -1,0 +1,43 @@
+---
+title: Testing
+description: Write unit tests with Vitest and smoke tests with Playwright for AppKit applications.
+sidebar:
+  order: 7
+---
+
+## Unit Tests (Vitest)
+
+Place tests next to the code (e.g., `src/*.test.ts`). Do not write tests for SQL files or generated types.
+
+```typescript
+import { describe, it, expect } from 'vitest';
+
+describe('Feature Name', () => {
+  it('should do something', () => {
+    expect(true).toBe(true);
+  });
+});
+```
+
+## Smoke Test (Playwright)
+
+The template includes `tests/smoke.spec.ts`. You **must update** the selectors after customizing:
+
+```typescript
+// Template default -- will fail
+await expect(page.getByRole('heading', { name: 'Minimal Databricks App' })).toBeVisible();
+
+// Update to match YOUR app
+await expect(page.getByRole('heading', { name: 'Your App Title' })).toBeVisible();
+```
+
+### Playwright Strict Mode
+
+Selectors matching multiple elements will fail. Use in this priority:
+
+1. `getByRole('heading', { name: 'Title' })` -- most reliable
+2. `getByRole('button', { name: 'Submit' })` -- interactive elements
+3. `getByText('Unique text', { exact: true })` -- exact match
+4. `getByText('Common text').first()` -- last resort
+
+Keep smoke tests simple: verify the app loads and displays initial data in under 5 seconds.

@@ -1,0 +1,52 @@
+---
+title: Managed Iceberg Tables
+description: Create and manage native Iceberg tables with DDL, DML, Liquid Clustering, Predictive Optimization, and Iceberg v3.
+sidebar:
+  order: 1
+---
+
+Managed Iceberg tables are native Apache Iceberg tables stored in Unity Catalog with full read/write support in Databricks and external engines via IRC.
+
+## Creating Tables
+
+```sql
+-- Basic CTAS
+CREATE TABLE my_catalog.my_schema.events
+USING ICEBERG
+AS SELECT * FROM raw_events;
+
+-- PARTITIONED BY (standard Iceberg, cross-platform)
+CREATE TABLE my_catalog.my_schema.events
+USING ICEBERG
+PARTITIONED BY (event_date)
+AS SELECT * FROM raw_events;
+
+-- CLUSTER BY on v2 (DBR-only, requires TBLPROPERTIES)
+CREATE TABLE my_catalog.my_schema.events
+USING ICEBERG
+TBLPROPERTIES (
+  'delta.enableDeletionVectors' = false,
+  'delta.enableRowTracking' = false
+)
+CLUSTER BY (event_date)
+AS SELECT * FROM raw_events;
+
+-- CLUSTER BY on v3 (no TBLPROPERTIES needed)
+CREATE TABLE my_catalog.my_schema.events
+USING ICEBERG
+TBLPROPERTIES ('format-version' = '3')
+CLUSTER BY (event_date)
+AS SELECT * FROM raw_events;
+```
+
+## PARTITIONED BY vs CLUSTER BY
+
+Both produce the same Iceberg metadata for external engines. Differences:
+
+- `PARTITIONED BY` is standard Iceberg DDL (works on any engine) and auto-handles DV/row-tracking properties
+- `CLUSTER BY` is DBR-only and requires manual TBLPROPERTIES on v2
+- Expression transforms (`bucket()`, `years()`) are not supported with `PARTITIONED BY`
+
+## Supported DML
+
+Full MERGE, INSERT, UPDATE, DELETE, and time travel support. No Change Data Feed (CDF) on managed Iceberg tables -- use Delta + UniForm if CDF is needed.

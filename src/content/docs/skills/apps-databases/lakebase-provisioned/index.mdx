@@ -1,0 +1,102 @@
+---
+title: Lakebase Provisioned
+description: Fixed-capacity managed PostgreSQL for OLTP workloads with OAuth auth, reverse ETL, and Databricks Apps integration.
+sidebar:
+  order: 3
+---
+
+## Overview
+
+The Lakebase Provisioned skill teaches Claude Code how to create and manage Lakebase Provisioned instances -- Databricks' fixed-capacity managed PostgreSQL service for OLTP workloads. It covers instance creation (CU_1 through CU_8), OAuth token authentication with refresh, connection patterns (psycopg, SQLAlchemy), reverse ETL via synced tables, Databricks Apps integration, and Unity Catalog registration.
+
+## Capabilities
+
+- Create and manage Lakebase Provisioned instances (CU_1, CU_2, CU_4, CU_8)
+- Connect with psycopg3 and SQLAlchemy with automatic OAuth token refresh
+- Register instances with Unity Catalog for governance
+- Sync Delta tables to PostgreSQL via reverse ETL (snapshot, triggered, continuous)
+- Integrate with Databricks Apps via environment variables
+- Declare as MLflow model resources for automatic credential provisioning
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_or_update_lakebase_database` | Create or update instance (`type="provisioned"`) |
+| `get_lakebase_database` | Get details or list all instances |
+| `delete_lakebase_database` | Delete instance and resources |
+| `generate_lakebase_credential` | Generate OAuth token (1-hour expiry) |
+| `create_or_update_lakebase_sync` | Set up reverse ETL synced tables |
+
+## Example Prompts
+
+```
+Create a Lakebase Provisioned instance with CU_2 capacity
+for my e-commerce application
+```
+
+```
+Connect my FastAPI app to Lakebase with automatic token
+refresh every 50 minutes
+```
+
+## Quick Start
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+instance = w.database.create_database_instance(
+    name="my-lakebase-instance",
+    capacity="CU_1",
+    stopped=False
+)
+```
+
+## Connection Pattern
+
+```python
+import psycopg
+from databricks.sdk import WorkspaceClient
+import uuid
+
+w = WorkspaceClient()
+instance = w.database.get_database_instance(name="my-lakebase-instance")
+cred = w.database.generate_database_credential(
+    request_id=str(uuid.uuid4()),
+    instance_names=["my-lakebase-instance"]
+)
+
+conn_string = (
+    f"host={instance.read_write_dns} dbname=postgres "
+    f"user={w.current_user.me().user_name} "
+    f"password={cred.token} sslmode=require"
+)
+with psycopg.connect(conn_string) as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT version()")
+```
+
+## CLI Quick Reference
+
+```bash
+databricks database create-database-instance --name my-instance --capacity CU_1
+databricks database get-database-instance --name my-instance
+databricks database generate-database-credential \
+    --request-id $(uuidgen) --json '{"instance_names": ["my-instance"]}'
+databricks database stop-database-instance --name my-instance
+databricks database start-database-instance --name my-instance
+```
+
+## Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Token expired | Implement refresh loop; tokens expire after 1 hour |
+| DNS resolution fails (macOS) | Use `dig` + `hostaddr` workaround |
+| Connection refused | Check instance is not stopped |
+| SSL required error | Always use `sslmode=require` |
+
+## References
+
+- [Databricks SDK](https://databricks-sdk-py.readthedocs.io/) -- `w.database` module (SDK >= 0.61.0)

@@ -1,0 +1,60 @@
+---
+title: tRPC Endpoints
+description: Add server-side endpoints for mutations, Databricks API calls, and Lakebase CRUD operations using tRPC.
+sidebar:
+  order: 3
+---
+
+Use tRPC only for mutations, external API calls, and complex business logic. **Never use tRPC for SQL SELECT queries** -- use `config/queries/` + `useAnalyticsQuery` instead.
+
+## When to Use tRPC
+
+- Creating, updating, or deleting data (INSERT, UPDATE, DELETE)
+- Calling Databricks APIs (serving endpoints, jobs, MLflow)
+- Multi-step operations requiring TypeScript logic
+- File operations and custom computations
+
+## Server-Side Pattern
+
+```typescript
+import { initTRPC } from '@trpc/server';
+import { getExecutionContext } from '@databricks/appkit';
+import { z } from 'zod';
+
+const t = initTRPC.create({ transformer: superjson });
+
+export const appRouter = t.router({
+  queryModel: t.procedure
+    .input(z.object({ prompt: z.string() }))
+    .query(async ({ input: { prompt } }) => {
+      const { serviceDatabricksClient: client } = getExecutionContext();
+      return await client.servingEndpoints.query({
+        name: 'your-endpoint',
+        messages: [{ role: 'user', content: prompt }],
+      });
+    }),
+
+  createRecord: t.procedure
+    .input(z.object({ name: z.string() }))
+    .mutation(async ({ input }) => {
+      return { success: true, id: 123 };
+    }),
+});
+```
+
+## Client-Side Pattern
+
+```typescript
+import { trpc } from '@/lib/trpc';
+
+const handleCreate = async () => {
+  await trpc.createRecord.mutate({ name: "test" });
+};
+```
+
+## Decision Tree
+
+1. **Display data from SQL?** -- Use visualization components or `useAnalyticsQuery`
+2. **Call Databricks API?** -- Use tRPC (serving endpoints, MLflow, Jobs)
+3. **Modify data?** -- Use tRPC mutations
+4. **Non-SQL custom logic?** -- Use tRPC

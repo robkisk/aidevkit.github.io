@@ -1,0 +1,71 @@
+---
+title: SQL Query Files
+description: Write parameterized SQL query files for AppKit with type generation, Databricks SQL dialect, and date handling patterns.
+sidebar:
+  order: 1
+---
+
+Store all SQL queries in `config/queries/`. Reference by filename (without extension) in `useAnalyticsQuery` or as `queryKey` in visualization components.
+
+## Type Generation
+
+Types auto-regenerate during dev whenever SQL files change. Quick workflow: Add SQL files, types auto-generate, types appear in `client/src/appKitTypes.d.ts`.
+
+## SQL Type Handling
+
+Auto-generated types map `BIGINT`, `INT`, `DECIMAL` to TypeScript `number`, but some types arrive as strings at runtime. Always convert:
+
+```typescript
+// Always convert to number first
+<span>{Number(row.total_amount).toFixed(2)}</span>
+```
+
+## Databricks SQL Dialect
+
+Databricks uses Databricks SQL (based on Spark SQL), not PostgreSQL:
+
+| PostgreSQL | Databricks SQL |
+|------------|---------------|
+| `DATEDIFF(date1, date2)` | `DATEDIFF(DAY, date2, date1)` (3 args) |
+| `NOW()` | `CURRENT_TIMESTAMP()` |
+| `STRING_AGG(col, ',')` | `CONCAT_WS(',', COLLECT_LIST(col))` |
+| `ILIKE` | `LOWER(col) LIKE LOWER(pattern)` |
+
+## Query Parameterization
+
+Parameters use colon prefix (`:parameter_name`). Use `sql.*` helpers from `@databricks/appkit-ui/js`:
+
+```typescript
+import { sql } from "@databricks/appkit-ui/js";
+
+const params = {
+  min_value: sql.number(minValue),
+  category: sql.string(category),
+  start_date: sql.date('2024-01-01'),
+  optional_filter: sql.string(optionalFilter || ''),
+};
+```
+
+### Optional Date Parameters
+
+Use sentinel dates (not empty strings) for optional date filters:
+
+```typescript
+const params = {
+  start_date: sql.date('1900-01-01'),  // No lower bound
+  end_date: sql.date('9999-12-31'),    // No upper bound
+};
+```
+
+## Available sql.* Helpers
+
+```typescript
+sql.string(value)      // STRING parameters
+sql.number(value)      // NUMERIC parameters
+sql.boolean(value)     // BOOLEAN parameters
+sql.date(value)        // DATE parameters (YYYY-MM-DD)
+sql.timestamp(value)   // TIMESTAMP parameters
+sql.binary(value)      // BINARY (returns hex string)
+```
+
+`sql.null()`, `sql.array()`, `sql.int()`, and `sql.float()` do not exist.

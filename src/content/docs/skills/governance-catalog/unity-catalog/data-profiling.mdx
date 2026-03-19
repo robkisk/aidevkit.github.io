@@ -1,0 +1,54 @@
+---
+title: Data Profiling
+description: Create quality monitors on Unity Catalog tables to track data profiles, detect drift, and monitor ML model performance.
+sidebar:
+  order: 3
+---
+
+Data Profiling (formerly Lakehouse Monitoring) creates quality monitors on Unity Catalog tables to track profiles, detect drift, and monitor anomalies.
+
+## Monitor Types
+
+| Type | Use Case | Key Metrics |
+|------|----------|-------------|
+| **Snapshot** | Point-in-time profiles | Null counts, distinct values, distributions |
+| **TimeSeries** | Track changes over time windows | Drift scores, statistical tests |
+| **InferenceLog** | ML model quality monitoring | Prediction distribution, label drift |
+
+## Creating a Monitor
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# TimeSeries monitor
+monitor = w.quality_monitors.create(
+    table_name="my_catalog.my_schema.orders",
+    assets_dir="/Volumes/my_catalog/my_schema/monitoring/",
+    output_schema_name="my_catalog.my_schema",
+    time_series=TimeSeriesConfig(
+        timestamp_col="order_date",
+        granularities=["1 day", "1 week"]
+    ),
+    slicing_exprs=["region", "product_category"],
+)
+```
+
+## Output Tables
+
+Each monitor creates two tables in the output schema:
+
+- `<table_name>_profile_metrics` -- column-level statistics per time window
+- `<table_name>_drift_metrics` -- drift scores between consecutive windows
+
+## ML Model Monitoring
+
+For inference tables, use `InferenceLog` type with model ID, prediction, label, and timestamp columns. Tracks prediction distribution, label drift, and model performance over time.
+
+## Best Practices
+
+- Set appropriate granularities for your data update frequency
+- Use slicing expressions to detect drift in specific segments
+- Monitor the output tables via dashboards or alerts
+- The Python SDK package is `databricks.lakehouse_monitoring`

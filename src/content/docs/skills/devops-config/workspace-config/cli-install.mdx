@@ -1,0 +1,52 @@
+---
+title: CLI Installation
+description: Install the Databricks CLI on macOS, Windows, or Linux with verification and troubleshooting.
+sidebar:
+  order: 2
+---
+
+## Installation Methods
+
+### macOS (Homebrew)
+
+```bash
+brew tap databricks/tap
+brew install databricks
+```
+
+### Linux (curl)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+```
+
+### Windows (WinGet)
+
+```powershell
+winget install Databricks.DatabricksCLI
+```
+
+## Verification
+
+```bash
+databricks --version
+# Expected: Databricks CLI v0.292.0 or later
+```
+
+## Sandboxed Environments
+
+For IDE containers or sandboxed environments without Homebrew:
+
+```bash
+# User directory install (no sudo)
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh -s -- --install-dir ~/.local/bin
+```
+
+## Minimum Version
+
+Many features require Databricks CLI >= v0.292.0. Update with:
+
+```bash
+brew upgrade databricks  # macOS
+# or re-run the install script for Linux
+```

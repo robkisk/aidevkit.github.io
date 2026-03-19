@@ -1,0 +1,60 @@
+---
+title: Platform Guide
+description: Universal platform rules for Databricks Apps including permissions, resource injection, authentication, deployment, and runtime constraints.
+sidebar:
+  order: 5
+---
+
+Universal platform rules that apply to all Databricks Apps regardless of framework.
+
+## Service Principal Permissions
+
+When you declare a resource in `databricks.yml` with a `permission` field, the platform auto-grants that permission to the app's SP on deployment:
+
+```yaml
+resources:
+  apps:
+    my_app:
+      resources:
+        - name: my-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+```
+
+### Default Permissions by Resource Type
+
+| Resource Type | Default Permission |
+|---------------|-------------------|
+| SQL Warehouse | CAN_USE |
+| Model Serving Endpoint | CAN_QUERY |
+| Lakebase Database | CAN_CONNECT_AND_CREATE |
+| Volume (UC) | READ_VOLUME |
+| Secret Scope | READ |
+
+## Authentication: OBO vs Service Principal
+
+| Context | Token Source | Use Case |
+|---------|-------------|----------|
+| **Service Principal** | Auto-injected env vars | Background tasks, shared data |
+| **On-Behalf-Of** | `x-forwarded-access-token` header | User-specific data, audit trails |
+
+## Runtime Environment
+
+| Constraint | Value |
+|------------|-------|
+| Max file size | 10 MB per file |
+| Compute | Medium (6 GB, 2 vCPU) or Large (12 GB, 4 vCPU) |
+| Startup deadline | 10 minutes |
+| Max apps per workspace | 100 |
+| HTTP request timeout | 120 seconds (proxy-enforced) |
+| Graceful shutdown | SIGTERM, 15 seconds, then SIGKILL |
+
+## Common Errors
+
+| Error | Fix |
+|-------|-----|
+| `PERMISSION_DENIED` after deploy | Grant SP access to declared resources |
+| App deploys but config unchanged | Also run `bundle run` after `bundle deploy` |
+| `File is larger than 10485760 bytes` | Use requirements.txt / package.json |
+| 504 Gateway Timeout | Use WebSockets for operations exceeding 120s |

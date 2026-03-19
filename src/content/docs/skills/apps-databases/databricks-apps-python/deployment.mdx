@@ -1,0 +1,82 @@
+---
+title: Deployment
+description: Deploy Databricks Apps via CLI, Asset Bundles (DABs), or MCP tools with app.yaml configuration and post-deployment verification.
+sidebar:
+  order: 4
+---
+
+Three deployment options: Databricks CLI (simplest), Asset Bundles (multi-environment), or MCP tools (programmatic).
+
+## Option 1: Databricks CLI
+
+**Best for:** quick deployments, single environment.
+
+### app.yaml Commands Per Framework
+
+| Framework | Command |
+|-----------|---------|
+| Dash | `["python", "app.py"]` |
+| Streamlit | `["streamlit", "run", "app.py"]` |
+| Gradio | `["python", "app.py"]` |
+| Flask | `["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]` |
+| FastAPI | `["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]` |
+| Reflex | `["reflex", "run", "--env", "prod"]` |
+
+### Deploy Steps
+
+```bash
+# Create the app
+databricks apps create <app-name>
+
+# Upload source code
+databricks workspace mkdirs /Workspace/Users/<user>/apps/<app-name>
+databricks workspace import-dir . /Workspace/Users/<user>/apps/<app-name>
+
+# Deploy
+databricks apps deploy <app-name> \
+  --source-code-path /Workspace/Users/<user>/apps/<app-name>
+
+# Check status
+databricks apps get <app-name>
+```
+
+## Option 2: Asset Bundles (DABs)
+
+**Best for:** multi-environment deployments (dev/staging/prod), version-controlled infrastructure.
+
+```bash
+# Generate bundle from existing app
+databricks bundle generate app \
+  --existing-app-name <app-name> \
+  --key <resource_key>
+
+# Validate and deploy
+databricks bundle validate -t dev
+databricks bundle deploy -t dev
+databricks bundle run <resource_key> -t dev
+```
+
+Environment variables go in `src/app/app.yaml`, not `databricks.yml`.
+
+## Post-Deployment
+
+### Check Logs
+
+```bash
+databricks apps logs <app-name>
+```
+
+Key log patterns: `[SYSTEM]` for deployment status, `[APP]` for application output, `Deployment successful` and `App started successfully` for healthy state.
+
+### Verify
+
+1. Access app URL (from `databricks apps get <app-name>`)
+2. Check all pages load correctly
+3. Verify data connectivity in logs
+4. Test user authorization flow if enabled
+
+### Configure Permissions
+
+- Set `CAN USE` for approved users/groups
+- Set `CAN MANAGE` only for trusted developers
+- Verify service principal has required resource permissions

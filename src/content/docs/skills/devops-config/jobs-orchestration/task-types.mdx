@@ -1,0 +1,99 @@
+---
+title: Task Types
+description: Reference for all Databricks job task types -- notebook, Spark Python, SQL, SDP pipeline, dbt, and Python wheel tasks.
+sidebar:
+  order: 1
+---
+
+## Notebook Task
+
+The most common task type. Runs a notebook with optional base parameters.
+
+```python
+from databricks.sdk.service.jobs import Task, NotebookTask
+
+Task(
+    task_key="etl_main",
+    notebook_task=NotebookTask(
+        notebook_path="/Users/me/etl-pipeline",
+        base_parameters={"date": "2024-01-01", "env": "prod"}
+    ),
+    existing_cluster_id="0123-456789-abcdef"
+)
+```
+
+## Spark Python Task
+
+Runs a Python file with Spark context. File must be in workspace or DBFS.
+
+```python
+from databricks.sdk.service.jobs import Task, SparkPythonTask
+
+Task(
+    task_key="process",
+    spark_python_task=SparkPythonTask(
+        python_file="/Workspace/Users/me/process.py",
+        parameters=["--input", "raw", "--output", "cleaned"]
+    )
+)
+```
+
+## SQL Task
+
+Runs SQL statements against a warehouse. Supports queries, alerts, and dashboards.
+
+```python
+from databricks.sdk.service.jobs import Task, SqlTask, SqlTaskQuery
+
+Task(
+    task_key="refresh",
+    sql_task=SqlTask(
+        query=SqlTaskQuery(query_id="abc123"),
+        warehouse_id="def456"
+    )
+)
+```
+
+## SDP Pipeline Task
+
+Triggers a Spark Declarative Pipeline update.
+
+```python
+from databricks.sdk.service.jobs import Task, PipelineTask
+
+Task(
+    task_key="ingest",
+    pipeline_task=PipelineTask(
+        pipeline_id="pipeline-id-123",
+        full_refresh=False
+    )
+)
+```
+
+## Python Wheel Task
+
+Runs a packaged Python application distributed as a wheel.
+
+```python
+from databricks.sdk.service.jobs import Task, PythonWheelTask
+
+Task(
+    task_key="app",
+    python_wheel_task=PythonWheelTask(
+        package_name="my_package",
+        entry_point="main",
+        parameters=["--mode", "production"]
+    ),
+    libraries=[{"whl": "/Workspace/libs/my_package-1.0-py3-none-any.whl"}]
+)
+```
+
+## Multi-Task Dependencies
+
+```python
+Task(
+    task_key="transform",
+    depends_on=[TaskDependency(task_key="extract")],
+    notebook_task=NotebookTask(notebook_path="./transform.py")
+)
+```

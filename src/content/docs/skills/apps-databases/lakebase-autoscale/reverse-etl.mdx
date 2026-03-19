@@ -1,0 +1,59 @@
+---
+title: Reverse ETL
+description: Sync data from Unity Catalog Delta tables to Lakebase PostgreSQL using synced tables with snapshot, triggered, or continuous modes.
+sidebar:
+  order: 4
+---
+
+Reverse ETL syncs data from Unity Catalog Delta tables into Lakebase Autoscaling as PostgreSQL tables.
+
+## Sync Modes
+
+| Mode | Description | Best For |
+|------|-------------|----------|
+| **Snapshot** | One-time full copy | Initial setup |
+| **Triggered** | Scheduled on demand | Hourly/daily dashboards |
+| **Continuous** | Real-time streaming | Live applications |
+
+Triggered and Continuous modes require Change Data Feed (CDF) on the source table:
+
+```sql
+ALTER TABLE your_catalog.your_schema.your_table
+SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
+```
+
+## Creating Synced Tables
+
+```python
+from databricks.sdk.service.database import (
+    SyncedDatabaseTable, SyncedTableSpec,
+    NewPipelineSpec, SyncedTableSchedulingPolicy,
+)
+
+synced_table = w.database.create_synced_database_table(
+    SyncedDatabaseTable(
+        name="lakebase_catalog.schema.synced_table",
+        spec=SyncedTableSpec(
+            source_table_full_name="analytics.gold.user_profiles",
+            primary_key_columns=["user_id"],
+            scheduling_policy=SyncedTableSchedulingPolicy.TRIGGERED,
+            new_pipeline_spec=NewPipelineSpec(
+                storage_catalog="lakebase_catalog",
+                storage_schema="staging"
+            )
+        ),
+    )
+)
+```
+
+## Performance
+
+- Continuous writes: ~1,200 rows/sec per CU
+- Bulk writes: ~15,000 rows/sec per CU
+- Each synced table uses up to 16 connections
+
+## Capacity
+
+- 2 TB total across all synced tables
+- Recommend less than 1 TB per table
+- Only additive schema changes for Triggered/Continuous modes

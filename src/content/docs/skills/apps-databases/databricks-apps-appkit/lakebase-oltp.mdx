@@ -1,0 +1,84 @@
+---
+title: Lakebase OLTP
+description: Use Lakebase (PostgreSQL) in AppKit apps for CRUD operations, persistent state, and forms with tRPC patterns.
+sidebar:
+  order: 4
+---
+
+Use Lakebase when your app needs persistent read/write storage. For analytics dashboards reading from a SQL warehouse, use `config/queries/` instead.
+
+## Scaffolding
+
+```bash
+# Lakebase only
+databricks apps init --name <NAME> --features lakebase \
+  --set "lakebase.postgres.branch=<BRANCH_NAME>" \
+  --set "lakebase.postgres.database=<DATABASE_NAME>" \
+  --run none --profile <PROFILE>
+
+# Both Lakebase and analytics
+databricks apps init --name <NAME> --features analytics,lakebase \
+  --set "analytics.sql-warehouse.id=<WAREHOUSE_ID>" \
+  --set "lakebase.postgres.branch=<BRANCH_NAME>" \
+  --set "lakebase.postgres.database=<DATABASE_NAME>" \
+  --run none --profile <PROFILE>
+```
+
+## createLakebasePool API
+
+```typescript
+import { createLakebasePool } from "@databricks/lakebase";
+
+const pool = createLakebasePool(); // reads env vars automatically
+```
+
+Call `createLakebasePool()` once at module level, not inside request handlers.
+
+## tRPC CRUD Pattern
+
+```typescript
+export const appRouter = t.router({
+  listItems: t.procedure.query(async () => {
+    const { rows } = await pool.query(
+      "SELECT * FROM app_data.items ORDER BY created_at DESC LIMIT 100"
+    );
+    return rows;
+  }),
+
+  createItem: t.procedure
+    .input(z.object({ name: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const { rows } = await pool.query(
+        "INSERT INTO app_data.items (name) VALUES ($1) RETURNING *",
+        [input.name]
+      );
+      return rows[0];
+    }),
+});
+```
+
+## Schema Initialization
+
+The Service Principal cannot access the `public` schema. Always create a custom schema at startup:
+
+```typescript
+await pool.query(`
+  CREATE SCHEMA IF NOT EXISTS app_data;
+  CREATE TABLE IF NOT EXISTS app_data.items (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+`);
+```
+
+## Key Differences from Analytics
+
+| | Analytics | Lakebase |
+|--|-----------|---------|
+| SQL dialect | Databricks SQL | Standard PostgreSQL |
+| Query location | `config/queries/*.sql` | `pool.query()` in tRPC |
+| Data retrieval | `useAnalyticsQuery` | tRPC query procedure |
+| Params | Named (`:param`) | Positional (`$1, $2`) |
+
+**Never** use `useAnalyticsQuery` for Lakebase data. **Never** put Lakebase SQL in `config/queries/`.

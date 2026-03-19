@@ -1,0 +1,68 @@
+---
+title: System Tables
+description: Query Unity Catalog system tables for audit logs, lineage, billing, compute usage, and job monitoring.
+sidebar:
+  order: 1
+---
+
+System tables are read-only tables under the `system` catalog providing operational metadata across your Databricks workspace.
+
+## Available System Tables
+
+| Schema | Table | Description |
+|--------|-------|-------------|
+| `system.access` | `audit` | All audit events (table access, queries, logins) |
+| `system.access` | `column_lineage` | Column-level data lineage |
+| `system.access` | `table_lineage` | Table-level data lineage |
+| `system.billing` | `usage` | DBU consumption and billing records |
+| `system.billing` | `list_prices` | SKU pricing |
+| `system.compute` | `clusters` | Cluster configurations and state changes |
+| `system.compute` | `node_types` | Available node types |
+| `system.lakeflow` | `job_task_run_timeline` | Job task execution details |
+| `system.lakeflow` | `pipeline_event_log` | SDP pipeline events |
+| `system.storage` | `predictive_optimization_operations_history` | Table maintenance operations |
+
+## Common Queries
+
+### Recent Table Access
+
+```sql
+SELECT
+  event_time, action_name, user_identity.email,
+  request_params.full_name_arg
+FROM system.access.audit
+WHERE action_name IN ('getTable', 'commandSubmit')
+  AND event_date >= current_date() - INTERVAL 1 DAY
+ORDER BY event_time DESC
+LIMIT 100
+```
+
+### Billing by SKU
+
+```sql
+SELECT
+  sku_name,
+  SUM(usage_quantity) as total_dbus,
+  SUM(usage_quantity * list_prices.pricing.default) as estimated_cost
+FROM system.billing.usage
+JOIN system.billing.list_prices USING (sku_name)
+WHERE usage_date >= current_date() - INTERVAL 30 DAY
+GROUP BY sku_name
+ORDER BY estimated_cost DESC
+```
+
+### Table Lineage
+
+```sql
+SELECT
+  source_table_full_name, target_table_full_name, event_time
+FROM system.access.table_lineage
+WHERE target_table_full_name = 'my_catalog.my_schema.my_table'
+ORDER BY event_time DESC
+```
+
+## Prerequisites
+
+- Account admin or metastore admin to enable system tables
+- System tables must be explicitly enabled per schema
+- Data retention varies by table (typically 365 days for audit)

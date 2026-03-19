@@ -1,0 +1,49 @@
+---
+title: CLI Authentication
+description: Configure Databricks CLI authentication with OAuth2, profile management, and troubleshooting.
+sidebar:
+  order: 1
+---
+
+## Always Use OAuth
+
+Never use Personal Access Tokens (PATs). Use OAuth2 for all CLI authentication:
+
+```bash
+# Interactive OAuth login
+databricks auth login --host https://my-workspace.cloud.databricks.com -p my-profile
+
+# Verify token
+databricks auth token -p my-profile
+
+# Use profile in all commands
+databricks clusters list --profile my-profile
+```
+
+## Profile Management
+
+Profiles are stored in `~/.databrickscfg`:
+
+```ini
+[my-profile]
+host = https://my-workspace.cloud.databricks.com
+auth_type = databricks-cli
+cluster_id = 0123-456789-abcdef
+```
+
+### Environment Variable
+
+Set `DATABRICKS_CONFIG_PROFILE` (not `DATABRICKS_PROFILE`) for SDK authentication:
+
+```bash
+export DATABRICKS_CONFIG_PROFILE=my-profile
+```
+
+## Troubleshooting
+
+| Error | Solution |
+|-------|----------|
+| `cannot configure default credentials` | Use `--profile` flag or run `databricks auth login` |
+| Token expired | Re-authenticate with `databricks auth login -p <profile>` |
+| Wrong workspace | Check profile with `databricks auth env -p <profile>` |
+| SDK auth fails | Use `DATABRICKS_CONFIG_PROFILE`, not `DATABRICKS_PROFILE` |

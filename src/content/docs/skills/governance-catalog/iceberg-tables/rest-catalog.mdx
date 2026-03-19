@@ -1,0 +1,26 @@
+---
+title: Iceberg REST Catalog
+description: Expose Databricks tables to external engines via the IRC endpoint with authentication and credential vending.
+sidebar:
+  order: 3
+---
+
+The Iceberg REST Catalog (IRC) lets external engines read and write Databricks-managed Iceberg data using the standard Apache Iceberg REST Catalog protocol.
+
+External tools connect to the IRC endpoint, authenticate, and receive vended credentials for direct cloud storage access.
+
+## Endpoint
+
+```
+https://<workspace-host>/api/2.1/unity-catalog/iceberg
+```
+
+## Authentication
+
+- PAT (Personal Access Token) or OAuth M2M
+- `EXTERNAL USE SCHEMA` grants for external engine access
+- Credential vending provides temporary cloud storage credentials
+
+## Supported Operations
+
+External engines can list namespaces, list tables, load table metadata, and read/write data (for managed Iceberg tables).

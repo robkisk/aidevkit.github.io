@@ -1,0 +1,93 @@
+---
+title: Workspace Config
+description: Databricks CLI operations -- authentication, profiles, workspace management, data exploration, and Declarative Automation Bundles.
+sidebar:
+  order: 3
+---
+
+## Overview
+
+The Workspace Config skill teaches Claude Code how to manage Databricks workspace connections, CLI authentication, profile switching, data exploration, and Declarative Automation Bundles (DABs) via the Databricks CLI. It also covers workspace management via MCP tools for checking status, listing workspaces, and switching profiles.
+
+## Capabilities
+
+- Install and configure the Databricks CLI (OAuth2, never PAT)
+- Manage workspace profiles and switch between environments
+- Explore data with table search, schema discovery, and SQL execution
+- Initialize and manage Declarative Automation Bundles
+- Check workspace status, list available workspaces, and switch profiles via MCP
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `manage_workspace` | Check status, list workspaces, switch profiles, authenticate |
+| `execute_sql` | Run SQL queries for data exploration |
+| `get_best_warehouse` | Find an available SQL warehouse |
+| `get_best_cluster` | Find an available compute cluster |
+
+## Example Prompts
+
+```
+Check which Databricks workspace I'm currently connected to
+```
+
+```
+Switch to my production workspace profile
+```
+
+```
+Search for tables containing 'customer' in the analytics catalog
+```
+
+```
+Initialize a new DAB project with a notebook job
+```
+
+## Workspace Management
+
+Use the `manage_workspace` MCP tool for all workspace operations:
+
+| Action | Description |
+|--------|-------------|
+| `status` | Show current workspace, profile, and user |
+| `list` | List all available workspace profiles |
+| `switch` | Switch to a different profile |
+| `login` | Authenticate to a new workspace |
+
+The switch is session-scoped. For permanent setup: `databricks auth login -p <profile>`.
+
+## CLI Authentication
+
+Always use OAuth2 (never PAT):
+
+```bash
+# Login with OAuth
+databricks auth login --host https://my-workspace.cloud.databricks.com -p my-profile
+
+# Verify
+databricks auth token -p my-profile
+
+# Use profile in commands
+databricks clusters list --profile my-profile
+```
+
+Set `DATABRICKS_CONFIG_PROFILE` (not `DATABRICKS_PROFILE`) for SDK auth.
+
+## Data Exploration
+
+```bash
+# Search for tables
+databricks tables list --catalog main --schema default --profile my-profile
+
+# Execute SQL
+databricks sql execute --warehouse-id abc123 \
+  --statement "SELECT * FROM main.default.orders LIMIT 10" \
+  --profile my-profile
+```
+
+## References
+
+- [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli)
+- [CLI Authentication](https://docs.databricks.com/aws/en/dev-tools/auth)
+- [OAuth Federation](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-federation)

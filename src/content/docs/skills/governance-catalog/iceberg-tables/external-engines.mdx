@@ -1,0 +1,43 @@
+---
+title: External Engine Interop
+description: Connect PyIceberg, OSS Spark, AWS EMR, Apache Flink, and Kafka Connect to Databricks via the Iceberg REST Catalog.
+sidebar:
+  order: 5
+---
+
+Connect external engines to Databricks via the Iceberg REST Catalog (IRC). Each engine uses the standard Iceberg REST Catalog protocol.
+
+## Supported Engines
+
+- **PyIceberg** -- Python library for Iceberg operations
+- **OSS Spark** -- Open-source Apache Spark
+- **AWS EMR** -- Amazon Elastic MapReduce
+- **Apache Flink** -- Stream processing
+- **Kafka Connect** -- Kafka sink connector
+
+## Common Configuration
+
+All engines connect to the same IRC endpoint:
+
+```
+https://<workspace-host>/api/2.1/unity-catalog/iceberg
+```
+
+Authentication uses PAT or OAuth M2M tokens. External engines receive vended credentials for direct cloud storage access after authenticating.
+
+## PyIceberg Example
+
+Configure `pyiceberg.yaml` or environment variables:
+
+```yaml
+catalog:
+  databricks:
+    type: rest
+    uri: https://<workspace-host>/api/2.1/unity-catalog/iceberg
+    credential: <pat-token>
+    warehouse: <catalog-name>
+```
+
+## Version Requirements
+
+Iceberg v3 tables require Iceberg library 1.9.0+. Ensure external engines use a compatible library version.

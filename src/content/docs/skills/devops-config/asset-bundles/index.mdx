@@ -1,0 +1,97 @@
+---
+title: Asset Bundles
+description: Create and configure Declarative Automation Bundles (DABs) for multi-environment deployments with dashboards, pipelines, jobs, and alerts.
+sidebar:
+  order: 1
+---
+
+## Overview
+
+The Asset Bundles skill teaches Claude Code how to create and manage Declarative Automation Bundles (formerly Databricks Asset Bundles / DABs) for Infrastructure-as-Code deployments. It covers project creation, resource configuration (dashboards, SDP pipelines, jobs, alerts), multi-environment targets (dev/staging/prod), permissions, and deployment workflows.
+
+## Capabilities
+
+- Create new DAB projects with `databricks bundle init`
+- Add resources: dashboards, SDP pipelines, jobs, alerts, apps
+- Configure multi-environment targets with variable overrides
+- Set permissions per environment using `run_as` and `permissions`
+- Validate, deploy, and run bundles with the Databricks CLI
+- Configure SDP pipeline resources with streaming or batch patterns
+- Set up SQL alerts with proper schema validation
+
+## Related MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `manage_jobs` | Create and manage jobs |
+| `manage_job_runs` | Trigger and monitor job runs |
+| `create_or_update_pipeline` | Create SDP pipelines |
+| `create_or_update_dashboard` | Create dashboards |
+
+## Example Prompts
+
+```
+Create a new DAB project with a notebook job that runs
+daily on a serverless cluster
+```
+
+```
+Add a staging target to my bundle with a different SQL
+warehouse and run_as service principal
+```
+
+```
+Configure an SDP pipeline resource in my bundle with
+continuous execution mode
+```
+
+## Key Concepts
+
+### Bundle Structure
+
+```yaml
+bundle:
+  name: my-project
+
+resources:
+  jobs:
+    my_job:
+      name: my-etl-job
+      tasks:
+        - task_key: main
+          notebook_task:
+            notebook_path: ./src/main.py
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dev.cloud.databricks.com
+  prod:
+    workspace:
+      host: https://prod.cloud.databricks.com
+    run_as:
+      service_principal_name: prod-deployer
+```
+
+### Deployment Workflow
+
+```bash
+databricks bundle validate -t dev
+databricks bundle deploy -t dev
+databricks bundle run my_job -t dev
+```
+
+### Best Practices
+
+- Always validate before deployment
+- Use environment-specific variables in `targets`
+- Keep sensitive values in environment variables
+- Use the Direct Deployment Engine for faster deploys
+
+## References
+
+- [DABs Documentation](https://docs.databricks.com/aws/en/dev-tools/bundles)
+- [Bundle Examples](https://github.com/databricks/bundle-examples)
+- [Bundle Settings](https://docs.databricks.com/aws/en/dev-tools/bundles/settings)
+- [Direct Deployment Engine](https://docs.databricks.com/aws/en/dev-tools/bundles/direct)

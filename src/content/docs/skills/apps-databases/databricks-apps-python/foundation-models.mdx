@@ -1,0 +1,104 @@
+---
+title: Foundation Model Integration
+description: Call Databricks foundation model APIs from apps using OAuth M2M auth, OpenAI-compatible clients, token caching, and parallel execution patterns.
+sidebar:
+  order: 6
+---
+
+Production patterns for integrating Databricks foundation model APIs into apps, including OAuth M2M authentication, OpenAI SDK wiring, token caching, structured outputs, and parallel execution.
+
+## LLM Configuration
+
+The `llm_config` module provides dual-mode auth (OAuth M2M in Apps, PAT for local dev), OpenAI client wiring, and token caching:
+
+```python
+from llm_config import create_foundation_model_client, get_model_name
+
+client = create_foundation_model_client()
+model = get_model_name()
+
+resp = client.chat.completions.create(
+    model=model,
+    messages=[{"role": "user", "content": "Hello!"}],
+    max_tokens=1000,
+    temperature=0.7,
+)
+```
+
+### Required Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DATABRICKS_SERVING_BASE_URL` | `https://<workspace>/serving-endpoints` |
+| `DATABRICKS_MODEL` | Serving endpoint name |
+| `DATABRICKS_CLIENT_ID` + `DATABRICKS_CLIENT_SECRET` | OAuth M2M (auto-injected in Apps) |
+| `DATABRICKS_TOKEN` | PAT (local dev fallback) |
+
+## Structured Outputs
+
+Use `temperature=0.0` for deterministic structured outputs with retry on parse failure:
+
+```python
+def llm_structured_call(client, system_prompt, user_prompt):
+    response = client.chat.completions.create(
+        model=get_model_name(),
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=2000,
+        temperature=0.0,
+    )
+    content = response.choices[0].message.content
+    # Parse JSON, retry with stricter prompt if needed
+    return parse_json_object(content)
+```
+
+### Robust JSON Parsing
+
+Handle common failure modes: markdown code fences, smart quotes, extra text around JSON:
+
+```python
+import json, re
+
+def parse_json_object(text):
+    text = text.strip()
+    # Strip markdown code fences
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n", "", text)
+        text = re.sub(r"```$", "", text).strip()
+    # Extract first {...} block
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        text = text[start:end + 1]
+    # Normalize smart quotes
+    text = text.replace("\u201c", '"').replace("\u201d", '"')
+    return json.loads(text)
+```
+
+## Parallel Execution
+
+Run multiple independent LLM calls concurrently for improved performance:
+
+```python
+from llm_config import run_jobs_parallel
+
+jobs = {
+    "structure": (check_structure, (client, text), {}),
+    "summary": (check_summary, (client, text), {}),
+    "examples": (check_examples, (client, text), {}),
+}
+
+results, errors = run_jobs_parallel(jobs)
+# Serial: 3 calls x 2s = 6s; Parallel: ~2-3s
+```
+
+Control concurrency with the `LLM_MAX_CONCURRENCY` environment variable (default: 5).
+
+## Best Practices
+
+- Use `temperature=0.0` for structured outputs, `0.2-0.7` for creative tasks
+- Cache expensive calls with `@st.cache_data(ttl=3600)` in Streamlit
+- Set `timeout=30` on all HTTP requests to prevent hanging connections
+- Use explicit JSON schemas in system prompts for reliable structured outputs
+- Implement retry logic for parse failures with stricter prompts

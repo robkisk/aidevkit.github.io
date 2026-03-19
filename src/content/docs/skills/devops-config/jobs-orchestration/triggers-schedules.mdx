@@ -1,0 +1,69 @@
+---
+title: Triggers and Schedules
+description: Configure cron schedules, periodic triggers, file arrival triggers, and table/storage change triggers for Databricks jobs.
+sidebar:
+  order: 2
+---
+
+## Cron Schedule
+
+Standard cron expressions with timezone support:
+
+```python
+from databricks.sdk.service.jobs import CronSchedule
+
+schedule = CronSchedule(
+    quartz_cron_expression="0 0 6 * * ?",  # Daily at 6am
+    timezone_id="America/New_York",
+    pause_status="UNPAUSED"
+)
+```
+
+Common patterns:
+- `0 0 6 * * ?` -- Daily at 6am
+- `0 0 */2 * * ?` -- Every 2 hours
+- `0 0 9 ? * MON-FRI` -- Weekdays at 9am
+- `0 30 8 1 * ?` -- First of month at 8:30am
+
+## Periodic Trigger
+
+Run every N time units:
+
+```python
+from databricks.sdk.service.jobs import PeriodicTriggerConfiguration
+
+trigger = PeriodicTriggerConfiguration(
+    interval=2,
+    unit="HOURS"
+)
+```
+
+Units: `HOURS`, `DAYS`, `WEEKS`.
+
+## File Arrival Trigger
+
+Trigger when new files appear in cloud storage:
+
+```python
+from databricks.sdk.service.jobs import FileArrivalTriggerConfiguration
+
+trigger = FileArrivalTriggerConfiguration(
+    url="s3://my-bucket/incoming/",
+    min_time_between_triggers_seconds=300,
+    wait_after_last_change_seconds=60
+)
+```
+
+## Table Update Trigger
+
+Trigger when a Delta table is updated:
+
+```python
+from databricks.sdk.service.jobs import TableUpdateTriggerConfiguration
+
+trigger = TableUpdateTriggerConfiguration(
+    table_names=["main.bronze.raw_events"],
+    condition="ALL_UPDATED",
+    min_time_between_triggers_seconds=600
+)
+```

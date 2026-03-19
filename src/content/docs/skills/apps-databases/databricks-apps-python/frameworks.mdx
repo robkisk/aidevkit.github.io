@@ -1,0 +1,146 @@
+---
+title: Supported Frameworks
+description: Databricks-specific patterns for Dash, Streamlit, Gradio, Flask, FastAPI, and Reflex with auth integration and deployment commands.
+sidebar:
+  order: 3
+---
+
+All frameworks below are pre-installed in the Databricks Apps runtime. This guide covers Databricks-specific patterns only. For full examples, see the [Databricks Apps Cookbook](https://apps-cookbook.dev/).
+
+## Dash
+
+**Best for:** Production dashboards, BI tools, complex interactive visualizations.
+
+```python
+import dash
+import dash_bootstrap_components as dbc
+
+app = dash.Dash(
+    __name__,
+    external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME],
+    title="My Dashboard",
+)
+```
+
+| Detail | Value |
+|--------|-------|
+| Pre-installed version | 2.18.1 |
+| app.yaml command | `["python", "app.py"]` |
+| Auth header | `request.headers.get('x-forwarded-access-token')` |
+
+Always use `dash-bootstrap-components` for layout and styling. Override the default port: `app.run(port=int(os.environ.get("DATABRICKS_APP_PORT", 8000)))`.
+
+## Streamlit
+
+**Best for:** Rapid prototyping, data science apps, internal tools.
+
+```python
+import streamlit as st
+from databricks.sdk.core import Config
+from databricks import sql
+
+st.set_page_config(page_title="My App", layout="wide")  # Must be first!
+
+@st.cache_resource(ttl=300)
+def get_connection():
+    cfg = Config()
+    return sql.connect(
+        server_hostname=cfg.host,
+        http_path="/sql/1.0/warehouses/<id>",
+        credentials_provider=lambda: cfg.authenticate,
+    )
+```
+
+| Detail | Value |
+|--------|-------|
+| Pre-installed version | 1.38.0 |
+| app.yaml command | `["streamlit", "run", "app.py"]` |
+| Auth header | `st.context.headers.get('x-forwarded-access-token')` |
+
+Always use `@st.cache_resource` for connections and `@st.cache_data(ttl=...)` for query results.
+
+## Gradio
+
+**Best for:** ML model demos, chat interfaces, image/audio/video processing UIs.
+
+```python
+import os, gradio as gr
+from databricks.sdk.core import Config
+
+cfg = Config()
+
+def predict(message, request: gr.Request):
+    user_token = request.headers.get("x-forwarded-access-token")
+    # Query model serving endpoint...
+    return response
+
+demo = gr.Interface(fn=predict, inputs="text", outputs="text")
+port = int(os.environ.get("DATABRICKS_APP_PORT", 8000))
+demo.launch(server_name="0.0.0.0", server_port=port)
+```
+
+## Flask
+
+**Best for:** Custom REST APIs, lightweight web apps, webhook receivers.
+
+Deploy with Gunicorn -- never use Flask's dev server in production.
+
+```python
+from flask import Flask, request, jsonify
+app = Flask(__name__)
+
+@app.route("/api/data")
+def get_data():
+    # ... query logic ...
+    return jsonify(rows)
+```
+
+| Detail | Value |
+|--------|-------|
+| app.yaml command | `["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]` |
+
+## FastAPI
+
+**Best for:** Modern async APIs, auto-generated OpenAPI/Swagger docs.
+
+```python
+from fastapi import FastAPI, Request
+app = FastAPI(title="My API")
+
+@app.get("/api/data")
+async def get_data(request: Request):
+    user_token = request.headers.get("x-forwarded-access-token")
+    # ... query logic ...
+```
+
+| Detail | Value |
+|--------|-------|
+| app.yaml command | `["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]` |
+
+## Reflex
+
+**Best for:** Full-stack Python apps with reactive UIs, no JavaScript required.
+
+```python
+import reflex as rx
+from databricks.sdk.core import Config
+
+cfg = Config()
+
+class State(rx.State):
+    data: list[dict] = []
+    def load_data(self):
+        from databricks import sql
+        conn = sql.connect(...)
+        # ... query logic ...
+```
+
+| Detail | Value |
+|--------|-------|
+| app.yaml command | `["reflex", "run", "--env", "prod"]` |
+
+## Common Rules
+
+- All frameworks are pre-installed -- only add extra packages to `requirements.txt`
+- SDK `Config()` auto-detects credentials from injected environment variables
+- Apps must bind to `DATABRICKS_APP_PORT` env var (defaults to 8000, never use 8080)

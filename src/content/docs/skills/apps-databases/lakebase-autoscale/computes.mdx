@@ -1,0 +1,49 @@
+---
+title: Computes
+description: Configure autoscaling compute sizing (0.5-112 CU), scale-to-zero, and read replicas for Lakebase Autoscaling.
+sidebar:
+  order: 2
+---
+
+A compute is a virtualized service that runs Postgres for a branch. Each branch has one primary R/W compute and optional read replicas.
+
+## Compute Sizing
+
+Each CU allocates approximately 2 GB of RAM.
+
+| Compute Units | RAM | Max Connections |
+|--------------|-----|-----------------|
+| 0.5 CU | ~1 GB | 104 |
+| 4 CU | ~8 GB | 839 |
+| 8 CU | ~16 GB | 1,678 |
+| 32 CU | ~64 GB | 4,000 |
+| 112 CU | ~224 GB | 4,000 |
+
+## Autoscaling
+
+- Range: 0.5-32 CU
+- Constraint: Max - Min cannot exceed 8 CU
+- Valid: 4-8 CU, 8-16 CU. Invalid: 0.5-32 CU.
+
+```python
+from databricks.sdk.service.postgres import Endpoint, EndpointSpec, FieldMask
+
+w.postgres.update_endpoint(
+    name="projects/my-app/branches/production/endpoints/ep-primary",
+    endpoint=Endpoint(
+        name="projects/my-app/branches/production/endpoints/ep-primary",
+        spec=EndpointSpec(autoscaling_limit_min_cu=2.0, autoscaling_limit_max_cu=8.0)
+    ),
+    update_mask=FieldMask(field_mask=[
+        "spec.autoscaling_limit_min_cu", "spec.autoscaling_limit_max_cu"
+    ])
+).wait()
+```
+
+## Scale-to-Zero
+
+Automatically suspends compute after inactivity. Default timeout: 5 minutes (minimum: 60 seconds).
+
+When a connection arrives on a suspended compute, it starts automatically in a few hundred milliseconds. Applications should implement connection retry logic for the brief reactivation period.
+
+Session context (statistics, temp tables, prepared statements) resets on reactivation.

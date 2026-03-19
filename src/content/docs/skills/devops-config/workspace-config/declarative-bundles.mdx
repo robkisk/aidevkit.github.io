@@ -1,0 +1,68 @@
+---
+title: Declarative Automation Bundles
+description: Infrastructure-as-Code for Databricks resources with version control, automated deployments, and environment management.
+sidebar:
+  order: 4
+---
+
+Declarative Automation Bundles (DABs, formerly Databricks Asset Bundles) provide Infrastructure-as-Code for Databricks resources.
+
+## Project Structure
+
+```
+my-project/
+├── databricks.yml          # Bundle configuration
+├── resources/
+│   ├── my_job.yml          # Job definitions
+│   └── my_pipeline.yml     # Pipeline definitions
+├── src/
+│   ├── notebook.py         # Source code
+│   └── main.py
+└── tests/
+```
+
+## Bundle Lifecycle
+
+```bash
+# Initialize a new project
+databricks bundle init default-python --profile <PROFILE>
+
+# Validate configuration
+databricks bundle validate -t dev
+
+# Deploy to workspace
+databricks bundle deploy -t dev
+
+# Run a specific resource
+databricks bundle run my_job -t dev
+
+# Destroy deployed resources
+databricks bundle destroy -t dev
+```
+
+## Multi-Environment Configuration
+
+```yaml
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dev.cloud.databricks.com
+    variables:
+      catalog: dev_catalog
+  prod:
+    workspace:
+      host: https://prod.cloud.databricks.com
+    run_as:
+      service_principal_name: prod-deployer
+    variables:
+      catalog: prod_catalog
+```
+
+## Best Practices
+
+- Validate before every deployment
+- Use `run_as` with service principals in production
+- Keep secrets in environment variables, not in YAML
+- Use the Direct Deployment Engine for faster deploys
+- Reference resources across files with `${resources.jobs.name.id}`

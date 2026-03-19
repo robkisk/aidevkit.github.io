@@ -1,0 +1,70 @@
+---
+title: Notifications and Monitoring
+description: Configure email, webhook, PagerDuty, and Slack notifications with health rules and SLA monitoring for Databricks jobs.
+sidebar:
+  order: 3
+---
+
+## Email Notifications
+
+```python
+from databricks.sdk.service.jobs import JobEmailNotifications
+
+notifications = JobEmailNotifications(
+    on_failure=["team@example.com"],
+    on_success=["team@example.com"],
+    on_start=["oncall@example.com"],
+    on_duration_warning_threshold_exceeded=["oncall@example.com"],
+    no_alert_for_skipped_runs=True
+)
+```
+
+## Webhook Notifications
+
+```python
+from databricks.sdk.service.jobs import WebhookNotifications, Webhook
+
+notifications = WebhookNotifications(
+    on_failure=[Webhook(id="webhook-id-123")],
+    on_success=[Webhook(id="webhook-id-456")]
+)
+```
+
+Webhook destinations are configured at the workspace level.
+
+## Health Rules
+
+Monitor job duration and set SLAs:
+
+```python
+from databricks.sdk.service.jobs import JobsHealthRule, JobsHealthMetric, JobsHealthOperator
+
+health = {
+    "rules": [
+        JobsHealthRule(
+            metric=JobsHealthMetric.RUN_DURATION_SECONDS,
+            op=JobsHealthOperator.GREATER_THAN,
+            value=7200  # 2 hours
+        )
+    ]
+}
+```
+
+When exceeded, triggers `on_duration_warning_threshold_exceeded` notifications.
+
+## Budget Policies
+
+Control job costs with budget enforcement:
+
+```python
+budget_policy_id = "policy-id-123"
+```
+
+Budget policies are configured at the workspace level and referenced by ID.
+
+## Monitoring Best Practices
+
+- Set health rules for all production jobs
+- Use `on_failure` notifications for immediate alerting
+- Configure `on_duration_warning_threshold_exceeded` for SLA breaches
+- Use `no_alert_for_skipped_runs=True` to reduce noise from concurrent run limits

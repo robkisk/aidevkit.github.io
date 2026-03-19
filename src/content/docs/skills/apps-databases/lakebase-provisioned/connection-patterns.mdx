@@ -1,0 +1,76 @@
+---
+title: Connection Patterns
+description: Connect to Lakebase Provisioned with psycopg, SQLAlchemy token refresh, static URLs, and DNS workarounds.
+sidebar:
+  order: 1
+---
+
+## Direct psycopg Connection
+
+```python
+import psycopg
+from databricks.sdk import WorkspaceClient
+import uuid
+
+def get_connection(instance_name, database_name="postgres"):
+    w = WorkspaceClient()
+    instance = w.database.get_database_instance(name=instance_name)
+    cred = w.database.generate_database_credential(
+        request_id=str(uuid.uuid4()),
+        instance_names=[instance_name]
+    )
+    conn_string = (
+        f"host={instance.read_write_dns} dbname={database_name} "
+        f"user={w.current_user.me().user_name} "
+        f"password={cred.token} sslmode=require"
+    )
+    return psycopg.connect(conn_string)
+```
+
+## SQLAlchemy with Token Refresh
+
+For production apps, inject tokens via SQLAlchemy event hooks and refresh every 50 minutes:
+
+```python
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import create_async_engine
+
+engine = create_async_engine(url, pool_recycle=3600, connect_args={"sslmode": "require"})
+
+@event.listens_for(engine.sync_engine, "do_connect")
+def provide_token(dialect, conn_rec, cargs, cparams):
+    cparams["password"] = _current_token
+```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `LAKEBASE_PG_URL` | Static PostgreSQL URL (local dev) |
+| `LAKEBASE_INSTANCE_NAME` | Instance name |
+| `LAKEBASE_DATABASE_NAME` | Database name |
+| `DB_POOL_SIZE` | Connection pool size (default: 5) |
+
+## Reverse ETL
+
+Sync Delta tables to PostgreSQL with snapshot, triggered, or continuous modes:
+
+```python
+from databricks.sdk.service.database import (
+    SyncedDatabaseTable, SyncedTableSpec, SyncedTableSchedulingPolicy,
+)
+
+w.database.create_synced_database_table(
+    SyncedDatabaseTable(
+        name="lakebase_catalog.schema.synced_table",
+        database_instance_name="my-instance",
+        spec=SyncedTableSpec(
+            source_table_full_name="analytics.gold.user_profiles",
+            primary_key_columns=["user_id"],
+            scheduling_policy=SyncedTableSchedulingPolicy.TRIGGERED,
+        ),
+    )
+)
+```
+
+Triggered and Continuous modes require Change Data Feed enabled on the source table.

@@ -1,0 +1,97 @@
+---
+title: Complete Examples
+description: End-to-end examples of ETL pipelines, scheduled refreshes, and event-driven jobs with Databricks Lakeflow Jobs.
+sidebar:
+  order: 4
+---
+
+## ETL Pipeline with Multiple Tasks
+
+```python
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.jobs import (
+    Task, NotebookTask, TaskDependency,
+    CronSchedule, JobEmailNotifications,
+)
+
+w = WorkspaceClient()
+
+job = w.jobs.create(
+    name="daily-etl-pipeline",
+    tasks=[
+        Task(
+            task_key="extract",
+            notebook_task=NotebookTask(
+                notebook_path="/Workspace/etl/extract"
+            ),
+        ),
+        Task(
+            task_key="transform",
+            depends_on=[TaskDependency(task_key="extract")],
+            notebook_task=NotebookTask(
+                notebook_path="/Workspace/etl/transform"
+            ),
+        ),
+        Task(
+            task_key="load",
+            depends_on=[TaskDependency(task_key="transform")],
+            notebook_task=NotebookTask(
+                notebook_path="/Workspace/etl/load"
+            ),
+        ),
+    ],
+    schedule=CronSchedule(
+        quartz_cron_expression="0 0 6 * * ?",
+        timezone_id="UTC"
+    ),
+    email_notifications=JobEmailNotifications(
+        on_failure=["data-team@example.com"]
+    ),
+)
+```
+
+## DAB Job Configuration
+
+```yaml
+resources:
+  jobs:
+    daily_etl:
+      name: daily-etl-pipeline
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: UTC
+      email_notifications:
+        on_failure:
+          - data-team@example.com
+      tasks:
+        - task_key: extract
+          notebook_task:
+            notebook_path: ./src/extract.py
+        - task_key: transform
+          depends_on:
+            - task_key: extract
+          notebook_task:
+            notebook_path: ./src/transform.py
+        - task_key: load
+          depends_on:
+            - task_key: transform
+          notebook_task:
+            notebook_path: ./src/load.py
+```
+
+## Event-Driven Job
+
+```yaml
+resources:
+  jobs:
+    process_uploads:
+      name: process-new-uploads
+      trigger:
+        file_arrival:
+          url: s3://data-lake/incoming/
+          min_time_between_triggers_seconds: 300
+      tasks:
+        - task_key: process
+          notebook_task:
+            notebook_path: ./src/process_uploads.py
+```

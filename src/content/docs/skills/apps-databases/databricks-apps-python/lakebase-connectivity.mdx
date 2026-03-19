@@ -1,0 +1,108 @@
+---
+title: Lakebase Connectivity
+description: Connect Databricks Apps to Lakebase (managed PostgreSQL) using psycopg2, asyncpg, or SQLAlchemy with auto-injected environment variables.
+sidebar:
+  order: 5
+---
+
+Lakebase provides low-latency transactional storage for Databricks Apps via a managed PostgreSQL interface.
+
+## When to Use Lakebase
+
+| Use Case | Recommended Backend |
+|----------|-------------------|
+| Analytical queries on Delta tables | SQL Warehouse |
+| Low-latency transactional CRUD | **Lakebase** |
+| App-specific metadata/config | **Lakebase** |
+| User session data | **Lakebase** |
+
+## Setup
+
+1. Add Lakebase as an app resource (resource type: **Lakebase database**)
+2. Databricks auto-injects PostgreSQL connection env vars:
+
+| Variable | Description |
+|----------|-------------|
+| `PGHOST` | Database hostname |
+| `PGDATABASE` | Database name |
+| `PGUSER` | PostgreSQL role |
+| `PGPASSWORD` | Role password |
+| `PGPORT` | Port (typically 5432) |
+
+## Connection Patterns
+
+### psycopg2 (Synchronous)
+
+```python
+import os, psycopg2
+
+conn = psycopg2.connect(
+    host=os.getenv("PGHOST"),
+    database=os.getenv("PGDATABASE"),
+    user=os.getenv("PGUSER"),
+    password=os.getenv("PGPASSWORD"),
+    port=os.getenv("PGPORT", "5432"),
+)
+```
+
+### asyncpg (Asynchronous)
+
+```python
+import os, asyncpg
+
+async def get_data():
+    conn = await asyncpg.connect(
+        host=os.getenv("PGHOST"),
+        database=os.getenv("PGDATABASE"),
+        user=os.getenv("PGUSER"),
+        password=os.getenv("PGPASSWORD"),
+        port=int(os.getenv("PGPORT", "5432")),
+    )
+    rows = await conn.fetch("SELECT * FROM my_table LIMIT 10")
+    await conn.close()
+    return rows
+```
+
+### SQLAlchemy
+
+```python
+import os
+from sqlalchemy import create_engine
+
+DATABASE_URL = (
+    f"postgresql://{os.getenv('PGUSER')}:{os.getenv('PGPASSWORD')}"
+    f"@{os.getenv('PGHOST')}:{os.getenv('PGPORT', '5432')}"
+    f"/{os.getenv('PGDATABASE')}"
+)
+engine = create_engine(DATABASE_URL)
+```
+
+### Streamlit with Lakebase
+
+```python
+import streamlit as st, psycopg2
+
+@st.cache_resource
+def get_db_connection():
+    return psycopg2.connect(
+        host=os.getenv("PGHOST"),
+        database=os.getenv("PGDATABASE"),
+        user=os.getenv("PGUSER"),
+        password=os.getenv("PGPASSWORD"),
+    )
+```
+
+## Critical: requirements.txt
+
+`psycopg2` and `asyncpg` are **NOT pre-installed**. You must include them:
+
+```
+psycopg2-binary
+```
+
+For async apps:
+```
+asyncpg
+```
+
+This is the most common cause of Lakebase app failures.
