@@ -706,6 +706,63 @@ def sync_reference(*, force: bool, dry_run: bool) -> list[str]:
     return log
 
 
+LANDING_PAGE = SITE_ROOT / "src/pages/index.astro"
+
+
+def sync_landing(*, dry_run: bool) -> list[str]:
+    """Update skill and MCP tool counts on the landing page."""
+    log: list[str] = []
+
+    skills = read_all_skills()
+    pages = read_all_mcp_tools()
+
+    # Count mapped skills + site-only skills (e.g., AppKit)
+    mapped_skills = sum(1 for name in skills if name in SKILL_MAP)
+    site_only_dirs = [
+        d
+        for d in (CONTENT_DIR / "skills").rglob("index.mdx")
+        if d.parent.name
+        not in {slug for _, slug in SKILL_MAP.values()}
+        | {"skills"}
+    ]
+    skill_count = mapped_skills + len(site_only_dirs)
+    tool_count = sum(len(t) for t in pages.values())
+
+    log.append(f"\n  Skills: {skill_count}, MCP Tools: {tool_count}")
+
+    if not LANDING_PAGE.exists():
+        log.append(f"  ERROR: Landing page not found: {LANDING_PAGE}")
+        return log
+
+    text = LANDING_PAGE.read_text()
+    original = text
+
+    # Update skill stat: match `stat: '<anything>',` followed by `title: 'Skills',`
+    text = re.sub(
+        r"(stat:\s*')[^']*(',\s*\n\s*title:\s*'Skills')",
+        rf"\g<1>{skill_count}\2",
+        text,
+    )
+    # Update MCP tool stat
+    text = re.sub(
+        r"(stat:\s*')[^']*(',\s*\n\s*title:\s*'MCP Tools')",
+        rf"\g<1>{tool_count}\2",
+        text,
+    )
+
+    if text == original:
+        log.append("  . no changes needed")
+        return log
+
+    if dry_run:
+        log.append(f"  ~ would update: {LANDING_PAGE.relative_to(SITE_ROOT)}")
+    else:
+        LANDING_PAGE.write_text(text)
+        log.append(f"  + updated: {LANDING_PAGE.relative_to(SITE_ROOT)}")
+
+    return log
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════
@@ -728,7 +785,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--only",
-        choices=["skills", "mcp-tools", "reference"],
+        choices=["skills", "mcp-tools", "reference", "landing"],
         help="Sync only the specified section",
     )
     parser.add_argument(
@@ -772,7 +829,7 @@ def main() -> None:
         print()
         return
 
-    sections = [args.only] if args.only else ["skills", "mcp-tools", "reference"]
+    sections = [args.only] if args.only else ["skills", "mcp-tools", "reference", "landing"]
 
     for section in sections:
         print(f"\n-- {section} --")
@@ -782,6 +839,8 @@ def main() -> None:
             log = sync_mcp_tools(force=force, dry_run=dry_run)
         elif section == "reference":
             log = sync_reference(force=force, dry_run=dry_run)
+        elif section == "landing":
+            log = sync_landing(dry_run=dry_run)
         else:
             continue
 
