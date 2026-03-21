@@ -1,88 +1,17 @@
 ---
-title: Data Modeling and DBSQL Best Practices
-description: Comprehensive reference for data modeling patterns, DBSQL performance optimization, and operational best practices on the Databricks Lakehouse Platform.
+title: Data Modeling & Best Practices
+description: Design star schemas, configure Liquid Clustering, and optimize query performance for sub-second dashboard loads.
 sidebar:
-  order: 99
+  order: 5
 ---
 
+## What You Can Build
 
+Good data modeling and clustering configuration are the difference between sub-second and multi-minute dashboard loads. Star schemas in the Gold layer, Liquid Clustering on the right columns, and a few optimization habits give you consistently fast analytics without manual tuning. The patterns here apply to any Databricks SQL workload -- dashboards, ad-hoc queries, and materialized views.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`ANALYZE TABLE ... COMPUTE STATISTICS FOR COLUMNS`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "Write SQL that creates a star schema with a fact table and a customer dimension table, both using Liquid Clustering and proper constraints."
 
 ```sql
 CREATE TABLE gold.sales.fact_orders (
@@ -94,387 +23,83 @@ CREATE TABLE gold.sales.fact_orders (
   quantity INT,
   CONSTRAINT fk_customer FOREIGN KEY (customer_key) REFERENCES gold.sales.dim_customer(customer_key),
   CONSTRAINT fk_product FOREIGN KEY (product_key) REFERENCES gold.sales.dim_product(product_key)
-)
-CLUSTER BY (date_key, customer_key);
-```
+) CLUSTER BY (date_key, customer_key);
 
-
-
-
-`GENERATED ALWAYS AS IDENTITY`
-
-
-
-
-
-
-
-```sql
 CREATE TABLE gold.sales.dim_customer (
   customer_key BIGINT GENERATED ALWAYS AS IDENTITY,
   customer_id STRING NOT NULL COMMENT 'Natural key from source system',
-  full_name STRING,
-  email STRING,
-  city STRING,
-  state STRING,
-  country STRING,
-  segment STRING,
-  effective_start_date TIMESTAMP,
-  effective_end_date TIMESTAMP,
-  is_current BOOLEAN,
+  full_name STRING, email STRING, city STRING, state STRING,
+  segment STRING, effective_start_date TIMESTAMP,
+  effective_end_date TIMESTAMP, is_current BOOLEAN,
   CONSTRAINT pk_customer PRIMARY KEY (customer_key)
-)
-CLUSTER BY (customer_key, segment)
-COMMENT 'Customer dimension with SCD Type 2 history tracking';
+) CLUSTER BY (customer_key, segment);
 ```
 
+**Key decisions:**
+- `GENERATED ALWAYS AS IDENTITY` creates integer surrogate keys -- faster joins than string keys
+- `DECIMAL(18,2)` for financial amounts avoids floating-point precision errors
+- `FOREIGN KEY` constraints inform the optimizer about table relationships (they're not enforced at write time)
+- `CLUSTER BY` replaces both partitioning and Z-ORDER with a single, incremental mechanism
+- Fact tables cluster by the most commonly filtered foreign keys; dimension tables cluster by primary key plus common filter columns
 
+## More Patterns
 
+### Choose between star schema and One Big Table
 
+> "Help me decide whether to use a star schema or a wide denormalized table for my Gold layer."
 
+In benchmarks, dimensional models outperformed One Big Tables (2.6s vs 3.5s) despite requiring joins, because fewer files needed scanning. With Liquid Clustering applied, OBT achieved 1.13s. Both approaches hit sub-500ms with automatic caching after the first run.
 
+Use star schemas when you filter on 5+ dimensions or need SCD tracking. Use OBT when you filter on 1-3 dimensions and want simpler governance. The recommended approach: OBT or Data Vault in Silver for fast integration, star schemas in Gold as the curated presentation layer for BI.
 
+### Collect statistics for the optimizer
 
-
-
-`effective_start_date``effective_end_date``is_current`
-
-
+> "Write SQL to compute column statistics on a fact table so the query optimizer can make better join and filter decisions."
 
 ```sql
-MERGE INTO gold.sales.dim_customer AS target
-USING (
-  SELECT * FROM silver.crm.customers_changes
-) AS source
-ON target.customer_id = source.customer_id AND target.is_current = TRUE
-WHEN MATCHED AND (
-  target.full_name != source.full_name OR
-  target.city != source.city
-) THEN UPDATE SET
-  effective_end_date = current_timestamp(),
-  is_current = FALSE
-WHEN NOT MATCHED THEN INSERT (
-  customer_id, full_name, email, city, state, country, segment,
-  effective_start_date, effective_end_date, is_current
-) VALUES (
-  source.customer_id, source.full_name, source.email,
-  source.city, source.state, source.country, source.segment,
-  current_timestamp(), NULL, TRUE
-);
--- Then insert new versions for changed records in a second pass
+ANALYZE TABLE gold.sales.fact_orders COMPUTE STATISTICS FOR COLUMNS
+  date_key, customer_key, product_key;
 ```
 
+Run `ANALYZE TABLE` after bulk loads, table overwrites, or major data changes. Focus on columns used in WHERE clauses, JOINs, and GROUP BY. Missing statistics lead to suboptimal query plans -- the optimizer guesses cardinality instead of knowing it.
 
+### Enable predictive optimization
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`ANALYZE TABLE ... COMPUTE STATISTICS FOR COLUMNS`
-`'delta.dataSkippingStatsColumns'`
-
-`NOW()``CURRENT_TIMESTAMP()`
-`CREATE OR REPLACE TABLE`
-`DECIMAL``FLOAT``DOUBLE`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`NOW()``RAND()`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`ANALYZE TABLE`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`delta.targetFileSize`
-
-
-
-
-
-
-`delta.deletedFileRetentionDuration`
-
-
-
-
-
-
-
-
-
-`delta.enableOptimizeWrite``delta.autoOptimize.autoCompact``DELTA_UNKNOWN_CONFIGURATION`
+> "Write SQL to enable automatic OPTIMIZE and VACUUM on a managed table."
 
 ```sql
--- Classic compute only:
-ALTER TABLE catalog.schema.table_name
+ALTER TABLE gold.sales.fact_orders
 SET TBLPROPERTIES ('delta.enableOptimizeWrite' = 'true');
--- For Unity Catalog managed tables, predictive optimization
--- handles OPTIMIZE and VACUUM automatically
 ```
 
+On serverless SQL warehouses, `optimizeWrite` and `autoCompact` are managed automatically -- you don't need to set them. For classic compute, enable them explicitly. For Unity Catalog managed tables, predictive optimization handles OPTIMIZE and VACUUM scheduling automatically.
 
+### Write cost-efficient queries
 
-
-
-`delta.targetFileSize`
-
-
-
-
-`delta.enableOptimizeWrite``delta.autoOptimize.autoCompact``DELTA_UNKNOWN_CONFIGURATION`
+> "Show me the SQL patterns that maximize query result caching and minimize scan volume."
 
 ```sql
--- Classic compute only (serverless manages these automatically):
--- 'delta.enableOptimizeWrite' = 'true',
--- 'delta.autoOptimize.autoCompact' = 'true',
-
--- Works on both classic and serverless:
-ALTER TABLE catalog.schema.my_table SET TBLPROPERTIES (
-  'delta.columnMapping.mode' = 'name',
-  'delta.enableChangeDataFeed' = 'true',
-  'delta.deletedFileRetentionDuration' = '30 days',
-  'delta.dataSkippingStatsColumns' = 'col1,col2,col3'
-);
-```
-
-
-
-
-
-
-
-`catalog.schema.table`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`system.billing``system.access``system.query`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`CREATE OR REPLACE TABLE`
-
-`ANALYZE TABLE`
-`NOW()``RAND()`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```sql
--- Use CREATE OR REPLACE (not DROP + CREATE)
-CREATE OR REPLACE TABLE catalog.schema.my_table AS
-SELECT ...;
-
--- Use MERGE for upserts (not DELETE + INSERT)
-MERGE INTO target USING source
-ON target.key = source.key
-WHEN MATCHED THEN UPDATE SET ...
-WHEN NOT MATCHED THEN INSERT ...;
-
--- Use QUALIFY for window function filtering (not subquery)
-SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY ts DESC) AS rn
-FROM my_table
+-- Use CREATE OR REPLACE instead of DELETE + CREATE
+CREATE OR REPLACE TABLE gold.sales.daily_summary AS
+SELECT
+  date_key,
+  SUM(order_amount) AS total_revenue,
+  COUNT(DISTINCT customer_key) AS unique_customers
+FROM gold.sales.fact_orders
+GROUP BY date_key;
+
+-- Use QUALIFY instead of subquery for window filtering
+SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_key ORDER BY order_amount DESC) AS rn
+FROM gold.sales.fact_orders
 QUALIFY rn = 1;
-
--- Use DECIMAL for money
-SELECT CAST(amount AS DECIMAL(18,2)) AS revenue FROM orders;
-
--- Collect statistics after loading
-ANALYZE TABLE catalog.schema.my_table COMPUTE STATISTICS FOR ALL COLUMNS;
-
--- Enable predictive optimization (classic compute only; serverless manages this automatically)
-ALTER TABLE catalog.schema.my_table
-SET TBLPROPERTIES ('delta.enableOptimizeWrite' = 'true');
 ```
+
+`CREATE OR REPLACE TABLE` preserves time travel and avoids reader interruptions. `QUALIFY` eliminates the need for a wrapping subquery. Avoid `NOW()`, `RAND()`, and other non-deterministic functions in filters -- they prevent query result caching.
+
+## Watch Out For
+
+- **Skipping dimensional modeling in the Gold layer** -- OBTs are fine for Silver, but Gold should use star schemas when you need multi-dimensional analysis. The upfront modeling effort pays for itself in query performance and governance clarity.
+- **Over-partitioning tables** -- more than 5,000 partitions degrades performance. Use Liquid Clustering instead, which handles 1-4 keys and adjusts incrementally without reorganizing the entire table.
+- **Using Python UDFs when native SQL functions exist** -- UDFs require serialization between Python and Spark, adding significant overhead. Check for a native function first.
+- **Using FLOAT for financial data** -- `FLOAT` and `DOUBLE` introduce precision errors in aggregations. Always use `DECIMAL(18,2)` or similar for monetary values.
+- **Missing PK/FK constraints** -- even though they're not enforced at write time, constraints give the optimizer critical information about table relationships and eliminate unnecessary joins.

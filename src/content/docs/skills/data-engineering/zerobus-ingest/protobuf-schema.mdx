@@ -1,196 +1,139 @@
 ---
-title: Protobuf Schema Generation
-description: "Generate `."
+title: Protobuf Schema
+description: Generate a Protobuf schema from your Unity Catalog table and compile language bindings for Zerobus.
 sidebar:
   order: 4
 ---
 
-`.proto`
+## What You Can Build
 
+A type-safe ingestion pipeline where your Protobuf schema is generated directly from the Unity Catalog table definition. Instead of hand-writing `.proto` files and hoping they match your Delta table, you run the SDK's schema generator against the table metadata. The result is a `.proto` file with exact field-to-column mapping, compiled into language bindings for Python, Java, Go, or Rust.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "Define a Protobuf schema for my event data and set up Zerobus to deserialize it automatically. I'm using Python."
 
 ```bash
+# Generate .proto from the Unity Catalog table schema
 python -m zerobus.tools.generate_proto \
     --uc-endpoint "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com" \
     --client-id "$DATABRICKS_CLIENT_ID" \
     --client-secret "$DATABRICKS_CLIENT_SECRET" \
-    --table "catalog.schema.table_name" \
+    --table "catalog.schema.my_events" \
     --output record.proto
 ```
 
+```protobuf
+# Generated output — matches the table schema exactly
+syntax = "proto3";
 
+message MyEvents {
+    string event_id = 1;
+    string device_name = 2;
+    int32 temp = 3;
+    int64 humidity = 4;
+    int64 event_time = 5;
+}
+```
 
 ```bash
+# Compile to Python bindings
+pip install grpcio-tools
+python -m grpc_tools.protoc -I. --python_out=. record.proto
+```
+
+```python
+# Use the compiled module in your producer
+import record_pb2
+from zerobus.sdk.shared import TableProperties
+
+table_props = TableProperties(
+    "catalog.schema.my_events",
+    record_pb2.MyEvents.DESCRIPTOR,
+)
+```
+
+**Key decisions:**
+- The generator reads column names and types from Unity Catalog metadata — no manual `.proto` authoring needed
+- The `DESCRIPTOR` object from the compiled module tells Zerobus how to validate and deserialize each field
+- `TIMESTAMP` columns become `int64` (epoch microseconds), not strings — this is the most common source of ingestion errors
+- The `.proto` is a one-time generation per table version — regenerate only when the table schema changes
+
+## More Patterns
+
+### Generate schema using the Java SDK tool
+
+> "Generate a Protobuf schema from my Unity Catalog table using the Java SDK and compile Java bindings."
+
+```bash
+# Generate .proto from UC table
 java -jar zerobus-ingest-sdk-0.1.0-jar-with-dependencies.jar \
     --uc-endpoint "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com" \
     --client-id "$DATABRICKS_CLIENT_ID" \
     --client-secret "$DATABRICKS_CLIENT_SECRET" \
-    --table "catalog.schema.table_name" \
+    --table "catalog.schema.my_events" \
     --output record.proto
-```
 
-`.proto`
-
-```protobuf
-syntax = "proto3";
-
-message AirQuality {
-    string device_name = 1;
-    int32 temp = 2;
-    int64 humidity = 3;
-}
-```
-
-
-
-
-
-
-
-```bash
-pip install grpcio-tools
-
-python -m grpc_tools.protoc \
-    -I. \
-    --python_out=. \
-    record.proto
-```
-
-`record_pb2.py`
-
-```python
-import record_pb2
-
-record = record_pb2.AirQuality(
-    device_name="sensor-1",
-    temp=22,
-    humidity=55,
-)
-```
-
-
-
-```bash
+# Compile to Java classes
 protoc --java_out=src/main/java record.proto
 ```
 
-`src/main/java/`
-
 ```java
-import com.example.proto.Record.AirQuality;
+import com.example.proto.Record.MyEvents;
 
-AirQuality record = AirQuality.newBuilder()
+MyEvents record = MyEvents.newBuilder()
     .setDeviceName("sensor-1")
     .setTemp(22)
-    .setHumidity(55)
+    .setHumidity(55L)
     .build();
 ```
 
+Both the Python and Java generators produce identical `.proto` output. The difference is only in how you invoke the tool — Python uses a module entry point, Java uses the SDK's fat JAR.
 
+### Compile bindings for Go and Rust
+
+> "Compile my generated .proto file for Go and Rust projects."
 
 ```bash
+# Go bindings
 protoc --go_out=. record.proto
 ```
 
-
-
-`prost``build.rs`
-
 ```rust
-// build.rs
+// Rust: use prost in build.rs
 fn main() {
     prost_build::compile_protos(&["record.proto"], &["."]).unwrap();
 }
 ```
 
+Go and Rust don't have built-in `.proto` generators — you generate the `.proto` with the Python or Java tool, then compile bindings with `protoc` (Go) or `prost` (Rust). The output is identical regardless of which tool generated the `.proto`.
 
+### Handle schema evolution after a table change
 
+> "My Unity Catalog table has a new column. Update my Protobuf schema and producer code to match."
 
+```bash
+# 1. Regenerate the .proto from the updated table
+python -m zerobus.tools.generate_proto \
+    --uc-endpoint "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com" \
+    --client-id "$DATABRICKS_CLIENT_ID" \
+    --client-secret "$DATABRICKS_CLIENT_SECRET" \
+    --table "catalog.schema.my_events" \
+    --output record.proto
 
+# 2. Recompile language bindings
+python -m grpc_tools.protoc -I. --python_out=. record.proto
 
-
-`STRING``string`
-`INT``INTEGER``int32`
-`LONG``BIGINT``int64`
-`FLOAT``float`
-`DOUBLE``double`
-`BOOLEAN``bool`
-`BINARY``bytes`
-`ARRAY<T>``repeated T`
-`MAP<K,V>``map<K,V>`
-`STRUCT``message`
-`DATE``int32`
-`TIMESTAMP``int64`
-`DECIMAL(p,s)``bytes``string`
-`VARIANT``string`
-
-`.proto`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`.proto`
-
-
-
-
-
-
-
-
-
-
-
-
-```python
-from zerobus.sdk.shared import TableProperties, RecordType
-import record_pb2
-
-# Pass the DESCRIPTOR from the compiled module
-table_props = TableProperties(
-    "catalog.schema.table_name",
-    record_pb2.AirQuality.DESCRIPTOR,
-)
+# 3. Update producer code to populate the new field, then redeploy
 ```
 
+Zerobus does not support automatic schema evolution. When you add, remove, or change a column in Unity Catalog, you must regenerate the `.proto`, recompile, update your producer to populate new fields, and redeploy. Skipping any step leads to either a schema mismatch error or silently dropped fields.
 
+## Watch Out For
 
-```java
-// Pass a default instance to extract the descriptor
-TableProperties<AirQuality> tableProperties = new TableProperties<>(
-    "catalog.schema.table_name",
-    AirQuality.getDefaultInstance()
-);
-```
-
-
-
-`TableProperties`
+- **TIMESTAMP is epoch microseconds, not a string** — the generator maps `TIMESTAMP` to `int64`. Your producer must pass `int(time.time() * 1_000_000)` in Python or equivalent in other languages. Passing an ISO string or epoch seconds causes ingestion failures or wrong values.
+- **The .proto must match the table schema exactly** — if you add a column to the table but keep the old `.proto`, new records will be missing that field. If you add a field to the `.proto` that doesn't exist in the table, ingestion fails with a schema mismatch.
+- **DECIMAL maps to bytes or string, not a numeric type** — check your generated `.proto` for the exact mapping. The Protobuf type depends on the precision and scale of the Delta column.
+- **MAP keys must be string or integer** — Protobuf's `map<K,V>` only supports string or integer key types. If your Delta table has a `MAP` column with a non-string, non-integer key, the generator will fail or produce an unusable schema.
+- **Max 2,000 columns per schema, 10 MB per message** — tables with wide schemas or large nested structs can hit these limits. If you're close, consider splitting into multiple tables or flattening nested structures.
+- **grpcio-tools version conflicts with Databricks runtime** — if generating schemas on a Databricks cluster, check the runtime's protobuf version first and install a compatible `grpcio-tools`. Mismatched versions cause import errors that are hard to trace.

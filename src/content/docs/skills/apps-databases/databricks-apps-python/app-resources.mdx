@@ -1,71 +1,17 @@
 ---
-title: App Resources and Communication Strategies
-description: Databricks Apps integrate with platform resources via managed connections.
+title: App Resources
+description: Wire Databricks Apps to SQL warehouses, Lakebase, serving endpoints, and secrets with the valueFrom pattern.
 sidebar:
   order: 2
 ---
 
+## What You Can Build
 
+You can connect your Databricks App to SQL warehouses for analytics, Lakebase for transactional storage, model serving endpoints for inference, secrets for API keys, and Unity Catalog volumes for file storage -- all without hardcoding resource IDs. The `valueFrom` pattern in `app.yaml` injects resource identifiers as environment variables, keeping your app portable across workspaces.
 
+## In Action
 
-
-
-
-
-
-
-
-`sql-warehouse`
-`database`
-`serving-endpoint`
-`secret`
-`volume`
-`vector-search-index`
-`genie-space`
-`connection`
-`function`
-`experiment`
-`job`
-
-
-
-
-
-`valueFrom`
-
-```yaml
-env:
-  - name: DATABRICKS_WAREHOUSE_ID
-    valueFrom: sql-warehouse
-
-  - name: SERVING_ENDPOINT_NAME
-    valueFrom: serving-endpoint
-
-  - name: DB_CONNECTION_STRING
-    valueFrom: database
-```
-
-
-
-
-
-`valueFrom`
-
-
-
-
-
-
-
-
-
-`databricks-sql-connector``sql.connect()``Config()`
-`psycopg2``asyncpg`
-`databricks-sdk``WorkspaceClient()`
-`requests`
-`databricks-sql-connector`
-
-
+> "Using Python, build a Databricks App that queries a SQL warehouse using the valueFrom resource pattern instead of hardcoded IDs."
 
 ```python
 import os
@@ -80,14 +26,41 @@ conn = sql.connect(
 )
 
 with conn.cursor() as cursor:
-    cursor.execute("SELECT * FROM catalog.schema.table LIMIT 100")
+    cursor.execute("SELECT * FROM catalog.schema.orders LIMIT 100")
     rows = cursor.fetchall()
 ```
 
+**Key decisions:**
+- `DATABRICKS_WAREHOUSE_ID` comes from `valueFrom: sql-warehouse` in `app.yaml` -- never paste a warehouse ID directly in code
+- `Config()` auto-detects the service principal credentials the platform injects at deploy time
+- `credentials_provider=lambda: cfg.authenticate` ensures token refresh happens transparently
+- Add resources via the Databricks Apps UI (Configure step > Add resource) and assign a key that `valueFrom` references
 
+## More Patterns
+
+### Declaring resources in app.yaml
+
+> "Show me an app.yaml that references a SQL warehouse, a model serving endpoint, and a Lakebase database."
+
+```yaml
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+  - name: SERVING_ENDPOINT_NAME
+    valueFrom: serving-endpoint
+  - name: DB_CONNECTION_STRING
+    valueFrom: database
+```
+
+Each `valueFrom` key maps to a resource type you configure in the Databricks Apps UI. The platform resolves the key to the actual resource identifier and injects it as an environment variable at runtime.
+
+### Calling a model serving endpoint
+
+> "Using Python, call a Databricks model serving endpoint from an app using the injected environment variable."
 
 ```python
-import os, requests
+import os
+import requests
 from databricks.sdk.core import Config
 
 cfg = Config()
@@ -98,28 +71,54 @@ endpoint = os.getenv("SERVING_ENDPOINT_NAME")
 response = requests.post(
     f"https://{cfg.host}/serving-endpoints/{endpoint}/invocations",
     headers=headers,
-    json={"inputs": [{"prompt": "Hello"}]},
+    json={"inputs": [{"prompt": "Summarize this quarter's revenue trends."}]},
 )
 result = response.json()
 ```
 
+The `cfg.authenticate()` call returns a dictionary with the Authorization header already set. You add `Content-Type` and send the request -- no manual token management needed.
 
+### Using the Databricks SDK for platform API calls
+
+> "Using Python, list clusters from a Databricks App using the SDK."
 
 ```python
 from databricks.sdk import WorkspaceClient
 
-w = WorkspaceClient()  # Auto-detects credentials
+w = WorkspaceClient()  # Auto-detects credentials from environment
 for cluster in w.clusters.list():
     print(f"{cluster.cluster_name}: {cluster.state}")
 ```
 
+`WorkspaceClient()` picks up the same service principal credentials that `Config()` detects. Use it for any Databricks API call -- jobs, clusters, Unity Catalog, MLflow.
 
+### Choosing a communication strategy
 
+> "How do I decide between SQL warehouse, Lakebase, SDK, and model serving for my app's data layer?"
 
+```python
+# SQL Warehouse -- analytical queries on Delta tables
+#   Library: databricks-sql-connector
+#   Use when: dashboards, aggregations, large scans
 
+# Lakebase (PostgreSQL) -- low-latency transactional CRUD
+#   Library: psycopg2 / asyncpg
+#   Use when: app state, user sessions, form submissions
 
+# Databricks SDK -- platform API calls
+#   Library: databricks-sdk
+#   Use when: managing jobs, clusters, Unity Catalog objects
 
-`valueFrom`
-`CAN USE``CAN MANAGE`
+# Model Serving -- AI/ML inference
+#   Library: requests or SDK
+#   Use when: calling deployed models from your app
+```
 
+Most production apps combine at least two strategies -- a SQL warehouse for analytics and Lakebase or model serving for the interactive layer.
 
+## Watch Out For
+
+- **Hardcoding resource IDs** -- your app breaks when someone deploys it to a different workspace. Always use `valueFrom` so the resource binding is configurable per environment.
+- **Forgetting to grant the service principal access** -- declaring a resource in `app.yaml` does not automatically grant permissions. You must also assign the SP the correct permission level (e.g., `CAN USE` for a SQL warehouse) via the Apps UI.
+- **Using SDK calls where SQL works** -- the SDK is for platform management, not data queries. Querying Delta tables through `WorkspaceClient` is possible but slower and less ergonomic than `sql.connect()`.
+- **Skipping `requirements.txt` for Lakebase drivers** -- `psycopg2` and `asyncpg` are not pre-installed in the Apps runtime. Omitting them from `requirements.txt` is the most common cause of Lakebase app failures.

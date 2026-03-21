@@ -1,108 +1,84 @@
 ---
-title: Databricks Apps Python
-description: Builds Python-based Databricks applications using Dash, Streamlit, Gradio, Flask, FastAPI, or Reflex. Handles OAuth authorization (app and user auth), app re...
+title: Databricks Apps (Python)
+description: Build Python-based Databricks applications using Dash, Streamlit, Gradio, Flask, FastAPI, or Reflex with managed authentication and resource integration.
 sidebar:
-  label: Databricks Apps Python
+  label: Databricks Apps (Python)
   order: 0
 ---
 
+## Overview
 
+The Databricks Apps Python skill teaches Claude Code how to build, configure, and deploy Python web applications on the Databricks Apps platform. It covers six pre-installed frameworks (Dash, Streamlit, Gradio, Flask, FastAPI, Reflex), service principal and user authorization models, resource binding via `app.yaml`, Lakebase PostgreSQL connectivity, foundation model API integration, and deployment via CLI or Asset Bundles.
 
+## Capabilities
 
+- Select the right framework for dashboards, prototypes, ML demos, APIs, or full-stack apps
+- Configure service principal (app) auth and on-behalf-of (user) auth with OAuth scopes
+- Bind SQL warehouses, Lakebase databases, model serving endpoints, secrets, and volumes via `valueFrom`
+- Connect to Lakebase (PostgreSQL) with psycopg2, asyncpg, or SQLAlchemy
+- Deploy apps using Databricks CLI or Asset Bundles (DABs) with multi-environment targets
+- Integrate Databricks foundation model APIs using the OpenAI-compatible client
+- Manage app lifecycle programmatically via MCP tools
 
+## Related MCP Tools
 
+| Tool | Description |
+|------|-------------|
+| `create_or_update_app` | Create or deploy a Databricks App |
+| `get_app` | Get app details, status, and logs |
+| `delete_app` | Delete an app |
+| `upload_folder` | Upload local folder to workspace |
 
-
-`Config()`
-`app.yaml``valueFrom`
-`dash-bootstrap-components`
-`@st.cache_resource`
-
-
-
-
+## Example Prompts
 
 ```
-- [ ] Framework selected
-- [ ] Auth strategy decided: app auth, user auth, or both
-- [ ] App resources identified (SQL warehouse, Lakebase, serving endpoint, etc.)
-- [ ] Backend data strategy decided (SQL warehouse, Lakebase, or SDK)
-- [ ] Deployment method: CLI or DABs
+Build a Streamlit app that queries my SQL warehouse and
+displays trip statistics in a bar chart
 ```
 
+```
+Create a FastAPI backend that connects to my Lakebase database
+and exposes CRUD endpoints for a product catalog
+```
 
+```
+Deploy my Dash dashboard to Databricks with a SQL warehouse
+resource and service principal auth
+```
 
+```
+Build a Gradio chat interface that calls my foundation model
+serving endpoint with streaming responses
+```
 
+## Framework Selection
 
+| Framework | Best For | app.yaml Command |
+|-----------|----------|------------------|
+| **Dash** | Production dashboards, BI tools, complex interactivity | `["python", "app.py"]` |
+| **Streamlit** | Rapid prototyping, data science apps, internal tools | `["streamlit", "run", "app.py"]` |
+| **Gradio** | ML demos, model interfaces, chat UIs | `["python", "app.py"]` |
+| **Flask** | Custom REST APIs, lightweight apps, webhooks | `["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]` |
+| **FastAPI** | Async APIs, auto-generated OpenAPI docs | `["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]` |
+| **Reflex** | Full-stack Python apps without JavaScript | `["reflex", "run", "--env", "prod"]` |
 
+**Default recommendation:** Streamlit for prototypes, Dash for production dashboards, FastAPI for APIs, Gradio for ML demos.
 
-`["python", "app.py"]`
-`["streamlit", "run", "app.py"]`
-`["python", "app.py"]`
-`["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]`
-`["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]`
-`["reflex", "run", "--env", "prod"]`
+## Platform Constraints
 
+| Constraint | Details |
+|------------|---------|
+| **Runtime** | Python 3.11, Ubuntu 22.04 LTS |
+| **Compute** | 2 vCPUs, 6 GB memory (default) |
+| **Pre-installed** | Dash 2.18.1, Streamlit 1.38.0, Gradio 4.44.0, Flask 3.0.3, FastAPI 0.115.0 |
+| **Custom packages** | Add to `requirements.txt` in app root |
+| **Port** | Apps must bind to `DATABRICKS_APP_PORT` env var (defaults to 8000) |
 
-
-
-
-
-
-
-
-
-
-`Config()``DATABRICKS_CLIENT_ID``DATABRICKS_CLIENT_SECRET`
-`x-forwarded-access-token`
-`valueFrom`
-
-
-
-
-
-
-
-
-
-`valueFrom`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## Core Architecture
 
 ```
 app-directory/
-├── app.py                 # Main application (or framework-specific name)
+├── app.py                 # Main application
 ├── models.py              # Pydantic data models
 ├── backend.py             # Data access layer
 ├── requirements.txt       # Additional Python dependencies
@@ -110,23 +86,7 @@ app-directory/
 └── README.md
 ```
 
-
-
-```python
-import os
-from databricks.sdk.core import Config
-
-USE_MOCK = os.getenv("USE_MOCK_BACKEND", "true").lower() == "true"
-
-if USE_MOCK:
-    from backend_mock import MockBackend as Backend
-else:
-    from backend_real import RealBackend as Backend
-
-backend = Backend()
-```
-
-
+### SQL Warehouse Connection
 
 ```python
 from databricks.sdk.core import Config
@@ -140,73 +100,20 @@ conn = sql.connect(
 )
 ```
 
+## Common Issues
 
+| Issue | Solution |
+|-------|----------|
+| **Connection exhausted** | Use `@st.cache_resource` (Streamlit) or connection pooling |
+| **Auth token not found** | Check `x-forwarded-access-token` header -- only available when deployed |
+| **App won't start** | Check `app.yaml` command matches framework |
+| **Lakebase crash on start** | `psycopg2`/`asyncpg` are NOT pre-installed -- add to `requirements.txt` |
+| **Port conflict** | Bind to `DATABRICKS_APP_PORT` env var (never use 8080) |
 
-```python
-from pydantic import BaseModel, Field
-from datetime import datetime
-from enum import Enum
+## References
 
-class Status(str, Enum):
-    ACTIVE = "active"
-    PENDING = "pending"
-
-class EntityOut(BaseModel):
-    id: str
-    name: str
-    status: Status
-    created_at: datetime
-
-class EntityIn(BaseModel):
-    name: str = Field(..., min_length=1)
-    status: Status = Status.PENDING
-```
-
-
-
-
-
-
-
-`@st.cache_resource`
-`x-forwarded-access-token`
-`app.yaml``databricks apps logs <name>`
-`valueFrom`
-`requirements.txt`
-`psycopg2``asyncpg``requirements.txt`
-`DATABRICKS_APP_PORT`
-`st.set_page_config()`
-`dash-bootstrap-components``dbc.themes.BOOTSTRAP`
-
-
-
-
-
-
-
-
-
-
-
-`requirements.txt`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- [Databricks Apps Overview](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/)
+- [Apps Cookbook](https://apps-cookbook.dev/)
+- [Authorization](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/auth)
+- [Resources](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/resources)
+- [app.yaml Reference](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/app-runtime)

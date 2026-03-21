@@ -1,399 +1,140 @@
 ---
-title: Supervisor Agents (MAS)
-description: Supervisor Agents orchestrate multiple specialized agents, routing user queries to the most appropriate agent based on the query content.
+title: Supervisor Agents
+description: Orchestrate multiple specialized agents behind a single conversational interface with intent-based routing.
 sidebar:
   order: 2
 ---
 
+## What You Can Build
 
+You can combine Knowledge Assistants, Genie Spaces, ML endpoints, Unity Catalog functions, and external MCP servers behind one conversational interface. A Supervisor Agent analyzes each query, routes it to the right specialist, and returns the response -- so users never need to know which backend handles their question.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`endpoint_name`
-`ka-abc123-endpoint`
-
-
-
-
-`genie_space_id`
-
-
-
-`find_genie_by_name(display_name="My Genie")`
-`system.ai.genie_spaces`
-
-
-
-
-
-
-
-`CREATE FUNCTION`
-`EXECUTE`
-  ```sql
-  GRANT EXECUTE ON FUNCTION catalog.schema.function_name TO `<agent_sp>`;
-  ```
-
-
-
-```json
-{
-  "name": "data_enrichment",
-  "uc_function_name": "sales_analytics.utils.enrich_customer_data",
-  "description": "Enriches customer records with demographic and purchase history data"
-}
-```
-
-`uc_function_name``catalog.schema.function_name`
-
-
-
-
-
-
-
-`/api/mcp`
-
-```python
-# Example MCP server tool definition
-TOOLS = [
-    {
-        "name": "approve_invoice",
-        "description": "Approve a specific invoice",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "invoice_number": {"type": "string", "description": "Invoice number to approve"},
-                "approver": {"type": "string", "description": "Name/email of approver"},
-            },
-            "required": ["invoice_number"],
-        },
-    },
-]
-
-# JSON-RPC methods: initialize, tools/list, tools/call
-```
-
-
-
-```sql
-CREATE CONNECTION my_mcp_connection TYPE HTTP
-OPTIONS (
-  host 'https://my-app.databricksapps.com',  -- Your MCP server URL
-  port '443',
-  base_path '/api/mcp',                       -- Path to JSON-RPC endpoint
-  client_id '<service_principal_id>',         -- OAuth M2M credentials
-  client_secret '<service_principal_secret>',
-  oauth_scope 'all-apis',
-  token_endpoint 'https://<workspace>.azuredatabricks.net/oidc/v1/token',
-  is_mcp_connection 'true'                    -- REQUIRED: Identifies as MCP connection
-);
-```
-
-
-
-```sql
-GRANT USE CONNECTION ON my_mcp_connection TO `<agent_sp>`;
-```
-
-
-
-`connection_name`
-
-```python
-{
-    "name": "external_operations",
-    "connection_name": "my_mcp_connection",
-    "description": "Execute external system operations: approve invoices, create records, trigger workflows"
-}
-```
-
-`connection_name`
-
-
-
-
-
-
+> "Create a Supervisor Agent that routes questions to a Knowledge Assistant for policy questions, a Genie Space for data analysis, and an MCP server for invoice operations. Use Python with the AI Dev Kit tools."
 
 ```python
 manage_mas(
     action="create_or_update",
-    name="AP_Invoice_Supervisor",
+    name="AP Invoice Supervisor",
     agents=[
         {
-            "name": "billing_analyst",
-            "genie_space_id": "01abc123...",
-            "description": "SQL analytics on AP invoice data: spending trends, vendor analysis, aging reports"
+            "name": "policy_expert",
+            "ka_tile_id": "f32c5f73-...",
+            "description": "Answers questions about AP policies, approval workflows, and compliance requirements from policy documents"
         },
         {
-            "name": "policy_expert",
-            "ka_tile_id": "f32c5f73...",
-            "description": "Answers questions about AP policies, approval workflows, and compliance requirements from policy documents"
+            "name": "billing_analyst",
+            "genie_space_id": "01abc123-...",
+            "description": "SQL analytics on AP invoice data: spending trends, vendor analysis, aging reports"
         },
         {
             "name": "ap_operations",
             "connection_name": "ap_invoice_mcp",
-            "description": (
-                "Execute AP operations: approve/reject/flag invoices, search invoice details, "
-                "get vendor summaries, trigger batch workflows. Use for ANY action or write operation."
-            )
+            "description": "Execute AP operations: approve/reject/flag invoices, search invoice details, get vendor summaries, trigger batch workflows"
         }
     ],
     description="AP automation assistant with analytics, policy guidance, and operational actions",
     instructions="""
     Route queries as follows:
-    - Data questions (invoice counts, spend analysis, vendor metrics) → billing_analyst
-    - Policy questions (thresholds, SLAs, compliance rules) → policy_expert
-    - Actions (approve, reject, flag, search, workflows) → ap_operations
+    - Policy questions (thresholds, SLAs, compliance rules) -> policy_expert
+    - Data questions (invoice counts, spend analysis, vendor metrics) -> billing_analyst
+    - Actions (approve, reject, flag, search, workflows) -> ap_operations
 
     When a user asks to approve, reject, or flag an invoice, ALWAYS use ap_operations.
     """
 )
 ```
 
+**Key decisions:**
+- **Five agent types supported** -- Knowledge Assistants (`ka_tile_id`), Genie Spaces (`genie_space_id`), model serving endpoints (`endpoint_name`), UC functions (`uc_function_name`), and MCP servers (`connection_name`)
+- **Descriptions drive routing** -- the Supervisor uses agent descriptions to decide where to send each query, so specificity matters
+- **Instructions add routing rules** -- use them to resolve ambiguity when descriptions alone aren't enough
+- Each agent entry needs exactly one of the five identifier fields plus a `name` and `description`
 
+## More Patterns
 
+### Add a UC Function as an Agent
 
+> "Add a Unity Catalog function that enriches customer records to my Supervisor Agent. Use Python."
+
+```python
+manage_mas(
+    action="create_or_update",
+    name="Support Supervisor",
+    agents=[
+        {
+            "name": "data_enrichment",
+            "uc_function_name": "sales_analytics.utils.enrich_customer_data",
+            "description": "Enriches customer records with demographic and purchase history data"
+        },
+        # ... other agents
+    ],
+    instructions="Use data_enrichment when the user asks for customer context or history lookups."
+)
+```
+
+The UC function must already exist, and the agent service principal needs `EXECUTE` privilege. Grant it with `GRANT EXECUTE ON FUNCTION catalog.schema.function_name TO <agent_sp>`.
+
+### Wire in an External MCP Server
+
+> "Connect my Supervisor Agent to an external ticket system via an MCP server over a UC HTTP Connection. Show the SQL for the connection and the Python for the agent config."
 
 ```sql
--- Test tools/list method
-SELECT http_request(
-  conn => 'my_mcp_connection',
-  method => 'POST',
-  path => '',
-  json => '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+CREATE CONNECTION ticket_system_mcp TYPE HTTP
+OPTIONS (
+  host 'https://my-app.databricksapps.com',
+  port '443',
+  base_path '/api/mcp',
+  client_id '<service_principal_id>',
+  client_secret '<service_principal_secret>',
+  oauth_scope 'all-apis',
+  token_endpoint 'https://<workspace>.azuredatabricks.net/oidc/v1/token',
+  is_mcp_connection 'true'
 );
+
+GRANT USE CONNECTION ON ticket_system_mcp TO `<agent_sp>`;
 ```
 
-
-
-
-
-
-
-`manage_mas``action="create_or_update"`
-
-`name`
-`agents`
-  ```json
-  [
-    {
-      "name": "policy_agent",
-      "ka_tile_id": "f32c5f73-466b-4798-b3a0-5396b5ece2a5",
-      "description": "Answers questions about company policies and procedures from indexed documents"
-    },
-    {
-      "name": "usage_analytics",
-      "genie_space_id": "01abc123-def4-5678-90ab-cdef12345678",
-      "description": "Answers data questions about usage metrics, trends, and statistics"
-    },
-    {
-      "name": "custom_agent",
-      "endpoint_name": "my-custom-endpoint",
-      "description": "Handles specialized queries via custom model endpoint"
-    }
-  ]
-  ```
-`description`
-`instructions`
-
-
-
-
-
-`agents`
-
-
-
-`name`
-`description`
-`ka_tile_id`
-`genie_space_id`
-`endpoint_name`
-`uc_function_name``catalog.schema.function_name`
-`connection_name`
-
-`ka_tile_id``genie_space_id``endpoint_name``uc_function_name``connection_name`
-
-`manage_ka(action="find_by_name", name="Your KA Name")`
-`find_genie_by_name(display_name="Your Genie Name")`
-
-
-
-`description`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`PROVISIONING`
-`ONLINE`
-`OFFLINE`
-
-`manage_mas``action="get"`
-
-
-
-
-
-```json
+```python
 {
-  "examples": [
-    {
-      "question": "I haven't received my invoice for this month",
-      "guideline": "Should be routed to billing_agent"
-    },
-    {
-      "question": "The API is returning a 500 error",
-      "guideline": "Should be routed to technical_agent"
-    },
-    {
-      "question": "How many vacation days do I have?",
-      "guideline": "Should be routed to hr_agent"
-    }
-  ]
+    "name": "ticket_operations",
+    "connection_name": "ticket_system_mcp",
+    "description": "Creates and manages support tickets: open, close, escalate, search by customer or status"
 }
 ```
 
-`ONLINE`
+The MCP server must implement JSON-RPC 2.0 methods (`initialize`, `tools/list`, `tools/call`). Test the connection before adding it to a Supervisor with `SELECT http_request(conn => 'ticket_system_mcp', method => 'POST', ...)`.
 
+### Update Routing Without Recreating
 
+> "My Supervisor Agent is routing billing questions to the wrong agent. Update the descriptions to fix routing."
 
-
-
-
-
-
-
-
-
-
-
-```
-You are a customer support supervisor. Your job is to route user queries to the right specialist:
-
-1. For billing, payments, or subscription questions → billing_agent
-2. For technical issues, bugs, or API problems → technical_agent
-3. For HR, benefits, or policy questions → hr_agent
-
-If the query is unclear or spans multiple domains, ask the user to clarify.
-```
-
-
-
-
-
-```json
-{
-  "name": "general_agent",
-  "endpoint_name": "general-support-endpoint",
-  "description": "Handles general inquiries that don't fit other categories, provides navigation help"
-}
+```python
+manage_mas(
+    action="create_or_update",
+    name="Support Supervisor",
+    agents=[
+        {
+            "name": "billing_agent",
+            "ka_tile_id": "abc123-...",
+            "description": "Handles billing questions including invoices, payments, refunds, subscription changes, and pricing inquiries"
+        },
+        {
+            "name": "technical_agent",
+            "endpoint_name": "tech-support-endpoint",
+            "description": "Handles technical issues: API errors, integration problems, product bugs, and configuration help. Does NOT handle billing."
+        }
+    ],
+    instructions="If the query mentions money, charges, or billing, always route to billing_agent."
+)
 ```
 
+Adding "Does NOT handle billing" to the technical agent's description and explicit routing rules in the instructions resolves most misrouting. The Supervisor matches by name, so you don't need to delete and recreate.
 
+## Watch Out For
 
-
-`billing-assistant-endpoint`
-`tech-support-endpoint`
-`hr-assistant-endpoint`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`manage_mas``action="create_or_update"``agents`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```
-Top-level Supervisor
-├── Customer Support Supervisor
-│   ├── billing_agent
-│   ├── technical_agent
-│   └── general_agent
-├── Sales Supervisor
-│   ├── pricing_agent
-│   ├── demo_agent
-│   └── contract_agent
-└── Internal Supervisor
-    ├── hr_agent
-    └── it_helpdesk_agent
-```
-
-
+- **Vague descriptions cause misrouting** -- "Billing agent" is not enough. Write descriptions that list specific topics: "invoices, payments, refunds, subscription changes." The Supervisor routes based on description similarity to the user query.
+- **Overlapping agent domains create unpredictable routing** -- if two agents both mention "customer data," the Supervisor picks one semi-randomly. Give each agent a distinct, non-overlapping scope.
+- **Forgetting to grant permissions** -- UC functions need `EXECUTE`, MCP connections need `USE CONNECTION`. Missing permissions cause silent failures where the agent appears to work but returns empty results.
+- **No fallback agent** -- without a general-purpose agent, queries that don't match any description get routed to the closest match, which is often wrong. Add a `general_agent` with a broad description to catch edge cases.

@@ -1,66 +1,110 @@
 ---
 title: Spark Structured Streaming
-description: Comprehensive guide to Spark Structured Streaming for production workloads. Use when building streaming pipelines, working with Kafka ingestion, implementing...
+description: Build production streaming pipelines with Spark Structured Streaming — Kafka ingestion, Real-Time Mode, triggers, joins, checkpoints, and cost optimization.
 sidebar:
   label: Spark Structured Streaming
-  order: 0
+  order: 2
 ---
 
+## Overview
 
+The Spark Structured Streaming skill teaches Claude Code how to build production-ready streaming pipelines on Databricks. Use it when building Kafka ingestion pipelines, implementing Real-Time Mode for sub-second latency, configuring triggers and checkpoints, performing stream-stream or stream-static joins, writing to multiple sinks, or tuning streaming cost and performance.
 
+## Capabilities
 
+- Build Kafka-to-Delta ingestion pipelines with schema validation
+- Configure Real-Time Mode (RTM) for sub-second latency (as low as 5ms)
+- Set up `processingTime`, `availableNow`, and `realTime` triggers
+- Implement stream-stream joins with watermarks and state management
+- Enrich streaming data with Delta dimension tables (stream-static joins)
+- Write a single stream to multiple Delta tables or Kafka topics
+- Perform parallel MERGE operations with Liquid Clustering
+- Configure checkpoints for exactly-once semantics
+- Manage stateful operations with watermarks and RocksDB state stores
+- Optimize streaming costs through trigger tuning and cluster right-sizing
 
-```python
-from pyspark.sql.functions import col, from_json
+## Related MCP Tools
 
-# Basic Kafka to Delta streaming
-df = (spark
-    .readStream
-    .format("kafka")
-    .option("kafka.bootstrap.servers", "broker:9092")
-    .option("subscribe", "topic")
-    .load()
-    .select(from_json(col("value").cast("string"), schema).alias("data"))
-    .select("data.*")
-)
+| Tool | Description |
+|------|-------------|
+| `execute_sql` | Run SQL queries against streaming output tables |
+| `get_best_cluster` | Find a suitable cluster for streaming workloads |
+| `start_cluster` | Start a cluster for streaming jobs |
+| `manage_jobs` | Create and manage streaming job definitions |
+| `manage_job_runs` | Monitor running streaming jobs |
 
-df.writeStream \
-    .format("delta") \
-    .outputMode("append") \
-    .option("checkpointLocation", "/Volumes/catalog/checkpoints/stream") \
-    .trigger(processingTime="30 seconds") \
-    .start("/delta/target_table")
+## Example Prompts
+
+```
+Build a Kafka-to-Delta streaming pipeline that ingests JSON events
+from my-topic, parses the schema, and writes to a bronze Delta table
+with a 30-second trigger
 ```
 
+```
+Set up Real-Time Mode for a Kafka-to-Kafka pipeline that enriches
+events with a dimension table and writes to an output topic with
+sub-second latency
+```
 
+```
+Create a stream-stream join that matches orders with payments
+within a 10-minute window, with watermarks on both sides
+```
 
+```
+Write a single Kafka stream to three Delta tables: raw bronze,
+cleaned silver, and aggregated gold using ForEachBatch
+```
 
+```
+Optimize my streaming job costs by converting from continuous
+processing to a scheduled availableNow trigger that runs every
+15 minutes
+```
 
+```
+Configure checkpoints for my streaming pipeline using Unity
+Catalog volumes with proper target-tied organization
+```
 
+## Key Concepts
 
+### Trigger Types
 
+| Trigger | Latency | Cost | Use Case |
+|---------|---------|------|----------|
+| `realTime` | < 800ms | $$$ | Sub-second requirements |
+| `processingTime("30 seconds")` | Seconds | $$ | Near real-time dashboards |
+| `availableNow=True` (scheduled) | Minutes | $ | Batch-style SLA |
 
+### Stream-Static vs Stream-Stream Joins
 
+**Stream-static joins** are stateless -- the dimension table refreshes each microbatch automatically when stored as Delta. Use `left` joins to prevent data loss.
 
+**Stream-stream joins** are stateful -- both sides buffer events until matches are found or watermarks expire. Always include explicit time bounds in the join condition.
 
+### Checkpoints
 
+Every streaming query needs a unique, persistent checkpoint location. Use Unity Catalog volumes (not DBFS). Tie checkpoints to the target table, not the source.
 
+### Watermarks
 
+Watermarks control state cleanup for stateful operations (deduplication, aggregations, stream-stream joins). Rule of thumb: start with 2-3x your p95 event latency.
 
+## Production Checklist
 
+- Checkpoint location is persistent (UC volumes, not DBFS)
+- Unique checkpoint per stream
+- Fixed-size cluster (no autoscaling for streaming)
+- Monitoring configured (input rate, lag, batch duration)
+- Exactly-once verified (txnVersion/txnAppId)
+- Watermark configured for stateful operations
+- Left joins for stream-static (not inner)
 
+## References
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- [Structured Streaming Overview](https://docs.databricks.com/aws/en/structured-streaming/)
+- [Kafka Streaming](https://docs.databricks.com/aws/en/structured-streaming/kafka.html)
+- [Real-Time Mode](https://docs.databricks.com/aws/en/structured-streaming/real-time-mode.html)
+- [Streaming Best Practices](https://docs.databricks.com/aws/en/structured-streaming/best-practices.html)

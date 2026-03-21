@@ -1,292 +1,98 @@
 ---
 title: Model Serving
-description: Deploy and query Databricks Model Serving endpoints. Use when (1) deploying MLflow models or AI agents to endpoints, (2) creating ChatAgent/ResponsesAgent ag...
+description: Deploy MLflow models and AI agents to scalable REST API endpoints — classical ML, custom pyfunc, GenAI agents with ResponsesAgent, tools integration, and async deployment.
 sidebar:
   label: Model Serving
-  order: 0
+  order: 1
 ---
 
+## Overview
 
+The Model Serving skill teaches Claude Code how to deploy MLflow models and AI agents to Databricks Model Serving endpoints. It covers classical ML models (sklearn, xgboost), custom Python models (pyfunc), and GenAI agents (ResponsesAgent, LangGraph). Use it when deploying models to REST endpoints, integrating Unity Catalog functions as agent tools, or querying deployed endpoints.
 
+## Capabilities
 
+- Deploy traditional ML models with `mlflow.sklearn.autolog()`
+- Build custom Python models with `mlflow.pyfunc.PythonModel`
+- Create GenAI agents using `ResponsesAgent` pattern
+- Integrate UC Functions and Vector Search as agent tools
+- Test agents locally before deployment
+- Deploy endpoints asynchronously via Databricks Jobs
+- Query chat, agent, and ML endpoints via SDK or MCP tools
 
+## Related MCP Tools
 
+| Tool | Description |
+|------|-------------|
+| `upload_folder` | Upload agent files to workspace |
+| `run_python_file_on_databricks` | Test agent, log model |
+| `manage_jobs` | Create deployment job |
+| `manage_job_runs` | Kick off and monitor deployment |
+| `get_serving_endpoint_status` | Check if endpoint is READY |
+| `query_serving_endpoint` | Send requests to endpoint |
+| `list_serving_endpoints` | List all endpoints |
 
-`mlflow.sklearn.autolog()`
-`mlflow.pyfunc.PythonModel`
-`ResponsesAgent`
+## Example Prompts
 
+```
+Deploy a sklearn logistic regression model to a serving endpoint
+with autolog and auto-registration to Unity Catalog
+```
 
+```
+Create a GenAI agent using ResponsesAgent that can search documents
+via Vector Search and query SQL data via a Genie Space
+```
 
+```
+Check if my agent endpoint is ready and send a test question
+```
 
+```
+Set up async deployment for my agent using a Databricks Job
+so the deployment doesn't timeout
+```
 
+## Key Concepts
 
+### What Are You Deploying?
 
+| Model Type | Pattern | Key File |
+|------------|---------|----------|
+| Traditional ML (sklearn, xgboost) | `mlflow.sklearn.autolog()` | Classical ML |
+| Custom Python model | `mlflow.pyfunc.PythonModel` | Custom PyFunc |
+| GenAI Agent (LangGraph, tool-calling) | `ResponsesAgent` | GenAI Agents |
 
+### Foundation Model Endpoints
 
+Use exact endpoint names. Common defaults:
+- **Agent LLM**: `databricks-meta-llama-3-3-70b-instruct`
+- **Embedding**: `databricks-gte-large-en`
+- **Code tasks**: `databricks-gpt-5-1-codex-mini`
 
+### ResponsesAgent Output Format
 
-
-
-
-
-`databricks-gpt-5-2`
-`databricks-gpt-5-1`
-`databricks-gpt-5-1-codex-max`
-`databricks-gpt-5-1-codex-mini`
-`databricks-gpt-5`
-`databricks-gpt-5-mini`
-`databricks-gpt-5-nano`
-`databricks-gpt-oss-120b`
-`databricks-gpt-oss-20b`
-`databricks-claude-opus-4-6`
-`databricks-claude-sonnet-4-6`
-`databricks-claude-sonnet-4-5`
-`databricks-claude-opus-4-5`
-`databricks-claude-sonnet-4`
-`databricks-claude-opus-4-1`
-`databricks-claude-haiku-4-5`
-`databricks-claude-3-7-sonnet`
-`databricks-meta-llama-3-3-70b-instruct`
-`databricks-meta-llama-3-1-405b-instruct`
-`databricks-meta-llama-3-1-8b-instruct`
-`databricks-llama-4-maverick`
-`databricks-gemini-3-1-pro`
-`databricks-gemini-3-pro`
-`databricks-gemini-3-flash`
-`databricks-gemini-2-5-pro`
-`databricks-gemini-2-5-flash`
-`databricks-gemma-3-12b`
-`databricks-qwen3-next-80b-a3b-instruct`
-
-
-
-
-
-`databricks-gte-large-en`
-`databricks-bge-large-en`
-`databricks-qwen3-embedding-0-6b`
-
-
-
-`databricks-meta-llama-3-3-70b-instruct`
-`databricks-gte-large-en`
-`databricks-gpt-5-1-codex-mini``databricks-gpt-5-1-codex-max`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Use helper methods, not raw dicts:
 
 ```python
-%pip install -U mlflow==3.6.0 databricks-langchain langgraph==0.3.4 databricks-agents pydantic
-dbutils.library.restartPython()
-```
-
-
-```
-execute_databricks_command(code="%pip install -U mlflow==3.6.0 databricks-langchain langgraph==0.3.4 databricks-agents pydantic")
-```
-
-
-
-`agent.py``ResponsesAgent`
-
-
-
-```
-upload_folder(
-    local_folder="./my_agent",
-    workspace_folder="/Workspace/Users/you@company.com/my_agent"
-)
-```
-
-
-
-```
-run_python_file_on_databricks(
-    file_path="./my_agent/test_agent.py",
-    cluster_id="<cluster_id>"
-)
-```
-
-
-
-```
-run_python_file_on_databricks(
-    file_path="./my_agent/log_model.py",
-    cluster_id="<cluster_id>"
-)
-```
-
-
-
-
-
-
-
-```
-query_serving_endpoint(
-    name="my-agent-endpoint",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-```
-
-
-
-
-
-```python
-import mlflow
-import mlflow.sklearn
-from sklearn.linear_model import LogisticRegression
-
-# Enable autolog with auto-registration
-mlflow.sklearn.autolog(
-    log_input_examples=True,
-    registered_model_name="main.models.my_classifier"
-)
-
-# Train - model is logged and registered automatically
-model = LogisticRegression()
-model.fit(X_train, y_train)
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-`upload_folder`
-`run_python_file_on_databricks`
-`execute_databricks_command`
-
-
-
-
-
-`manage_jobs`
-`manage_job_runs`
-`manage_job_runs`
-
-
-
-
-
-`get_serving_endpoint_status`
-`query_serving_endpoint`
-`list_serving_endpoints`
-
-
-
-
-
-
-
-```
-get_serving_endpoint_status(name="my-agent-endpoint")
-```
-
-
-```json
-{
-    "name": "my-agent-endpoint",
-    "state": "READY",
-    "served_entities": [...]
-}
-```
-
-
-
-```
-query_serving_endpoint(
-    name="my-agent-endpoint",
-    messages=[
-        {"role": "user", "content": "What is Databricks?"}
-    ],
-    max_tokens=500
-)
-```
-
-
-
-```
-query_serving_endpoint(
-    name="sklearn-classifier",
-    dataframe_records=[
-        {"age": 25, "income": 50000, "credit_score": 720}
-    ]
-)
-```
-
-
-
-
-
-
-
-`self.create_text_output_item(text, id)`
-`get_serving_endpoint_status`
-`pip_requirements`
-
-`resources``log_model`
-`catalog.schema.model_name`
-
-
-
-
-```python
-return ResponsesAgentResponse(output=[{"role": "assistant", "content": "..."}])
-```
-
-
-```python
+# CORRECT
 return ResponsesAgentResponse(
     output=[self.create_text_output_item(text="...", id="msg_1")]
 )
 ```
 
+## Common Issues
 
-`self.create_text_output_item(text, id)`
-`self.create_function_call_item(id, call_id, name, arguments)`
-`self.create_function_call_output_item(call_id, output)`
+| Issue | Solution |
+|-------|----------|
+| Invalid output format | Use `self.create_text_output_item()` not raw dicts |
+| Endpoint NOT_READY | Deployment takes ~15 min; poll with `get_serving_endpoint_status` |
+| Package not found | Specify exact versions in `pip_requirements` |
+| Tool timeout | Use job-based deployment, not synchronous calls |
 
+## References
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- [Model Serving Documentation](https://docs.databricks.com/machine-learning/model-serving/)
+- [MLflow 3 ResponsesAgent](https://mlflow.org/docs/latest/llms/responses-agent-intro/)
+- [Agent Framework](https://docs.databricks.com/generative-ai/agent-framework/)
+- [Supported Foundation Models](https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models)

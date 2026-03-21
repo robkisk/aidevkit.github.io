@@ -1,230 +1,106 @@
 ---
 title: Metric Views
-description: "Unity Catalog metric views: define, create, query, and manage governed business metrics in YAML. Use when building standardized KPIs, revenue metrics, order ..."
+description: Define reusable, governed business metrics in YAML with Unity Catalog metric views — dimensions, measures, star schema joins, materialization, and window measures.
 sidebar:
   label: Metric Views
-  order: 0
+  order: 3
 ---
 
+## Overview
 
+The Metric Views skill teaches Claude Code how to define reusable, governed business metrics using YAML in Unity Catalog. Metric views separate measure definitions from dimension groupings, enabling flexible querying at runtime. Use them when building standardized KPIs, revenue metrics, or any reusable business metrics that need consistent definitions across teams and tools.
 
+## Capabilities
 
+- Define standardized metrics with dimensions and aggregate measures
+- Create complex aggregations: ratios, distinct counts, filtered measures
+- Build star and snowflake schema joins declaratively in YAML
+- Define window measures for moving averages, running totals, and period-over-period comparisons
+- Enable materialization for pre-computed metric aggregations
+- Integrate natively with AI/BI Dashboards, Genie, and Alerts
 
+## Related MCP Tools
 
+| Tool | Description |
+|------|-------------|
+| `manage_metric_views` | Create, alter, describe, query, drop, and grant access to metric views |
+| `execute_sql` | Run metric view queries directly |
+| `get_best_warehouse` | Find a warehouse for metric view operations |
 
+## Example Prompts
 
+```
+Create a metric view for orders with Total Revenue, Order Count,
+and Revenue per Customer, grouped by month and status
+```
 
+```
+Add a star schema join to my sales metrics connecting fact_sales
+to dim_customer and dim_product dimensions
+```
 
+```
+Query my orders_metrics view for 2024 revenue by month, filtered
+to fulfilled orders only
+```
 
+```
+Add a 7-day trailing window measure for distinct active customers
+```
 
+## Key Concepts
 
+### Dimensions vs Measures
 
+| | Dimensions | Measures |
+|---|---|---|
+| Purpose | Categorize and group | Aggregate numeric values |
+| Examples | Region, Date, Status | `SUM(revenue)`, `COUNT(orders)` |
+| In queries | SELECT and GROUP BY | Wrapped in `MEASURE()` |
+| Expressions | Any SQL expression | Must use aggregate functions |
 
-
-`CAN USE`
-`SELECT``CREATE TABLE``USE SCHEMA`
-
-
-
-
+### Quick Start
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.orders_metrics
-WITH METRICS
-LANGUAGE YAML
+WITH METRICS LANGUAGE YAML
 AS $$
   version: 1.1
-  comment: "Orders KPIs for sales analysis"
   source: catalog.schema.orders
-  filter: order_date > '2020-01-01'
   dimensions:
     - name: Order Month
       expr: DATE_TRUNC('MONTH', order_date)
-      comment: "Month of order"
     - name: Order Status
-      expr: CASE
-        WHEN status = 'O' THEN 'Open'
-        WHEN status = 'P' THEN 'Processing'
-        WHEN status = 'F' THEN 'Fulfilled'
-        END
-      comment: "Human-readable order status"
+      expr: status
   measures:
-    - name: Order Count
-      expr: COUNT(1)
     - name: Total Revenue
       expr: SUM(total_price)
-      comment: "Sum of total price"
-    - name: Revenue per Customer
-      expr: SUM(total_price) / COUNT(DISTINCT customer_id)
-      comment: "Average revenue per unique customer"
+    - name: Order Count
+      expr: COUNT(1)
 $$
 ```
 
+### Query Pattern
 
-
-`MEASURE()``SELECT *`
+All measures must use the `MEASURE()` function. `SELECT *` is NOT supported.
 
 ```sql
-SELECT
-  `Order Month`,
-  `Order Status`,
+SELECT `Order Month`, `Order Status`,
   MEASURE(`Total Revenue`) AS total_revenue,
   MEASURE(`Order Count`) AS order_count
 FROM catalog.schema.orders_metrics
-WHERE extract(year FROM `Order Month`) = 2024
-GROUP BY ALL
-ORDER BY ALL
+GROUP BY ALL ORDER BY ALL
 ```
 
+### Prerequisites
 
+- Databricks Runtime 17.2+ (for YAML version 1.1)
+- SQL warehouse with `CAN USE` permissions
+- `SELECT` on source tables, `CREATE TABLE` + `USE SCHEMA` in target schema
 
+## References
 
-
-
-
-
-
-
-`manage_metric_views`
-
-
-
-`create`
-`alter`
-`describe`
-`query`
-`drop`
-`grant`
-
-
-
-```python
-manage_metric_views(
-    action="create",
-    full_name="catalog.schema.orders_metrics",
-    source="catalog.schema.orders",
-    or_replace=True,
-    comment="Orders KPIs for sales analysis",
-    filter_expr="order_date > '2020-01-01'",
-    dimensions=[
-        {"name": "Order Month", "expr": "DATE_TRUNC('MONTH', order_date)", "comment": "Month of order"},
-        {"name": "Order Status", "expr": "status"},
-    ],
-    measures=[
-        {"name": "Order Count", "expr": "COUNT(1)"},
-        {"name": "Total Revenue", "expr": "SUM(total_price)", "comment": "Sum of total price"},
-    ],
-)
-```
-
-
-
-```python
-manage_metric_views(
-    action="query",
-    full_name="catalog.schema.orders_metrics",
-    query_measures=["Total Revenue", "Order Count"],
-    query_dimensions=["Order Month"],
-    where="extract(year FROM `Order Month`) = 2024",
-    order_by="ALL",
-    limit=100,
-)
-```
-
-
-
-```python
-manage_metric_views(
-    action="describe",
-    full_name="catalog.schema.orders_metrics",
-)
-```
-
-
-
-```python
-manage_metric_views(
-    action="grant",
-    full_name="catalog.schema.orders_metrics",
-    principal="data-consumers",
-    privileges=["SELECT"],
-)
-```
-
-
-
-```yaml
-version: 1.1                    # Required: "1.1" for DBR 17.2+
-comment: "Description"          # Optional: metric view description
-source: catalog.schema.table    # Required: source table/view
-filter: column > value          # Optional: global WHERE filter
-
-dimensions:                     # Required: at least one
-  - name: Display Name          # Backtick-quoted in queries
-    expr: sql_expression        # Column ref or SQL transformation
-    comment: "Description"      # Optional (v1.1+)
-
-measures:                       # Required: at least one
-  - name: Display Name          # Queried via MEASURE(`name`)
-    expr: AGG_FUNC(column)      # Must be an aggregate expression
-    comment: "Description"      # Optional (v1.1+)
-
-joins:                          # Optional: star/snowflake schema
-  - name: dim_table
-    source: catalog.schema.dim_table
-    on: source.fk = dim_table.pk
-
-materialization:                # Optional (experimental)
-  schedule: every 6 hours
-  mode: relaxed
-```
-
-
-
-
-
-
-
-
-
-`MEASURE()`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`MEASURE(\``)`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- [Metric Views Documentation](https://docs.databricks.com/en/metric-views/)
+- [YAML Syntax Reference](https://docs.databricks.com/en/metric-views/data-modeling/syntax)
+- [Window Measures](https://docs.databricks.com/aws/en/metric-views/data-modeling/window-measures)
+- [MEASURE() Function](https://docs.databricks.com/en/sql/language-manual/functions/measure)

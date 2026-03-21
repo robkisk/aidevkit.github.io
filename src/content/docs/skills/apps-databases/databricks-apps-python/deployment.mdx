@@ -1,147 +1,110 @@
 ---
-title: Deploying Databricks Apps
-description: "Three deployment options: Databricks CLI (simplest), Asset Bundles (multi-environment), or MCP tools (programmatic)."
+title: Deployment
+description: Deploy Databricks Apps using the CLI or Asset Bundles with post-deployment verification.
 sidebar:
   order: 4
 ---
 
+## What You Can Build
 
+You can deploy Python apps to Databricks using two paths: the CLI for quick single-environment deploys, and Asset Bundles (DABs) for version-controlled multi-environment pipelines (dev/staging/prod). Both paths produce a running app with a URL, automatic HTTPS, and managed service principal credentials.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-```yaml
-command:
-  - "python"        # Adjust per framework — see table below
-  - "app.py"
-
-env:
-  - name: DATABRICKS_WAREHOUSE_ID
-    valueFrom: sql-warehouse
-  - name: USE_MOCK_BACKEND
-    value: "false"
-```
-
-
-
-
-
-`["python", "app.py"]`
-`["streamlit", "run", "app.py"]`
-`["python", "app.py"]`
-`["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]`
-`["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]`
-`["reflex", "run", "--env", "prod"]`
-
-
+> "Deploy a Streamlit app to Databricks using the CLI with a SQL warehouse resource."
 
 ```bash
 # Create the app
-databricks apps create <app-name>
+databricks apps create sales-dashboard
 
-# Upload source code
-databricks workspace mkdirs /Workspace/Users/<user>/apps/<app-name>
-databricks workspace import-dir . /Workspace/Users/<user>/apps/<app-name>
+# Upload source code to the workspace
+databricks workspace mkdirs /Workspace/Users/you@company.com/apps/sales-dashboard
+databricks workspace import-dir . /Workspace/Users/you@company.com/apps/sales-dashboard
 
 # Deploy
-databricks apps deploy <app-name> \
-  --source-code-path /Workspace/Users/<user>/apps/<app-name>
+databricks apps deploy sales-dashboard \
+  --source-code-path /Workspace/Users/you@company.com/apps/sales-dashboard
 
-# Add resources via UI (SQL warehouse, Lakebase, etc.)
-
-# Check status and URL
-databricks apps get <app-name>
+# Verify status and get the app URL
+databricks apps get sales-dashboard
 ```
 
+**Key decisions:**
+- Use the CLI path when you need a quick deployment or are iterating on a prototype
+- Add resources (SQL warehouse, Lakebase, etc.) through the Databricks Apps UI after creating the app
+- The `app.yaml` file controls the start command and environment variables -- make sure the command matches your framework
+- After uploading new code, redeploy with the same `databricks apps deploy` command
 
+## More Patterns
 
-```bash
-databricks workspace delete /Workspace/Users/<user>/apps/<app-name> --recursive
-databricks workspace import-dir . /Workspace/Users/<user>/apps/<app-name>
-databricks apps deploy <app-name> \
-  --source-code-path /Workspace/Users/<user>/apps/<app-name>
-```
+### Multi-environment deployment with Asset Bundles
 
-
-
-
-
-
-
-
-
-
+> "Set up a DABs pipeline to deploy the same app to dev and prod targets."
 
 ```bash
+# Generate bundle config from an existing app
 databricks bundle generate app \
-  --existing-app-name <app-name> \
-  --key <resource_key>
-```
+  --existing-app-name sales-dashboard \
+  --key sales_dashboard
 
-
-`resources/<key>.app.yml`
-`src/app/``app.yaml`
-
-
-
-```bash
-# Validate
+# Validate the dev target
 databricks bundle validate -t dev
 
-# Deploy
+# Deploy and start
 databricks bundle deploy -t dev
+databricks bundle run sales_dashboard -t dev
 
-# Start the app (required after deployment)
-databricks bundle run <resource_key> -t dev
-
-# Production
+# Promote to production
 databricks bundle deploy -t prod
-databricks bundle run <resource_key> -t prod
+databricks bundle run sales_dashboard -t prod
 ```
 
-`src/app/app.yaml``databricks.yml`
+`bundle deploy` pushes configuration and code. `bundle run` starts the app. Both steps are required -- `deploy` alone does not apply configuration changes. Environment variables go in `src/app/app.yaml`, not in `databricks.yml`.
 
+### Checking deployment logs
 
-
-
-
-
-
-
-
-
-
-
-
-
+> "How do I diagnose a failed deployment?"
 
 ```bash
-databricks apps logs <app-name>
+databricks apps logs sales-dashboard
 ```
 
+Look for these patterns in the output: `[SYSTEM]` lines show deployment status and dependency installation; `[APP]` lines show your application's stdout/stderr; `Deployment successful` and `App started successfully` confirm a healthy state. If you see a stack trace, the error is usually a missing dependency in `requirements.txt` or a misconfigured start command in `app.yaml`.
 
-`[SYSTEM]`
-`[APP]`
-`Deployment successful`
-`App started successfully`
-`Error:`
+### Redeploying after code changes
 
+> "Push updated code to an existing app."
 
+```bash
+# Delete old files, upload new ones, redeploy
+databricks workspace delete /Workspace/Users/you@company.com/apps/sales-dashboard --recursive
+databricks workspace import-dir . /Workspace/Users/you@company.com/apps/sales-dashboard
+databricks apps deploy sales-dashboard \
+  --source-code-path /Workspace/Users/you@company.com/apps/sales-dashboard
+```
 
-`databricks apps get <app-name>`
+This three-step cycle -- delete, upload, deploy -- ensures the workspace copy matches your local directory exactly. The app restarts automatically after deployment.
 
+### Service principal permission setup via DABs
 
+> "In a databricks.yml bundle, declare a SQL warehouse resource with auto-granted permissions."
 
+```yaml
+resources:
+  apps:
+    sales_dashboard:
+      resources:
+        - name: my-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+```
 
+When you declare a resource with a `permission` field, the platform auto-grants that permission to the app's service principal on deployment. This eliminates the manual step of granting SP access through the UI.
 
+## Watch Out For
 
-`CAN USE`
-`CAN MANAGE`
-
+- **Running `bundle deploy` without `bundle run`** -- deployment pushes code and config, but the app does not start or apply new configuration until you also run `bundle run`. This is different from CLI deploys, which start automatically.
+- **Putting environment variables in `databricks.yml`** -- for Databricks Apps, environment variables belong in `src/app/app.yaml`, not the bundle config. The bundle manages the app resource; `app.yaml` manages the runtime.
+- **Exceeding the 10 MB file limit** -- the platform rejects individual files larger than 10 MB. If a dependency is too large, put it in `requirements.txt` and let the runtime install it instead of bundling it with your source.
+- **Skipping log review after deployment** -- a "deployed" status does not mean your app is healthy. Always run `databricks apps logs` and verify the `App started successfully` message before sharing the URL.

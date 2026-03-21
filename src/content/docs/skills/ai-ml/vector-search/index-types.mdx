@@ -1,161 +1,88 @@
 ---
-title: Vector Search Index Types
-description: Databricks automatically computes embeddings from your text column.
+title: Index Types & Creation
+description: Choose the right Vector Search index type and create endpoints for semantic search over your data.
 sidebar:
-  order: 99
+  order: 1
 ---
 
+## What You Can Build
 
+You can stand up a vector index backed by a Delta table in under five minutes. The three index types cover the full spectrum: let Databricks handle embeddings automatically, bring your own pre-computed vectors, or manage everything through a real-time CRUD API. Your choice depends on how much control you need over the embedding lifecycle.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "Create a Vector Search endpoint and a Delta Sync index with managed embeddings over my knowledge base table. Use Python and the Databricks SDK."
 
 ```python
 from databricks.sdk import WorkspaceClient
 
 w = WorkspaceClient()
 
+# Create the compute endpoint first
+endpoint = w.vector_search_endpoints.create_endpoint(
+    name="docs-search-endpoint",
+    endpoint_type="STORAGE_OPTIMIZED"
+)
+
+# Create a Delta Sync index with managed embeddings
 index = w.vector_search_indexes.create_index(
     name="catalog.schema.docs_index",
-    endpoint_name="my-vs-endpoint",
+    endpoint_name="docs-search-endpoint",
     primary_key="doc_id",
     index_type="DELTA_SYNC",
     delta_sync_index_spec={
         "source_table": "catalog.schema.documents",
-        "embedding_source_columns": [
-            {
-                "name": "content",
-                "embedding_model_endpoint_name": "databricks-gte-large-en"
-            }
-        ],
-        "pipeline_type": "TRIGGERED",  # or "CONTINUOUS"
+        "embedding_source_columns": [{
+            "name": "content",
+            "embedding_model_endpoint_name": "databricks-gte-large-en"
+        }],
+        "pipeline_type": "TRIGGERED",
         "columns_to_sync": ["doc_id", "content", "title", "category"]
     }
 )
 ```
 
+**Key decisions:**
+- **`STORAGE_OPTIMIZED` endpoint** handles 100M+ vectors at lower cost; choose `STANDARD` when you need sub-100ms latency
+- **`embedding_source_columns`** tells Databricks to compute embeddings from your text column automatically
+- **`TRIGGERED` pipeline** syncs on demand via API call, keeping costs predictable for batch workflows
+- **`columns_to_sync`** limits what gets indexed -- only include columns you'll need in query results
 
+## More Patterns
 
+### Bring Your Own Embeddings
 
-
-`TRIGGERED`
-`CONTINUOUS`
-
-
-
-```sql
-CREATE TABLE catalog.schema.documents (
-    doc_id STRING,
-    title STRING,
-    content STRING,  -- Text to embed
-    category STRING,
-    created_at TIMESTAMP
-);
-```
-
-
-
-
-
-
-
-
-
-
-
-
+> "I already have embeddings from a fine-tuned model. Create a Delta Sync index using my pre-computed vectors in Python."
 
 ```python
 index = w.vector_search_indexes.create_index(
-    name="catalog.schema.custom_index",
-    endpoint_name="my-vs-endpoint",
+    name="catalog.schema.custom_embed_index",
+    endpoint_name="docs-search-endpoint",
     primary_key="id",
     index_type="DELTA_SYNC",
     delta_sync_index_spec={
         "source_table": "catalog.schema.embedded_docs",
-        "embedding_vector_columns": [
-            {
-                "name": "embedding",
-                "embedding_dimension": 768
-            }
-        ],
+        "embedding_vector_columns": [{
+            "name": "embedding",
+            "embedding_dimension": 768
+        }],
         "pipeline_type": "TRIGGERED"
     }
 )
 ```
 
+Use `embedding_vector_columns` instead of `embedding_source_columns` when you pre-compute vectors. The dimension must match what your model produces -- `768` for GTE-Large, `1536` for OpenAI `text-embedding-3-small`, and so on.
 
+### Real-Time CRUD with Direct Access
 
-```python
-from databricks.sdk import WorkspaceClient
-import pandas as pd
-
-w = WorkspaceClient()
-
-def get_embeddings(texts: list[str]) -> list[list[float]]:
-    """Call embedding endpoint for texts."""
-    response = w.serving_endpoints.query(
-        name="databricks-gte-large-en",
-        input=texts
-    )
-    return [item.embedding for item in response.data]
-
-# Add embeddings to your data
-df = spark.table("catalog.schema.documents").toPandas()
-df["embedding"] = get_embeddings(df["content"].tolist())
-
-# Write back to Delta
-spark.createDataFrame(df).write.mode("overwrite").saveAsTable(
-    "catalog.schema.embedded_docs"
-)
-```
-
-
-
-```sql
-CREATE TABLE catalog.schema.embedded_docs (
-    id STRING,
-    content STRING,
-    embedding ARRAY<FLOAT>,  -- Pre-computed embedding
-    metadata STRING
-);
-```
-
-
-
-
-
-
-
-
-
-
-
+> "I need an index I can update in real time from my application without a Delta table. Use Python with the Databricks SDK."
 
 ```python
 import json
 
 index = w.vector_search_indexes.create_index(
     name="catalog.schema.realtime_index",
-    endpoint_name="my-vs-endpoint",
+    endpoint_name="docs-search-endpoint",
     primary_key="id",
     index_type="DIRECT_ACCESS",
     direct_access_index_spec={
@@ -166,94 +93,36 @@ index = w.vector_search_indexes.create_index(
             "id": "string",
             "text": "string",
             "embedding": "array<float>",
-            "category": "string",
-            "score": "float"
+            "category": "string"
         })
     }
 )
-```
 
-
-
-```python
-import json
-
-# Insert or update vectors
+# Upsert vectors directly via API
 w.vector_search_indexes.upsert_data_vector_index(
     index_name="catalog.schema.realtime_index",
     inputs_json=json.dumps([
-        {
-            "id": "doc-001",
-            "text": "Machine learning basics",
-            "embedding": [0.1, 0.2, 0.3, ...],  # 768 floats
-            "category": "ml",
-            "score": 0.95
-        },
-        {
-            "id": "doc-002",
-            "text": "Deep learning overview",
-            "embedding": [0.4, 0.5, 0.6, ...],
-            "category": "dl",
-            "score": 0.88
-        }
+        {"id": "doc-001", "text": "ML basics", "embedding": [0.1, 0.2, ...], "category": "ml"},
+        {"id": "doc-002", "text": "Deep learning", "embedding": [0.4, 0.5, ...], "category": "dl"},
     ])
 )
 ```
 
+Direct Access skips Delta table sync entirely. You manage inserts, updates, and deletes through the API. Use it when your data arrives from an application layer rather than a lakehouse pipeline.
 
+### Trigger a Manual Sync
 
-```python
-w.vector_search_indexes.delete_data_vector_index(
-    index_name="catalog.schema.realtime_index",
-    primary_keys=["doc-001", "doc-002"]
-)
-```
-
-
-
-
+> "My TRIGGERED index needs to pick up new rows I just inserted into the source table."
 
 ```python
-# Create index with embedding model for query-time embedding
-index = w.vector_search_indexes.create_index(
-    name="catalog.schema.hybrid_index",
-    endpoint_name="my-vs-endpoint",
-    primary_key="id",
-    index_type="DIRECT_ACCESS",
-    direct_access_index_spec={
-        "embedding_vector_columns": [
-            {"name": "embedding", "embedding_dimension": 768}
-        ],
-        "embedding_model_endpoint_name": "databricks-gte-large-en",  # For query_text
-        "schema_json": json.dumps({...})
-    }
-)
+w.vector_search_indexes.sync_index(index_name="catalog.schema.docs_index")
 ```
 
+For `TRIGGERED` pipelines, new data sits in the source table until you explicitly call `sync_index()`. The `CONTINUOUS` pipeline type auto-syncs on every table change, but costs more due to always-on compute.
 
+## Watch Out For
 
-```
-Start here:
-│
-├─ Do you have pre-computed embeddings?
-│   ├─ Yes → Do you want auto-sync from Delta?
-│   │         ├─ Yes → Delta Sync (Self-Managed)
-│   │         └─ No  → Direct Access
-│   │
-│   └─ No → Delta Sync (Managed Embeddings)
-│
-└─ Do you need real-time updates (<1 sec)?
-    ├─ Yes → Direct Access
-    └─ No  → Delta Sync (any type)
-```
-
-
-
-
-
-
-
-
-
-
-
+- **Embedding dimension mismatch** -- if your query embeddings are 768-dimensional but the index was created with 1536, queries return garbage results silently. Always confirm the dimension matches your model output.
+- **Wrong filter syntax for your endpoint type** -- Standard endpoints use `filters_json` (dictionary format), while Storage-Optimized endpoints use `filter_string` (SQL syntax). Using the wrong one returns an error that doesn't clearly explain the issue.
+- **Forgetting `columns_to_sync`** -- without it, every column in the source table gets synced. That increases storage costs and slows indexing, especially on wide tables.
+- **Choosing `CONTINUOUS` by default** -- it's tempting for freshness, but the always-on compute adds up fast. Start with `TRIGGERED` and move to `CONTINUOUS` only when your use case requires near-real-time updates.

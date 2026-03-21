@@ -1,69 +1,68 @@
 ---
-title: Authorization for Databricks Apps
-description: Databricks Apps supports two complementary authorization models.
+title: Authorization
+description: Set up service principal and user-scoped authorization for Databricks Apps with per-framework token patterns.
 sidebar:
   order: 1
 ---
 
+## What You Can Build
 
+You can build apps that run background tasks under a shared service principal identity, query data scoped to the logged-in user's permissions, or combine both models for apps that mix shared dashboards with personalized views. The authorization model you choose determines whether Unity Catalog row/column filters apply and whether audit logs trace back to individual users.
 
+## In Action
 
-
-
-
-
-
-
-
-`DATABRICKS_CLIENT_ID`
-`DATABRICKS_CLIENT_SECRET`
-
-`Config()`
+> "Using Python and Streamlit, build a Databricks App that queries a SQL warehouse with user-scoped permissions so Unity Catalog row filters apply per user."
 
 ```python
+import os
+import streamlit as st
 from databricks.sdk.core import Config
 from databricks import sql
 
-cfg = Config()  # Auto-detects SP credentials from environment
-conn = sql.connect(
-    server_hostname=cfg.host,
-    http_path="/sql/1.0/warehouses/<id>",
-    credentials_provider=lambda: cfg.authenticate,
-)
+cfg = Config()
+
+def get_user_connection():
+    """Connect with the logged-in user's identity for row/column filtering."""
+    user_token = st.context.headers.get("x-forwarded-access-token")
+    return sql.connect(
+        server_hostname=cfg.host,
+        http_path=f"/sql/1.0/warehouses/{os.getenv('DATABRICKS_WAREHOUSE_ID')}",
+        access_token=user_token,
+    )
+
+def get_app_connection():
+    """Connect with the service principal for shared data and logging."""
+    return sql.connect(
+        server_hostname=cfg.host,
+        http_path=f"/sql/1.0/warehouses/{os.getenv('DATABRICKS_WAREHOUSE_ID')}",
+        credentials_provider=lambda: cfg.authenticate,
+    )
 ```
 
+**Key decisions:**
+- `Config()` auto-detects the service principal credentials injected by the platform (`DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`) -- you never hardcode them
+- User auth reads the `x-forwarded-access-token` header, which carries the logged-in user's OAuth token
+- User auth respects Unity Catalog row/column filters and creates per-user audit trails; app auth gives all users the same permissions
+- Request minimum OAuth scopes -- the platform blocks access outside approved scopes even if the user has broader permissions
 
+## More Patterns
 
+### Extracting the user token per framework
 
-
-
-
-
-
-
-
-
-
-
-
-
+> "Show me how to get the user's access token in each supported Python framework."
 
 ```python
 # Streamlit
-import streamlit as st
 user_token = st.context.headers.get("x-forwarded-access-token")
 
 # Dash / Flask
-from flask import request
 user_token = request.headers.get("x-forwarded-access-token")
 
 # Gradio
-import gradio as gr
 def handler(message, request: gr.Request):
     user_token = request.headers.get("x-forwarded-access-token")
 
 # FastAPI
-from fastapi import Request
 async def endpoint(request: Request):
     user_token = request.headers.get("x-forwarded-access-token")
 
@@ -71,27 +70,11 @@ async def endpoint(request: Request):
 user_token = session.http_conn.headers.get("x-forwarded-access-token")
 ```
 
+Every framework exposes the same header -- the only difference is how you access the request object. The token is available only when the app is deployed to Databricks, not during local development.
 
+### Combining app auth and user auth in one app
 
-```python
-from databricks.sdk.core import Config
-from databricks import sql
-
-cfg = Config()
-user_token = get_user_token()  # Per-framework method above
-
-conn = sql.connect(
-    server_hostname=cfg.host,
-    http_path="/sql/1.0/warehouses/<id>",
-    access_token=user_token,  # User's token, not SP credentials
-)
-```
-
-
-
-
-
-
+> "In Python, create a connection helper that uses app auth for background tasks and user auth for personalized queries."
 
 ```python
 from databricks.sdk.core import Config
@@ -100,7 +83,7 @@ from databricks import sql
 cfg = Config()
 
 def get_app_connection(warehouse_http_path: str):
-    """App auth — shared data, logging, background tasks."""
+    """App auth -- shared data, logging, background tasks."""
     return sql.connect(
         server_hostname=cfg.host,
         http_path=warehouse_http_path,
@@ -108,7 +91,7 @@ def get_app_connection(warehouse_http_path: str):
     )
 
 def get_user_connection(warehouse_http_path: str, user_token: str):
-    """User auth — respects Unity Catalog row/column filters."""
+    """User auth -- respects Unity Catalog row/column filters."""
     return sql.connect(
         server_hostname=cfg.host,
         http_path=warehouse_http_path,
@@ -116,40 +99,28 @@ def get_user_connection(warehouse_http_path: str, user_token: str):
     )
 ```
 
+Use `get_app_connection` for writes, logging, and operations that should not vary by user. Use `get_user_connection` for any query where row-level security or audit trail matters.
 
+### Configuring OAuth scopes
 
+> "What scopes should I request for an app that queries a SQL warehouse and reads the current user's identity?"
 
+```yaml
+# app.yaml -- scopes are configured in the Databricks Apps UI, not in this file.
+# These are the available scopes you can request:
+#
+#   sql                      -> SQL warehouse queries
+#   files.files              -> Files and directories
+#   dashboards.genie         -> Genie spaces
+#   iam.access-control:read  -> Access control (default)
+#   iam.current-user:read    -> Current user identity (default)
+```
 
+For a SQL-only app, request `sql` plus the two defaults. Adding unnecessary scopes widens the blast radius if the app is compromised. A workspace admin must enable user authorization (Public Preview) before you can add scopes.
 
+## Watch Out For
 
-
-
-`sql`
-`files.files`
-`dashboards.genie`
-`iam.access-control:read`
-`iam.current-user:read`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`CAN MANAGE``CAN USE`
-
-
+- **Logging or printing user tokens** -- tokens are credentials. Writing them to logs, stdout, or files creates a security exposure. Pass them directly to `sql.connect()` and discard.
+- **Testing user auth locally** -- the `x-forwarded-access-token` header is injected only when the app runs on Databricks. During local development the header is absent, so you need a mock backend or a PAT-based fallback path.
+- **Granting CAN MANAGE to all users** -- `CAN MANAGE` lets users redeploy your app. Use `CAN USE` for consumers and reserve `CAN MANAGE` for developers who own the codebase.
+- **Requesting all scopes "just in case"** -- the platform enforces scope boundaries regardless of the user's actual permissions. Over-requesting scopes does not grant more access, but it does increase risk.

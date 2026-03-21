@@ -1,139 +1,46 @@
 ---
-title: Materialized Views, Temporary Tables/Views, and Pipe Syntax
-description: Materialized views (MVs) are Unity Catalog-managed tables that physically store precomputed query results.
+title: Materialized Views & Pipe Syntax
+description: Precompute query results with scheduled materialized views and chain readable SQL transformations using pipe syntax.
 sidebar:
-  order: 99
+  order: 2
 ---
 
+## What You Can Build
 
+Materialized views store precomputed query results as Delta tables that update on a schedule, on upstream data changes, or on demand. Pipe syntax chains SQL operations top-down using the `|>` operator, eliminating nested subqueries. Together they give you fast-read analytics with readable transformation logic.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`SELECT``USE CATALOG``USE SCHEMA``CREATE TABLE``CREATE MATERIALIZED VIEW`
-`REFRESH``SELECT`
-`SELECT``USE CATALOG``USE SCHEMA`
-
-
+> "Write SQL that creates a materialized view of daily revenue by region with hourly auto-refresh."
 
 ```sql
-{ CREATE OR REPLACE MATERIALIZED VIEW | CREATE MATERIALIZED VIEW [ IF NOT EXISTS ] }
-  view_name
-  [ column_list ]
-  [ view_clauses ]
-  AS query
-```
-
-
-```sql
-CREATE MATERIALIZED VIEW mv_name (
-  col1 INT NOT NULL,
-  col2 STRING,
-  col3 DOUBLE,
-  CONSTRAINT pk PRIMARY KEY (col1)
-)
-AS SELECT ...
-```
-
-
-`PARTITIONED BY (col1, col2)`
-`CLUSTER BY (col1, col2)``CLUSTER BY AUTO`
-`COMMENT 'description'`
-`TBLPROPERTIES ('key' = 'value')`
-`WITH ROW FILTER func ON (col1, col2)`
-`MASK func`
-`SCHEDULE`
-`TRIGGER ON UPDATE`
-
-
-
-```sql
--- Simple materialized view
-CREATE MATERIALIZED VIEW catalog.schema.daily_sales
-  COMMENT 'Daily sales aggregations'
-AS SELECT
-    date,
-    region,
-    SUM(sales) AS total_sales,
-    COUNT(*) AS num_transactions
-FROM catalog.schema.raw_sales
-GROUP BY date, region;
-
--- MV with explicit columns, constraints, and clustering
-CREATE MATERIALIZED VIEW catalog.schema.customer_orders (
-  customer_id INT NOT NULL,
-  full_name STRING,
-  order_count BIGINT,
-  CONSTRAINT customer_pk PRIMARY KEY (customer_id)
-)
-CLUSTER BY AUTO
-COMMENT 'Customer order counts'
-AS SELECT
-    c.customer_id,
-    c.full_name,
-    COUNT(o.order_id) AS order_count
-FROM catalog.schema.customers c
-INNER JOIN catalog.schema.orders o ON c.customer_id = o.customer_id
-GROUP BY c.customer_id, c.full_name;
-```
-
-
-
-
-
-
-
-```sql
--- Synchronous (blocks until complete)
-REFRESH MATERIALIZED VIEW catalog.schema.daily_sales;
-
--- Asynchronous (returns immediately)
-REFRESH MATERIALIZED VIEW catalog.schema.daily_sales ASYNC;
-```
-
-
-
-```sql
--- Every N hours/days/weeks
-CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.hourly_metrics
+CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.daily_revenue
+  CLUSTER BY (order_date)
   SCHEDULE EVERY 1 HOUR
-AS SELECT date_trunc('hour', event_time) AS hour, COUNT(*) AS events
-FROM catalog.schema.raw_events
-GROUP BY 1;
-
--- Cron-based schedule
-CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.nightly_report
-  SCHEDULE CRON '0 0 2 * * ?' AT TIME ZONE 'America/New_York'
-AS SELECT * FROM catalog.schema.daily_aggregates;
+  COMMENT 'Hourly-refreshed daily revenue by region'
+AS SELECT
+    order_date,
+    region,
+    SUM(amount) AS total_revenue,
+    COUNT(DISTINCT customer_id) AS unique_customers
+FROM catalog.schema.fact_orders
+JOIN catalog.schema.dim_store USING (store_id)
+GROUP BY order_date, region;
 ```
 
+**Key decisions:**
+- `SCHEDULE EVERY 1 HOUR` creates a Databricks Job that refreshes automatically (valid intervals: 1-72 hours, 1-31 days, 1-8 weeks)
+- `CLUSTER BY` applies Liquid Clustering to the materialized output for fast reads
+- The MV physically stores results as a Delta table -- queries read precomputed data instead of rerunning the aggregation
+- Requires a Unity Catalog-enabled Serverless SQL warehouse
 
+## More Patterns
 
+### Refresh on upstream data changes
 
-
-
+> "Write SQL that creates a materialized view which refreshes within 5 minutes of upstream table updates."
 
 ```sql
-CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.customer_orders
-  TRIGGER ON UPDATE
-AS SELECT c.customer_id, c.name, COUNT(o.order_id) AS order_count
-FROM catalog.schema.customers c
-JOIN catalog.schema.orders o ON c.customer_id = o.customer_id
-GROUP BY c.customer_id, c.name;
-
--- With throttle to avoid excessive refreshes
 CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.customer_orders
   TRIGGER ON UPDATE AT MOST EVERY INTERVAL 5 MINUTES
 AS SELECT c.customer_id, c.name, COUNT(o.order_id) AS order_count
@@ -142,540 +49,67 @@ JOIN catalog.schema.orders o ON c.customer_id = o.customer_id
 GROUP BY c.customer_id, c.name;
 ```
 
+`TRIGGER ON UPDATE` watches upstream tables for changes and refreshes the MV automatically. The `AT MOST EVERY INTERVAL 5 MINUTES` throttle prevents excessive refreshes from rapid upstream writes. Maximum 10 upstream source tables and 1,000 trigger-based MVs per workspace.
 
+### Use temporary tables and views for session work
 
-
-
-
-
-
-
-
-
+> "Write SQL that creates a temporary table for intermediate results and a temporary view as a lightweight query alias."
 
 ```sql
--- In a Databricks Job SQL task
-REFRESH MATERIALIZED VIEW catalog.schema.daily_sales_summary;
-```
-
-
-
-```sql
--- Add a schedule to an existing MV
-ALTER MATERIALIZED VIEW catalog.schema.my_mv ADD SCHEDULE EVERY 4 HOURS;
-
--- Add trigger-based refresh
-ALTER MATERIALIZED VIEW catalog.schema.my_mv ADD TRIGGER ON UPDATE;
-
--- Change an existing schedule
-ALTER MATERIALIZED VIEW catalog.schema.my_mv ALTER SCHEDULE EVERY 2 HOURS;
-
--- Remove a schedule
-ALTER MATERIALIZED VIEW catalog.schema.my_mv DROP SCHEDULE;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-```sql
-ALTER TABLE catalog.schema.source_table
-SET TBLPROPERTIES (delta.enableRowTracking = true);
-```
-
-`EXPLAIN CREATE MATERIALIZED VIEW`
-
-
-
-```sql
--- Set timeout before creating or refreshing
-SET STATEMENT_TIMEOUT = '6h';
-CREATE OR REFRESH MATERIALIZED VIEW catalog.schema.my_mv
-  SCHEDULE EVERY 12 HOURS
-AS SELECT * FROM catalog.schema.large_source_table;
-```
-
-`CREATE OR REFRESH`
-
-
-
-
-
-
-`GET /api/2.0/pipelines/{pipeline_id}`
-
-
-
-
-
-
-
-`OPTIMIZE``VACUUM`
-`SUM()``NULL`
-
-
-
-
-
-
-
-
-
-
-`CREATE MATERIALIZED VIEW`
-`MV/ST``ETL`
-
-`CREATE MATERIALIZED VIEW``CREATE OR REFRESH MATERIALIZED VIEW``PRIVATE`
-`PRIVATE`
-
-
-
-
-
-
-
-
-
-`TRIGGER ON UPDATE``SCHEDULE`
-
-
-
-`CLUSTER BY AUTO`
-
-`EXPLAIN CREATE MATERIALIZED VIEW`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`CREATE TABLE`
-
-
-
-
-
-```sql
--- Create with schema
-CREATE TEMPORARY TABLE temp_results (
-  id INT,
-  name STRING,
-  score DOUBLE
-);
-
--- Create from query (CTAS)
+-- Temporary table (physical storage, supports DML)
 CREATE TEMP TABLE temp_active_users
 AS SELECT user_id, username, last_login
 FROM catalog.schema.users
 WHERE last_login > current_date() - INTERVAL 30 DAYS;
-```
 
-`CREATE OR REPLACE TEMP TABLE`
-
-
-
-```sql
--- INSERT
-INSERT INTO temp_results VALUES (1, 'Alice', 95.5);
-INSERT INTO temp_results SELECT * FROM catalog.schema.source WHERE score > 90;
-
--- UPDATE
-UPDATE temp_results SET score = 100.0 WHERE name = 'Alice';
-
--- MERGE
-MERGE INTO temp_results t
-USING catalog.schema.new_scores s ON t.id = s.id
-WHEN MATCHED THEN UPDATE SET score = s.score
-WHEN NOT MATCHED THEN INSERT *;
-```
-
-
-
-`DELETE FROM`
-`ALTER TABLE`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```sql
--- Create a temporary view
-CREATE TEMPORARY VIEW active_customers
+-- Temporary view (logical alias, recomputed each access)
+CREATE OR REPLACE TEMPORARY VIEW active_customers
 AS SELECT customer_id, name, email
 FROM catalog.schema.customers
 WHERE status = 'active';
-
--- Replace an existing temporary view
-CREATE OR REPLACE TEMPORARY VIEW active_customers
-AS SELECT customer_id, name, email, phone
-FROM catalog.schema.customers
-WHERE status = 'active' AND last_order > current_date() - INTERVAL 90 DAYS;
 ```
 
+Temporary tables persist data for up to 7 days or until session end -- use them when you need repeated reads or DML (INSERT, UPDATE, MERGE). Temporary views are zero-cost query aliases that recompute on every access. They share a namespace: you can't create both with the same name.
 
+### Chain transformations with pipe syntax
 
-
-
-
-`schema_binding`
-`COMMENT`
-
-
-
-```sql
--- Only available in Databricks Runtime, NOT in Databricks SQL
-CREATE GLOBAL TEMPORARY VIEW global_summary
-AS SELECT region, SUM(revenue) AS total_revenue
-FROM catalog.schema.sales
-GROUP BY region;
-
--- Must reference via global_temp schema
-SELECT * FROM global_temp.global_summary;
-```
-
-`global_temp`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```sql
--- Temporary metric views: session-scoped, dropped on session end
-CREATE TEMPORARY METRIC VIEW session_metrics
-AS SELECT ...;
-```
-
-
-
-
-
-
-
-
-
-`|>`
-
-
-
-
-
-```sql
-FROM table_name
-|> pipe_operation_1
-|> pipe_operation_2
-|> pipe_operation_3;
-```
-
-`FROM table_name`
-
-```sql
--- Start from a table
-FROM catalog.schema.sales |> WHERE region = 'US' |> SELECT product, amount;
-
--- Start from a subquery
-(SELECT * FROM catalog.schema.sales WHERE year = 2025)
-|> AGGREGATE SUM(amount) AS total GROUP BY product
-|> ORDER BY total DESC;
-```
-
-
-
-
-
-```sql
-FROM catalog.schema.employees
-|> SELECT employee_id, name, department, salary;
-```
-
-`SELECT``AGGREGATE`
-
-
-
-`withColumn`
+> "Write a SQL query using pipe syntax that joins orders with products and customers, computes line totals, and aggregates revenue by region and category."
 
 ```sql
 FROM catalog.schema.orders
-|> EXTEND quantity * unit_price AS line_total
-|> EXTEND line_total * 0.1 AS tax;
+  |> AS o
+  |> JOIN catalog.schema.products p ON o.product_id = p.product_id
+  |> JOIN catalog.schema.customers c ON o.customer_id = c.customer_id
+  |> WHERE o.order_date >= '2025-01-01'
+  |> EXTEND o.quantity * p.unit_price AS line_total
+  |> AGGREGATE
+       SUM(line_total) AS total_revenue,
+       COUNT(DISTINCT o.order_id) AS order_count
+     GROUP BY c.region, p.category
+  |> ORDER BY total_revenue DESC
+  |> LIMIT 20;
 ```
 
+Pipe syntax reads top-down instead of inside-out. `EXTEND` adds columns (like PySpark's `withColumn`), `SET` modifies existing columns, `DROP` removes them. It compiles to the same execution plan as traditional SQL -- zero performance difference. Available in DBR 16.2+.
 
+### Debug queries by commenting out tail operations
 
-
-
-`withColumn`
-
-```sql
-FROM catalog.schema.products
-|> SET price = price * 1.1
-|> SET name = UPPER(name);
-```
-
-`UNRESOLVED_COLUMN`
-
-
-
-`SELECT * EXCEPT`
-
-```sql
-FROM catalog.schema.users
-|> DROP password_hash, internal_id, debug_flag;
-```
-
-
-
-```sql
-FROM catalog.schema.transactions
-|> WHERE amount > 1000
-|> WHERE transaction_date >= '2025-01-01';
-```
-
-
-
-```sql
--- Full-table aggregation
-FROM catalog.schema.orders
-|> AGGREGATE
-     COUNT(*) AS total_orders,
-     SUM(amount) AS total_revenue,
-     AVG(amount) AS avg_order_value;
-
--- Grouped aggregation
-FROM catalog.schema.orders
-|> AGGREGATE
-     SUM(amount) AS total_revenue,
-     COUNT(*) AS order_count
-   GROUP BY region, product_category;
-```
-
-`AGGREGATE``SELECT ... GROUP BY`
-
-
-
-```sql
-FROM catalog.schema.orders
-|> AS o
-|> LEFT JOIN catalog.schema.customers c ON o.customer_id = c.customer_id
-|> SELECT o.order_id, c.name, o.amount;
-```
-
-`INNER JOIN``LEFT OUTER JOIN``RIGHT OUTER JOIN``FULL OUTER JOIN``CROSS JOIN``SEMI JOIN``ANTI JOIN`
-
-
-
-```sql
-FROM catalog.schema.products
-|> ORDER BY price DESC, name ASC;
-```
-
-
-
-```sql
-FROM catalog.schema.products
-|> ORDER BY price DESC
-|> LIMIT 10
-|> OFFSET 20;
-```
-
-
-
-
+> "Show how pipe syntax makes it easy to inspect intermediate results during development."
 
 ```sql
 FROM catalog.schema.sales
-|> AS current_sales
-|> JOIN catalog.schema.targets t ON current_sales.region = t.region
-|> SELECT current_sales.region, current_sales.revenue, t.target;
-```
-
-
-
-```sql
-FROM catalog.schema.us_customers
-|> UNION ALL (SELECT * FROM catalog.schema.eu_customers)
-|> ORDER BY name;
-```
-
-
-
-```sql
--- Sample by row count
-FROM catalog.schema.large_table
-|> TABLESAMPLE (1000 ROWS);
-
--- Sample by percentage
-FROM catalog.schema.large_table
-|> TABLESAMPLE (10 PERCENT);
-```
-
-
-
-```sql
-FROM catalog.schema.quarterly_sales
-|> PIVOT (
-     SUM(revenue)
-     FOR quarter IN ('Q1', 'Q2', 'Q3', 'Q4')
-   );
-```
-
-
-
-```sql
-FROM catalog.schema.wide_metrics
-|> UNPIVOT (
-     metric_value FOR metric_name IN (cpu_usage, memory_usage, disk_usage)
-   );
-```
-
-
-
-
-
-
-```sql
-SELECT c_count, COUNT(*) AS custdist
-FROM (
-  SELECT c_custkey, COUNT(o_orderkey) AS c_count
-  FROM customer
-  LEFT OUTER JOIN orders ON c_custkey = o_custkey
-    AND o_comment NOT LIKE '%unusual%packages%'
-  GROUP BY c_custkey
-) AS c_orders
-GROUP BY c_count
-ORDER BY custdist DESC, c_count DESC;
-```
-
-
-```sql
-FROM customer
-|> LEFT OUTER JOIN orders ON c_custkey = o_custkey
-   AND o_comment NOT LIKE '%unusual%packages%'
-|> AGGREGATE COUNT(o_orderkey) AS c_count GROUP BY c_custkey
-|> AGGREGATE COUNT(*) AS custdist GROUP BY c_count
-|> ORDER BY custdist DESC, c_count DESC;
-```
-
-
-
-```sql
-FROM catalog.schema.raw_events
-|> WHERE event_date >= '2025-01-01'
-|> EXTEND YEAR(event_date) AS event_year, MONTH(event_date) AS event_month
-|> AGGREGATE
-     COUNT(*) AS event_count,
-     COUNT(DISTINCT user_id) AS unique_users,
-     AVG(duration_seconds) AS avg_duration
-   GROUP BY event_year, event_month
-|> ORDER BY event_year, event_month;
-```
-
-
-
-```sql
-FROM catalog.schema.orders
-|> AS o
-|> JOIN catalog.schema.products p ON o.product_id = p.product_id
-|> JOIN catalog.schema.customers c ON o.customer_id = c.customer_id
-|> WHERE o.order_date >= '2025-01-01'
-|> EXTEND o.quantity * p.unit_price AS line_total
-|> AGGREGATE
-     SUM(line_total) AS total_revenue,
-     COUNT(DISTINCT o.order_id) AS order_count
-   GROUP BY c.region, p.category
-|> ORDER BY total_revenue DESC
-|> LIMIT 20;
-```
-
-
-
-```sql
-FROM catalog.schema.sales
-|> WHERE region = 'US'
-|> EXTEND amount * tax_rate AS tax_amount
--- |> AGGREGATE SUM(tax_amount) AS total_tax GROUP BY state
--- |> ORDER BY total_tax DESC
+  |> WHERE region = 'US'
+  |> EXTEND amount * tax_rate AS tax_amount
+  -- |> AGGREGATE SUM(tax_amount) AS total_tax GROUP BY state
+  -- |> ORDER BY total_tax DESC
 ;
--- Comment out the last operations to inspect intermediate results
 ```
 
+Comment out the last pipe operations to inspect intermediate results at any stage of the pipeline. With traditional SQL, you'd need to restructure the entire query or wrap it in a CTE.
 
+## Watch Out For
 
-
-
-
-
-
-`EXTEND expr AS new_col`
-`DROP col1, col2`
-`SET col = new_expr`
-`AGGREGATE agg() GROUP BY`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`WHERE``DROP``SELECT`
-`TABLESAMPLE`
+- **Using `SELECT` with aggregate functions in pipe syntax** -- pipe syntax separates projection from aggregation. Use `AGGREGATE ... GROUP BY` instead of `SELECT SUM(x) ... GROUP BY`. Putting aggregates in `SELECT` inside a pipe chain raises an error.
+- **Expecting incremental refresh without row tracking** -- MVs fall back to full refresh unless source tables have `delta.enableRowTracking = true`. Enable it on source tables if refresh cost matters.
+- **Creating MVs on Classic SQL warehouses** -- materialized views require Serverless SQL warehouses. Creation silently triggers a serverless pipeline regardless of your warehouse type, but the pipeline won't start if serverless isn't available.
+- **Assuming `OPTIMIZE` and `VACUUM` work on MVs** -- they're managed automatically. Running these commands on a materialized view raises an error.

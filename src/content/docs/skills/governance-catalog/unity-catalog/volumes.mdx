@@ -1,118 +1,47 @@
 ---
-title: Unity Catalog Volumes
-description: "Comprehensive reference for working with Unity Catalog Volumes: file operations, permissions, and best practices."
+title: Volumes
+description: Store, manage, and govern unstructured files in Unity Catalog with SDK and SQL operations.
 sidebar:
-  order: 6
+  order: 2
 ---
 
+## What You Can Build
 
+Volumes give you governed file storage inside Unity Catalog. Unlike tables (structured data), volumes handle unstructured and semi-structured files -- ML training images, CSV landing zones, library JARs, config files. Every file lives at a `/Volumes/<catalog>/<schema>/<volume>/` path with UC permissions applied, so you get the same access control and audit logging that tables have.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```
-/Volumes/<catalog>/<schema>/<volume>/<path_to_file>
-```
-
-
-```
-/Volumes/main/default/my_volume/data.csv
-/Volumes/analytics/raw/landing_zone/2024/01/orders.parquet
-/Volumes/ml/training/images/cats/cat_001.jpg
-```
-
-
-
-
-
-
+> "Using Python, upload a local dataset to a Unity Catalog volume, then list the contents to verify."
 
 ```python
-# List files and directories
-list_volume_files(
-    volume_path="/Volumes/main/default/my_volume/data/"
-)
-# Returns: [{"name": "file.csv", "path": "...", "is_directory": false, "file_size": 1024, "last_modified": "..."}]
-```
+from databricks.sdk import WorkspaceClient
 
+w = WorkspaceClient()
 
-
-```python
 # Upload a local file
-upload_to_volume(
-    local_path="/tmp/data.csv",
-    volume_path="/Volumes/main/default/my_volume/data.csv",
-    overwrite=True
+w.files.upload(
+    file_path="/Volumes/analytics/raw/landing/orders_2025_06.csv",
+    contents=open("orders_2025_06.csv", "rb"),
+    overwrite=True,
 )
-# Returns: {"local_path": "...", "volume_path": "...", "success": true}
+
+# List the directory to confirm
+for entry in w.files.list_directory_contents("/Volumes/analytics/raw/landing/"):
+    kind = "dir" if entry.is_directory else "file"
+    print(f"{entry.name}: {kind} ({entry.file_size} bytes)")
 ```
 
+**Key decisions:**
+- Managed volumes let Unity Catalog control storage location -- no external bucket setup needed
+- External volumes point to your own S3/ADLS/GCS paths for existing data or cross-workspace access
+- `READ VOLUME` and `WRITE VOLUME` are separate grants -- apply least privilege
+- Volume paths always follow `/Volumes/<catalog>/<schema>/<volume>/<path>` format
 
+## More Patterns
 
-```python
-# Download to local path
-download_from_volume(
-    volume_path="/Volumes/main/default/my_volume/data.csv",
-    local_path="/tmp/downloaded.csv",
-    overwrite=True
-)
-# Returns: {"volume_path": "...", "local_path": "...", "success": true}
-```
+### Create managed and external volumes
 
-
-
-```python
-# Create directory (creates parents like mkdir -p)
-create_volume_directory(
-    volume_path="/Volumes/main/default/my_volume/data/2024/01"
-)
-# Returns: {"volume_path": "...", "success": true}
-```
-
-
-
-```python
-# Delete a file
-delete_volume_file(
-    volume_path="/Volumes/main/default/my_volume/old_data.csv"
-)
-# Returns: {"volume_path": "...", "success": true}
-```
-
-
-
-```python
-# Get file metadata
-get_volume_file_info(
-    volume_path="/Volumes/main/default/my_volume/data.csv"
-)
-# Returns: {"name": "data.csv", "file_size": 1024, "last_modified": "...", "success": true}
-```
-
-
-
-
-
-
+> "Using Python, create a managed volume for processed data and an external volume backed by S3."
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -120,351 +49,101 @@ from databricks.sdk.service.catalog import VolumeType
 
 w = WorkspaceClient()
 
-# List volumes in a schema
-for volume in w.volumes.list(catalog_name="main", schema_name="default"):
-    print(f"{volume.full_name}: {volume.volume_type}")
-
-# Get volume details
-volume = w.volumes.read(name="main.default.my_volume")
-print(f"Storage: {volume.storage_location}")
-
-# Create managed volume
+# Managed volume -- Databricks controls storage
 managed = w.volumes.create(
-    catalog_name="main",
-    schema_name="default",
-    name="my_managed_volume",
+    catalog_name="analytics",
+    schema_name="curated",
+    name="processed_data",
     volume_type=VolumeType.MANAGED,
-    comment="Managed volume for ML data"
+    comment="Cleaned datasets ready for analysis",
 )
 
-# Create external volume
+# External volume -- your cloud storage
 external = w.volumes.create(
-    catalog_name="main",
-    schema_name="default",
-    name="my_external_volume",
+    catalog_name="analytics",
+    schema_name="raw",
+    name="s3_landing",
     volume_type=VolumeType.EXTERNAL,
-    storage_location="s3://my-bucket/volumes/data",
-    comment="External volume on S3"
+    storage_location="s3://data-lake-bucket/landing-zone/",
+    comment="S3 landing zone for raw ingestion",
 )
-
-# Update volume
-w.volumes.update(
-    name="main.default.my_volume",
-    comment="Updated description"
-)
-
-# Delete volume
-w.volumes.delete(name="main.default.my_volume")
 ```
 
+Use managed volumes when Databricks should own the storage lifecycle. Use external volumes when you have existing data in cloud storage or need custom retention policies.
 
+### Query files directly with SQL
 
-```python
-from databricks.sdk import WorkspaceClient
-import io
-
-w = WorkspaceClient()
-
-# Upload file from memory
-data = b"col1,col2\n1,2\n3,4"
-w.files.upload(
-    file_path="/Volumes/main/default/my_volume/data.csv",
-    contents=io.BytesIO(data),
-    overwrite=True
-)
-
-# Upload file from disk (recommended for large files)
-w.files.upload_from(
-    file_path="/Volumes/main/default/my_volume/large_file.parquet",
-    source_path="/local/path/large_file.parquet",
-    overwrite=True,
-    use_parallel=True  # Parallel upload for large files
-)
-
-# List directory contents
-for entry in w.files.list_directory_contents("/Volumes/main/default/my_volume/"):
-    file_type = "dir" if entry.is_directory else "file"
-    print(f"{entry.name}: {file_type} ({entry.file_size} bytes)")
-
-# Download file to memory
-response = w.files.download("/Volumes/main/default/my_volume/data.csv")
-content = response.contents.read()
-
-# Download file to disk (recommended for large files)
-w.files.download_to(
-    file_path="/Volumes/main/default/my_volume/large_file.parquet",
-    destination="/local/path/downloaded.parquet",
-    use_parallel=True  # Parallel download for large files
-)
-
-# Create directory
-w.files.create_directory("/Volumes/main/default/my_volume/new_folder/")
-
-# Delete file
-w.files.delete("/Volumes/main/default/my_volume/old_data.csv")
-
-# Delete empty directory
-w.files.delete_directory("/Volumes/main/default/my_volume/empty_folder/")
-
-# Get file metadata
-metadata = w.files.get_metadata("/Volumes/main/default/my_volume/data.csv")
-print(f"Size: {metadata.content_length}, Modified: {metadata.last_modified}")
-```
-
-
-
-
-
-
+> "Using SQL, read CSV files from a volume into a table without a separate ingestion step."
 
 ```sql
--- List all volumes in a catalog
-SELECT
-    volume_catalog,
-    volume_schema,
-    volume_name,
-    volume_type,
-    storage_location,
-    comment,
-    created,
-    created_by
-FROM system.information_schema.volumes
-WHERE volume_catalog = 'analytics'
-ORDER BY volume_schema, volume_name;
-
--- Find volumes by type
-SELECT volume_name, storage_location
-FROM system.information_schema.volumes
-WHERE volume_type = 'EXTERNAL';
-```
-
-
-
-```sql
--- Read CSV file
-SELECT * FROM read_files('/Volumes/main/default/my_volume/data.csv');
-
--- Read with options
+-- Read files directly
 SELECT * FROM read_files(
-    '/Volumes/main/default/my_volume/data/',
-    format => 'csv',
-    header => true,
-    inferSchema => true
+  '/Volumes/analytics/raw/landing/orders/',
+  format => 'csv',
+  header => true,
+  inferSchema => true
 );
 
--- Read Parquet files
-SELECT * FROM read_files(
-    '/Volumes/main/default/my_volume/parquet_data/',
-    format => 'parquet'
-);
-
--- Read JSON files
-SELECT * FROM read_files(
-    '/Volumes/main/default/my_volume/events/*.json',
-    format => 'json'
-);
-
--- Create table from volume files
+-- Create a table from volume files
 CREATE TABLE analytics.bronze.raw_orders AS
 SELECT * FROM read_files('/Volumes/analytics/raw/landing/orders/');
-```
 
-
-
-```sql
--- Copy data to volume as Parquet
-COPY INTO '/Volumes/main/default/my_volume/export/'
-FROM (SELECT * FROM analytics.gold.customers)
+-- Export query results to a volume
+COPY INTO '/Volumes/analytics/curated/exports/monthly_report/'
+FROM (SELECT * FROM analytics.gold.monthly_summary)
 FILEFORMAT = PARQUET;
-
--- Export as CSV
-COPY INTO '/Volumes/main/default/my_volume/export/'
-FROM (SELECT * FROM analytics.gold.report)
-FILEFORMAT = CSV
-HEADER = true;
 ```
 
+`read_files` supports CSV, JSON, Parquet, Avro, and other formats. For production pipelines, create tables from volume files rather than querying volumes directly.
 
+### Grant volume permissions
 
-
-
-
-
-
-
-`READ VOLUME`
-`READ VOLUME`
-`WRITE VOLUME`
-`CREATE VOLUME`
-`MANAGE`
-
-`USE CATALOG``USE SCHEMA`
-
-
+> "Using SQL, set up read access for analysts and write access for the data engineering team."
 
 ```sql
--- Grant read access to a volume
-GRANT READ VOLUME ON VOLUME main.default.my_volume TO `data_readers`;
+-- Analysts get read-only access
+GRANT READ VOLUME ON VOLUME analytics.raw.landing TO `analysts`;
 
--- Grant write access
-GRANT WRITE VOLUME ON VOLUME main.default.my_volume TO `data_writers`;
+-- Data engineers get write access
+GRANT WRITE VOLUME ON VOLUME analytics.raw.landing TO `data_engineers`;
 
--- Grant ability to create volumes in a schema
-GRANT CREATE VOLUME ON SCHEMA main.default TO `data_engineers`;
-
--- Revoke access
-REVOKE WRITE VOLUME ON VOLUME main.default.my_volume FROM `data_writers`;
+-- Grant volume creation rights on a schema
+GRANT CREATE VOLUME ON SCHEMA analytics.raw TO `data_engineers`;
 ```
 
+Volume permissions are separate from table permissions. A user also needs `USE CATALOG` and `USE SCHEMA` on the parent objects.
 
+### Parallel upload for large files
+
+> "Using Python, upload a large Parquet file with parallel transfer for better throughput."
 
 ```python
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.catalog import SecurableType, PermissionsChange, Privilege
 
 w = WorkspaceClient()
 
-# Grant permissions
-w.grants.update(
-    securable_type=SecurableType.VOLUME,
-    full_name="main.default.my_volume",
-    changes=[
-        PermissionsChange(
-            add=[Privilege.READ_VOLUME],
-            principal="data_readers"
-        )
-    ]
+# Parallel upload (SDK v0.72.0+)
+w.files.upload_from(
+    file_path="/Volumes/ml/training/datasets/images.tar.gz",
+    source_path="/local/data/images.tar.gz",
+    overwrite=True,
+    use_parallel=True,
 )
 
-# Get current permissions
-grants = w.grants.get(
-    securable_type=SecurableType.VOLUME,
-    full_name="main.default.my_volume"
+# Parallel download
+w.files.download_to(
+    file_path="/Volumes/ml/training/datasets/images.tar.gz",
+    destination="/local/data/images_downloaded.tar.gz",
+    use_parallel=True,
 )
-for grant in grants.privilege_assignments:
-    print(f"{grant.principal}: {grant.privileges}")
 ```
 
+Parallel transfer splits large files into chunks for concurrent upload/download. Use it for files over 100MB to see meaningful throughput gains.
 
+## Watch Out For
 
-
-
-
-
-
-   ```
-   /Volumes/catalog/schema/volume/year=2024/month=01/file.parquet
-   /Volumes/catalog/schema/volume/source=salesforce/accounts.csv
-   ```
-
-
-   ```
-   /Volumes/analytics/raw/landing_zone/    # Raw uploads
-   /Volumes/analytics/curated/processed/   # Cleaned data
-   ```
-
-
-
-
-
-
-   ```python
-   w.files.upload_from(..., use_parallel=True)
-   ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   ```sql
-   SELECT *
-   FROM system.access.audit
-   WHERE action_name LIKE '%Volume%'
-     AND event_date >= current_date() - 7;
-   ```
-
-
-
-
-
-
-
-
-
-`PERMISSION_DENIED``READ VOLUME``WRITE VOLUME`
-`NOT_FOUND`
-`ALREADY_EXISTS``overwrite=True`
-`RESOURCE_DOES_NOT_EXIST`
-`INVALID_PARAMETER_VALUE``/Volumes/catalog/schema/volume/path`
-
-
-
-
-   ```sql
-   SELECT * FROM system.information_schema.volumes
-   WHERE volume_name = 'my_volume';
-   ```
-
-
-   ```python
-   grants = w.grants.get(
-       securable_type=SecurableType.VOLUME,
-       full_name="catalog.schema.volume"
-   )
-   ```
-
-
-`/Volumes/`
-`catalog/schema/volume`
-`//`
-
-
-   ```python
-   try:
-       w.files.get_metadata("/Volumes/catalog/schema/volume/file.csv")
-   except Exception as e:
-       print(f"File not found: {e}")
-   ```
-
-
-
-
-   ```python
-   # Create storage credential first
-   w.storage_credentials.create(
-       name="my_s3_cred",
-       aws_iam_role={"role_arn": "arn:aws:iam::..."}
-   )
-   
-   # Create external location
-   w.external_locations.create(
-       name="my_s3_location",
-       url="s3://my-bucket/path",
-       credential_name="my_s3_cred"
-   )
-   
-   # Then create external volume
-   w.volumes.create(
-       ...
-       volume_type=VolumeType.EXTERNAL,
-       storage_location="s3://my-bucket/path/volume"
-   )
-   ```
-
-
-
-
+- **Path format is strict** -- paths must start with `/Volumes/` and follow the three-level namespace `catalog/schema/volume`. Double slashes (`//`) or missing segments produce `INVALID_PARAMETER_VALUE` errors.
+- **External volumes need storage credentials first** -- before creating an external volume, you need a storage credential and external location configured in Unity Catalog. Missing these produces permission errors at volume creation time.
+- **`WRITE VOLUME` does not imply `READ VOLUME`** -- these are separate grants. A service account that uploads files may not be able to read them back without both permissions.
+- **Parent directories are not auto-created** -- if you upload to a deeply nested path, create intermediate directories first with `w.files.create_directory()` or the upload will fail with `RESOURCE_DOES_NOT_EXIST`.
+- **Audit volume access** -- volume operations show up in `system.access.audit` with action names containing "Volume." Use this for compliance monitoring on sensitive file stores.

@@ -1,131 +1,85 @@
 ---
-title: Deployment
-description: Deploy models to serving endpoints.
+title: Deployment & Querying
+description: Deploy models and agents to serving endpoints using async jobs, monitor status, and query live endpoints.
 sidebar:
-  order: 7
+  order: 3
 ---
 
+## What You Can Build
 
+You can deploy any registered model or agent to a serving endpoint and query it via SDK or REST. GenAI agents take around 15 minutes to provision, so async job-based deployment avoids timeout issues. Classical ML models deploy in 2-5 minutes and can use synchronous SDK calls. Either way, you get a production-ready endpoint with auto-scaling and monitoring.
 
-`databricks.agents.deploy()``databricks jobs create --json @job.json`
+## In Action
 
-
-
-
-
-
-`databricks.agents.deploy()`
-
-
-
-
-
-
+> "Deploy my registered GenAI agent to a serving endpoint using an async Databricks Job. Use Python."
 
 ```python
-# deploy_agent.py
+# deploy_agent.py -- upload this to your workspace
 import sys
 from databricks import agents
 
-# Get params from job or command line
 model_name = sys.argv[1] if len(sys.argv) > 1 else "main.agents.my_agent"
 version = sys.argv[2] if len(sys.argv) > 2 else "1"
+endpoint_name = sys.argv[3] if len(sys.argv) > 3 else None
+
+deploy_kwargs = {"tags": {"source": "mcp", "environment": "dev"}}
+if endpoint_name:
+    deploy_kwargs["endpoint_name"] = endpoint_name
 
 print(f"Deploying {model_name} version {version}...")
+deployment = agents.deploy(model_name, version, **deploy_kwargs)
 
-# Deploy - this takes ~15 min
-deployment = agents.deploy(
-    model_name,
-    version,
-    tags={"source": "mcp", "environment": "dev"}
-)
-
-print(f"Deployment complete!")
-print(f"Endpoint: {deployment.endpoint_name}")
+print(f"Endpoint name: {deployment.endpoint_name}")
+print(f"Query URL: {deployment.query_endpoint}")
 ```
 
+**Key decisions:**
+- **Job-based deployment** runs `agents.deploy()` inside a Databricks Job to avoid MCP and notebook timeouts during the ~15-minute provisioning
+- **Explicit `endpoint_name`** avoids the auto-generated names (`agents_main-agents-my_agent`) that are hard to remember and share
+- **Tags** let you filter and manage endpoints by environment or deployment source
+- **`agents.deploy()`** is the recommended method for GenAI agents; classical ML models use the SDK's `create_and_wait()`
 
+## More Patterns
 
-`manage_jobs`
+### Create a Reusable Deployment Job
 
-```
+> "Create a Databricks Job that I can trigger for any agent deployment, with parameterized model name and version. Use the AI Dev Kit tools."
+
+```python
 manage_jobs(
     action="create",
     name="deploy-agent-job",
-    tasks=[
-        {
-            "task_key": "deploy",
-            "spark_python_task": {
-                "python_file": "/Workspace/Users/you@company.com/my_agent/deploy_agent.py",
-                "parameters": ["{{job.parameters.model_name}}", "{{job.parameters.version}}"]
-            }
+    tasks=[{
+        "task_key": "deploy",
+        "spark_python_task": {
+            "python_file": "/Workspace/Users/you@company.com/deploy_agent.py",
+            "parameters": [
+                "{{job.parameters.model_name}}",
+                "{{job.parameters.version}}"
+            ]
         }
-    ],
+    }],
     parameters=[
         {"name": "model_name", "default": "main.agents.my_agent"},
         {"name": "version", "default": "1"}
     ]
 )
-```
+# Save the returned job_id
 
-`job_id`
-
-
-
-`manage_job_runs`
-
-```
+# Trigger a deployment run
 manage_job_runs(
     action="run_now",
     job_id="<job_id>",
-    job_parameters={"model_name": "main.agents.my_agent", "version": "1"}
+    job_parameters={"model_name": "main.agents.my_agent", "version": "2"}
 )
+# Save the returned run_id, then check status with action="get"
 ```
 
-`run_id`
+The job is created once and reused for every deployment. Parameters make it flexible across different models and versions without editing the job definition.
 
+### Deploy a Classical ML Model
 
-
-
-
-```
-manage_job_runs(action="get", run_id="<run_id>")
-```
-
-
-
-```
-get_serving_endpoint_status(name="<endpoint_name>")
-```
-
-
-
-
-
-
-
-```python
-from mlflow.deployments import get_deploy_client
-
-mlflow.set_registry_uri("databricks-uc")
-client = get_deploy_client("databricks")
-
-endpoint = client.create_endpoint(
-    name="my-sklearn-model",
-    config={
-        "served_entities": [
-            {
-                "entity_name": "main.models.my_model",
-                "entity_version": "1",
-                "workload_size": "Small",
-                "scale_to_zero_enabled": True
-            }
-        ]
-    }
-)
-```
-
-
+> "Deploy my sklearn model to a serving endpoint with scale-to-zero using the Databricks SDK. Use Python."
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -134,110 +88,49 @@ from datetime import timedelta
 w = WorkspaceClient()
 
 endpoint = w.serving_endpoints.create_and_wait(
-    name="my-sklearn-model",
+    name="churn-predictor",
     config={
-        "served_entities": [
-            {
-                "entity_name": "main.models.my_model",
-                "entity_version": "1",
-                "workload_size": "Small",
-                "scale_to_zero_enabled": True
-            }
-        ]
+        "served_entities": [{
+            "entity_name": "main.models.churn_classifier",
+            "entity_version": "1",
+            "workload_size": "Small",
+            "scale_to_zero_enabled": True
+        }]
     },
     timeout=timedelta(minutes=10)
 )
 ```
 
+Classical ML models provision in 2-5 minutes, so synchronous `create_and_wait()` works without timeout concerns. Use `scale_to_zero_enabled=True` for dev/staging environments to minimize cost.
 
+### Check Endpoint Status
 
-
-
-`agents.deploy()``agents_`
-
-
-
-`main.agents.my_agent``agents_main-agents-my_agent`
-`catalog.schema.model``agents_catalog-schema-model`
-`users.jane.demo_bot``agents_users-jane-demo_bot`
-
-
+> "Check whether my agent endpoint has finished provisioning and is ready for queries. Use Python."
 
 ```python
-deployment = agents.deploy(
-    "main.agents.my_agent",
-    "1",
-    endpoint_name="my-agent-endpoint",  # Control the name
-    tags={"source": "mcp", "environment": "dev"}
+get_serving_endpoint_status(name="my-agent-endpoint")
+# Returns: {"name": "...", "state": "READY", "served_entities": [...]}
+```
+
+Wait for `state: "READY"` before sending queries. For job-based deployments, you can also check the job run status with `manage_job_runs(action="get", run_id="<run_id>")` to see if the deployment script is still running.
+
+### Query a Chat/Agent Endpoint
+
+> "Send a conversational query to my deployed agent endpoint. Use Python."
+
+```python
+query_serving_endpoint(
+    name="my-agent-endpoint",
+    messages=[{"role": "user", "content": "What is our refund policy?"}],
+    max_tokens=500
 )
 ```
 
+Chat endpoints accept `messages` in the standard role/content format. For ML endpoints, use `dataframe_records` instead (see the Classical ML page).
 
+### Update an Endpoint to a New Model Version
 
-`agents.deploy()`
-
-
-`list_serving_endpoints()``get_serving_endpoint_status(name="...")`
-`deployment.endpoint_name`
-
-
-
-```python
-# deploy_agent.py - recommended pattern
-import sys
-from databricks import agents
-
-model_name = sys.argv[1] if len(sys.argv) > 1 else "main.agents.my_agent"
-version = sys.argv[2] if len(sys.argv) > 2 else "1"
-endpoint_name = sys.argv[3] if len(sys.argv) > 3 else None
-
-deploy_kwargs = {
-    "tags": {"source": "mcp", "environment": "dev"}
-}
-if endpoint_name:
-    deploy_kwargs["endpoint_name"] = endpoint_name
-
-print(f"Deploying {model_name} version {version}...")
-deployment = agents.deploy(model_name, version, **deploy_kwargs)
-
-print(f"Deployment complete!")
-print(f"Endpoint name: {deployment.endpoint_name}")
-print(f"Query URL: {deployment.query_endpoint}")
-```
-
-
-
-
-
-```yaml
-# resources/deploy_agent_job.yml (for Asset Bundles)
-resources:
-  jobs:
-    deploy_agent:
-      name: "[${bundle.target}] Deploy Agent"
-      parameters:
-        - name: model_name
-          default: ""
-        - name: version
-          default: "1"
-      tasks:
-        - task_key: deploy
-          spark_python_task:
-            python_file: ../src/deploy_agent.py
-            parameters:
-              - "{{job.parameters.model_name}}"
-              - "{{job.parameters.version}}"
-          new_cluster:
-            spark_version: "16.1.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 0
-            spark_conf:
-              spark.master: "local[*]"
-```
-
-
-
-
+> "Update my deployed endpoint to serve version 2 of my agent without downtime. Use Python."
 
 ```python
 from mlflow.deployments import get_deploy_client
@@ -247,37 +140,28 @@ client = get_deploy_client("databricks")
 client.update_endpoint(
     endpoint="my-agent-endpoint",
     config={
-        "served_entities": [
-            {
-                "entity_name": "main.agents.my_agent",
-                "entity_version": "2",  # New version
-                "workload_size": "Small",
-                "scale_to_zero_enabled": True
-            }
-        ],
+        "served_entities": [{
+            "entity_name": "main.agents.my_agent",
+            "entity_version": "2",
+            "workload_size": "Small",
+            "scale_to_zero_enabled": True
+        }],
         "traffic_config": {
-            "routes": [
-                {"served_model_name": "my_agent-2", "traffic_percentage": 100}
-            ]
+            "routes": [{
+                "served_model_name": "my_agent-2",
+                "traffic_percentage": 100
+            }]
         }
     }
 )
 ```
 
+The `traffic_config` routes all traffic to the new version. For gradual rollouts, split traffic percentages across versions (e.g., 90/10) and monitor metrics before cutting over fully.
 
+## Watch Out For
 
-
-
-`upload_folder`
-`manage_jobs`
-`manage_job_runs`
-`manage_job_runs`
-`get_serving_endpoint_status`
-
-
-
-
-
-`query_serving_endpoint(name="...", messages=[...])`
-
-
+- **Agent endpoints not visible in the UI** -- the Serving page defaults to "Owned by me". If deployment ran as a service principal (via a job), switch the filter to "All" to see the endpoint.
+- **Auto-generated endpoint names** -- `agents.deploy()` generates names like `agents_main-agents-my_agent` unless you set `endpoint_name` explicitly. These names are hard to share and easy to mistype.
+- **Synchronous deployment timeouts** -- calling `agents.deploy()` directly in a notebook or MCP tool will time out after ~5 minutes, but the deployment takes ~15. Use a job to avoid partial deployments and confusing error messages.
+- **Stale package versions on the endpoint** -- if you logged your model with `pip_requirements=["mlflow", "langgraph"]` (no versions), the endpoint resolves to whatever is latest at deploy time. Pin exact versions: `"mlflow==3.6.0"`, `"langgraph==0.3.4"`.
+- **Forgetting to check endpoint state** -- querying an endpoint that's still `PROVISIONING` returns a 503 error. Always verify `state: "READY"` before sending production traffic.

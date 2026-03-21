@@ -1,47 +1,17 @@
 ---
-title: Reverse ETL with Lakebase Autoscaling
-description: Reverse ETL allows you to sync data from Unity Catalog Delta tables into Lakebase Autoscaling as PostgreSQL tables.
+title: Reverse ETL
+description: Sync Delta tables from Unity Catalog to Lakebase PostgreSQL using synced tables with snapshot, triggered, or continuous modes.
 sidebar:
-  order: 99
+  order: 4
 ---
 
+## What You Can Build
 
+You can sync data from Unity Catalog Delta tables into Lakebase Autoscaling as PostgreSQL tables, enabling low-latency OLTP access patterns on data processed in the lakehouse. Product catalogs, user profiles, feature stores -- any Gold-layer table you need to serve at sub-second latency can flow through a managed sync pipeline.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```sql
-ALTER TABLE your_catalog.your_schema.your_table
-SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
-```
-
-
-
-
+> "Using Python, create a triggered synced table that copies user profiles from a Delta table to Lakebase PostgreSQL."
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -54,110 +24,44 @@ from databricks.sdk.service.database import (
 
 w = WorkspaceClient()
 
-# Create a synced table
 synced_table = w.database.create_synced_database_table(
     SyncedDatabaseTable(
-        name="lakebase_catalog.schema.synced_table",
+        name="lakebase_catalog.schema.user_profiles",
         spec=SyncedTableSpec(
             source_table_full_name="analytics.gold.user_profiles",
             primary_key_columns=["user_id"],
             scheduling_policy=SyncedTableSchedulingPolicy.TRIGGERED,
             new_pipeline_spec=NewPipelineSpec(
                 storage_catalog="lakebase_catalog",
-                storage_schema="staging"
-            )
+                storage_schema="staging",
+            ),
         ),
     )
 )
-print(f"Created synced table: {synced_table.name}")
 ```
 
+**Key decisions:**
+- Triggered mode syncs on demand -- run it hourly or daily for dashboards. Continuous mode streams with seconds of latency for live apps. Snapshot does a one-time full copy for initial setup.
+- Triggered and Continuous modes require Change Data Feed (CDF) enabled on the source Delta table
+- Each synced table uses up to 16 connections and creates a managed Spark Declarative Pipeline under the hood
+- Capacity limits: 2 TB total across all synced tables, recommended less than 1 TB per table
 
+## More Patterns
 
-```bash
-databricks database create-synced-database-table \
-    --json '{
-        "name": "lakebase_catalog.schema.synced_table",
-        "spec": {
-            "source_table_full_name": "analytics.gold.user_profiles",
-            "primary_key_columns": ["user_id"],
-            "scheduling_policy": "TRIGGERED",
-            "new_pipeline_spec": {
-                "storage_catalog": "lakebase_catalog",
-                "storage_schema": "staging"
-            }
-        }
-    }'
-```
+### Enabling Change Data Feed on the source table
 
-
-
-```python
-status = w.database.get_synced_database_table(name="lakebase_catalog.schema.synced_table")
-print(f"State: {status.data_synchronization_status.detailed_state}")
-print(f"Message: {status.data_synchronization_status.message}")
-```
-
-
-
-
-
-
-
+> "Using SQL, enable CDF on a Delta table before setting up triggered or continuous sync."
 
 ```sql
-DROP TABLE your_database.your_schema.your_table;
+ALTER TABLE analytics.gold.user_profiles
+SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
 ```
 
+CDF tracks row-level changes (inserts, updates, deletes) so the sync pipeline can process only the delta instead of re-copying the full table. Without CDF, triggered and continuous modes fail at creation time.
 
+### Real-time feature serving with continuous sync
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`[A-Za-z0-9_]+`
-
-
-
-
-
-
-```python
-w.database.create_synced_database_table(
-    SyncedDatabaseTable(
-        name="ecommerce_catalog.public.products",
-        spec=SyncedTableSpec(
-            source_table_full_name="gold.products.catalog",
-            primary_key_columns=["product_id"],
-            scheduling_policy=SyncedTableSchedulingPolicy.TRIGGERED,
-        ),
-    )
-)
-```
-
-
+> "Using Python, set up a continuous synced table for serving ML features at low latency."
 
 ```python
 w.database.create_synced_database_table(
@@ -172,11 +76,45 @@ w.database.create_synced_database_table(
 )
 ```
 
+Continuous mode delivers changes with seconds of latency, making it suitable for feature stores that serve real-time inference requests. The trade-off is higher cost and a minimum sync interval of 15 seconds.
 
+### Checking sync status
 
+> "Using Python, verify a synced table is healthy and processing changes."
 
+```python
+status = w.database.get_synced_database_table(
+    name="lakebase_catalog.schema.user_profiles"
+)
+print(f"State: {status.data_synchronization_status.detailed_state}")
+print(f"Message: {status.data_synchronization_status.message}")
+```
 
+Monitor sync status after creation and periodically in production. The `detailed_state` field tells you whether the pipeline is initializing, running, or failed.
 
+### Choosing the right sync mode
 
+> "Which mode fits my workload?"
 
+```python
+# Snapshot -- one-time full copy
+# Best for: initial data load, small reference tables, historical backfills
+# 10x more efficient than incremental if modifying >10% of data
 
+# Triggered -- on-demand scheduled sync
+# Best for: dashboards refreshed hourly/daily, batch reporting tables
+# Requires CDF on source table
+
+# Continuous -- real-time streaming
+# Best for: live apps, feature stores, real-time dashboards
+# Highest cost, minimum 15s intervals, requires CDF on source table
+```
+
+Start with Triggered for most use cases. Move to Continuous only when your application genuinely needs sub-minute latency from the lakehouse to the serving layer.
+
+## Watch Out For
+
+- **Forgetting to enable CDF** -- creating a Triggered or Continuous synced table against a source without Change Data Feed produces an immediate error. Enable CDF on the source table first.
+- **Non-additive schema changes on streaming syncs** -- Triggered and Continuous modes support only additive schema evolution (adding columns). Renaming or removing columns requires deleting and recreating the synced table.
+- **Exceeding connection limits** -- each synced table uses up to 16 connections. If your Lakebase compute has a low max-connection limit, a handful of synced tables can exhaust it. Factor synced table connections into your compute sizing.
+- **Trying to write to synced tables** -- synced tables are read-only in Lakebase. The sync pipeline owns the data. If your app needs to write additional columns or rows, create a separate table and join at query time.

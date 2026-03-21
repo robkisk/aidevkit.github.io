@@ -1,106 +1,59 @@
 ---
-title: Data Profiling (formerly Lakehouse Monitoring)
-description: "Comprehensive reference for Data Profiling: create quality monitors on Unity Catalog tables to track data profiles, detect drift, and monitor ML model perfor..."
+title: Data Profiling
+description: Create quality monitors on Unity Catalog tables to track statistical profiles, detect drift, and monitor ML model performance.
 sidebar:
-  order: 7
+  order: 3
 ---
 
+## What You Can Build
 
+Data Profiling attaches quality monitors to your Unity Catalog tables. A monitor automatically computes column-level statistics, detects drift between time windows, and tracks ML model performance over time. The output lands in two Delta tables (profile metrics and drift metrics) that you can query, alert on, or visualize in dashboards. Instead of writing custom data quality checks, you configure a monitor and let it run on a schedule.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`USE CATALOG``USE SCHEMA``SELECT``MANAGE`
-
-
-
-
-
-
-
-
-
-`timestamp_column``granularities`
-`timestamp_column``granularities``model_id_column``problem_type``prediction_column`
-
-
-
-`AggregationGranularity``AGGREGATION_GRANULARITY_5_MINUTES``AGGREGATION_GRANULARITY_30_MINUTES``AGGREGATION_GRANULARITY_1_HOUR``AGGREGATION_GRANULARITY_1_DAY``AGGREGATION_GRANULARITY_1_WEEK``AGGREGATION_GRANULARITY_4_WEEKS``AGGREGATION_GRANULARITY_1_MONTH``AGGREGATION_GRANULARITY_1_YEAR`
-
-
-
-
-
-`manage_uc_monitors`
-
-
-
-`create`
-`get`
-`run_refresh`
-`list_refreshes`
-`delete`
-
-
-
-
+> "Using Python, create a TimeSeries quality monitor on an orders table that tracks daily and weekly drift, sliced by region."
 
 ```python
-manage_uc_monitors(
-    action="create",
-    table_name="catalog.schema.my_table",
-    output_schema_name="catalog.schema",
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.dataquality import (
+    Monitor, DataProfilingConfig, TimeSeriesConfig, AggregationGranularity,
+)
+
+w = WorkspaceClient()
+
+table_info = w.tables.get("analytics.gold.orders")
+schema_info = w.schemas.get(f"{table_info.catalog_name}.{table_info.schema_name}")
+
+monitor = w.data_quality.create_monitor(
+    monitor=Monitor(
+        object_type="table",
+        object_id=table_info.table_id,
+        data_profiling_config=DataProfilingConfig(
+            assets_dir="/Workspace/Users/you@company.com/monitoring/orders",
+            output_schema_id=schema_info.schema_id,
+            time_series=TimeSeriesConfig(
+                timestamp_column="order_date",
+                granularities=[
+                    AggregationGranularity.AGGREGATION_GRANULARITY_1_DAY,
+                    AggregationGranularity.AGGREGATION_GRANULARITY_1_WEEK,
+                ],
+            ),
+        ),
+    ),
 )
 ```
 
+**Key decisions:**
+- TimeSeries monitors need a timestamp column and at least one granularity -- the granularity controls the time window for statistical comparisons
+- The monitor creates two output tables: `orders_profile_metrics` and `orders_drift_metrics` in the output schema
+- Profile types: Snapshot (no time column needed, general-purpose), TimeSeries (drift over time), InferenceLog (ML model quality)
+- The API uses `object_id` (UUID), not table names -- look up UUIDs via `w.tables.get()` first
 
+## More Patterns
 
-```python
-manage_uc_monitors(
-    action="get",
-    table_name="catalog.schema.my_table",
-)
-```
+### Snapshot monitor for a general-purpose table
 
-
-
-```python
-manage_uc_monitors(
-    action="run_refresh",
-    table_name="catalog.schema.my_table",
-)
-```
-
-
-
-```python
-manage_uc_monitors(
-    action="delete",
-    table_name="catalog.schema.my_table",
-)
-```
-
-
-
-
-
-
-
-`w.data_quality`
-
-
+> "Using Python, create a snapshot monitor for a table that doesn't have a timestamp column."
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -110,8 +63,7 @@ from databricks.sdk.service.dataquality import (
 
 w = WorkspaceClient()
 
-# Look up UUIDs — the new API uses object_id and output_schema_id (both UUIDs)
-table_info = w.tables.get("catalog.schema.my_table")
+table_info = w.tables.get("analytics.gold.products")
 schema_info = w.schemas.get(f"{table_info.catalog_name}.{table_info.schema_name}")
 
 monitor = w.data_quality.create_monitor(
@@ -119,50 +71,30 @@ monitor = w.data_quality.create_monitor(
         object_type="table",
         object_id=table_info.table_id,
         data_profiling_config=DataProfilingConfig(
-            assets_dir="/Workspace/Users/user@example.com/monitoring/my_table",
+            assets_dir="/Workspace/Users/you@company.com/monitoring/products",
             output_schema_id=schema_info.schema_id,
             snapshot=SnapshotConfig(),
         ),
     ),
 )
-print(f"Monitor status: {monitor.data_profiling_config.status}")
 ```
 
+Snapshot monitors compute point-in-time statistics -- null counts, distinct values, distributions -- without requiring a time column. Good for dimension tables and reference data where you want to catch unexpected changes.
 
+### ML model monitoring with InferenceLog
 
-```python
-from databricks.sdk.service.dataquality import (
-    Monitor, DataProfilingConfig, TimeSeriesConfig, AggregationGranularity,
-)
-
-table_info = w.tables.get("catalog.schema.events")
-schema_info = w.schemas.get(f"{table_info.catalog_name}.{table_info.schema_name}")
-
-monitor = w.data_quality.create_monitor(
-    monitor=Monitor(
-        object_type="table",
-        object_id=table_info.table_id,
-        data_profiling_config=DataProfilingConfig(
-            assets_dir="/Workspace/Users/user@example.com/monitoring/events",
-            output_schema_id=schema_info.schema_id,
-            time_series=TimeSeriesConfig(
-                timestamp_column="event_timestamp",
-                granularities=[AggregationGranularity.AGGREGATION_GRANULARITY_1_DAY],
-            ),
-        ),
-    ),
-)
-```
-
-
+> "Using Python, monitor a classification model's prediction quality, tracking drift by model version."
 
 ```python
+from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.dataquality import (
     Monitor, DataProfilingConfig, InferenceLogConfig,
     AggregationGranularity, InferenceProblemType,
 )
 
-table_info = w.tables.get("catalog.schema.model_predictions")
+w = WorkspaceClient()
+
+table_info = w.tables.get("ml.serving.churn_predictions")
 schema_info = w.schemas.get(f"{table_info.catalog_name}.{table_info.schema_name}")
 
 monitor = w.data_quality.create_monitor(
@@ -170,29 +102,38 @@ monitor = w.data_quality.create_monitor(
         object_type="table",
         object_id=table_info.table_id,
         data_profiling_config=DataProfilingConfig(
-            assets_dir="/Workspace/Users/user@example.com/monitoring/predictions",
+            assets_dir="/Workspace/Users/you@company.com/monitoring/churn_model",
             output_schema_id=schema_info.schema_id,
             inference_log=InferenceLogConfig(
                 timestamp_column="prediction_timestamp",
-                granularities=[AggregationGranularity.AGGREGATION_GRANULARITY_1_HOUR],
+                granularities=[
+                    AggregationGranularity.AGGREGATION_GRANULARITY_1_HOUR,
+                ],
                 model_id_column="model_version",
                 problem_type=InferenceProblemType.INFERENCE_PROBLEM_TYPE_CLASSIFICATION,
                 prediction_column="prediction",
-                label_column="label",
+                label_column="actual_label",
             ),
         ),
     ),
 )
 ```
 
+InferenceLog monitors track prediction distributions, label drift, and per-model-version quality. The `model_id_column` lets you compare metrics across model versions side by side.
 
+### Schedule a monitor and query its output
+
+> "Using Python, create a scheduled monitor that runs daily at noon, then query the drift metrics."
 
 ```python
+from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.dataquality import (
     Monitor, DataProfilingConfig, SnapshotConfig, CronSchedule,
 )
 
-table_info = w.tables.get("catalog.schema.my_table")
+w = WorkspaceClient()
+
+table_info = w.tables.get("analytics.gold.customers")
 schema_info = w.schemas.get(f"{table_info.catalog_name}.{table_info.schema_name}")
 
 monitor = w.data_quality.create_monitor(
@@ -200,11 +141,11 @@ monitor = w.data_quality.create_monitor(
         object_type="table",
         object_id=table_info.table_id,
         data_profiling_config=DataProfilingConfig(
-            assets_dir="/Workspace/Users/user@example.com/monitoring/my_table",
+            assets_dir="/Workspace/Users/you@company.com/monitoring/customers",
             output_schema_id=schema_info.schema_id,
             snapshot=SnapshotConfig(),
             schedule=CronSchedule(
-                quartz_cron_expression="0 0 12 * * ?",  # Daily at noon
+                quartz_cron_expression="0 0 12 * * ?",
                 timezone_id="UTC",
             ),
         ),
@@ -212,103 +153,29 @@ monitor = w.data_quality.create_monitor(
 )
 ```
 
-
-
-```python
-# Get monitor details
-monitor = w.data_quality.get_monitor(
-    object_type="table",
-    object_id=table_info.table_id,
-)
-
-# Trigger refresh
-from databricks.sdk.service.dataquality import Refresh
-
-refresh = w.data_quality.create_refresh(
-    object_type="table",
-    object_id=table_info.table_id,
-    refresh=Refresh(
-        object_type="table",
-        object_id=table_info.table_id,
-    ),
-)
-
-# Delete monitor (does not delete output tables or dashboard)
-w.data_quality.delete_monitor(
-    object_type="table",
-    object_id=table_info.table_id,
-)
-```
-
-
-
-
-
-
-
-```python
-from databricks.sdk.service.dataquality import Monitor, AnomalyDetectionConfig
-
-schema_info = w.schemas.get("catalog.schema")
-
-monitor = w.data_quality.create_monitor(
-    monitor=Monitor(
-        object_type="schema",
-        object_id=schema_info.schema_id,
-        anomaly_detection_config=AnomalyDetectionConfig(),
-    ),
-)
-```
-
-`MANAGE SCHEMA``MANAGE CATALOG`
-
-
-
-
-
-
-
-
-
-`{table_name}_profile_metrics`
-`{table_name}_drift_metrics`
-
-
+After the first refresh completes, query the output tables directly.
 
 ```sql
--- View latest profile metrics
-SELECT *
-FROM catalog.schema.my_table_profile_metrics
+-- Latest profile metrics
+SELECT column_name, percent_null, distinct_count, mean, stddev
+FROM analytics.gold.customers_profile_metrics
 ORDER BY window_end DESC
-LIMIT 100;
+LIMIT 50;
 
--- View latest drift metrics
-SELECT *
-FROM catalog.schema.my_table_drift_metrics
+-- Drift scores between consecutive windows
+SELECT column_name, drift_type, drift_statistic, drift_score
+FROM analytics.gold.customers_drift_metrics
 ORDER BY window_end DESC
-LIMIT 100;
+LIMIT 50;
 ```
 
+The drift metrics table compares consecutive time windows using statistical tests (KS test, chi-squared, etc.) and flags significant changes.
 
+## Watch Out For
 
-
-
-
-
-`FEATURE_NOT_ENABLED`
-`PERMISSION_DENIED``MANAGE``MANAGE`
-`PENDING``warehouse_id`
-`list_refreshes``SUCCESS`
-
-
-
-
-
-
-`w.lakehouse_monitors``manage_uc_monitors`
-
-
-
-
-
-
+- **Snapshot monitors have a 4TB table size limit** -- for tables larger than 4TB, switch to a TimeSeries profile type that processes data in time windows instead of scanning the entire table.
+- **TimeSeries and InferenceLog only process the last 30 days** -- older data is not included in metric calculations. If you need longer history, contact your account team about adjusting the window.
+- **Monitor refresh gets stuck in PENDING** -- this usually means no SQL warehouse is available to run the profiling queries. Ensure a warehouse is running or configure `warehouse_id` in the monitor settings.
+- **Anomaly detection is schema-level, not per-table** -- enabling anomaly detection monitors all tables in the schema at their update frequency. This requires `MANAGE SCHEMA` or `MANAGE CATALOG` privileges and serverless compute.
+- **Deleting a monitor does not delete output tables** -- the profile and drift metrics tables persist after monitor deletion. Clean them up manually if you no longer need the historical data.
+- **The Python SDK package is still `databricks.lakehouse_monitoring` for legacy operations** -- the current API uses `w.data_quality`. Both work, but new code should use `w.data_quality`.

@@ -1,290 +1,106 @@
 ---
 title: Databricks SQL
-description: ">-"
+description: Advanced Databricks SQL features — SQL scripting, stored procedures, materialized views, pipe syntax, geospatial functions, collations, AI functions, and data modeling best practices.
 sidebar:
   label: Databricks SQL
-  order: 0
+  order: 1
 ---
 
+## Overview
 
+The Databricks SQL skill teaches Claude Code how to use advanced DBSQL features including SQL scripting with procedural logic, stored procedures, recursive CTEs, materialized views with scheduled refresh, pipe syntax for readable query chains, geospatial analysis with H3 and ST functions, collations for case-insensitive search, and AI functions for LLM-powered data enrichment. Use it when building complex SQL pipelines, dimensional models, or leveraging any advanced SQL capability on Databricks.
 
+## Capabilities
 
+- Write SQL scripts with `BEGIN...END` blocks, variables, control flow, and exception handling
+- Create and call stored procedures with `IN`/`OUT`/`INOUT` parameters
+- Build recursive CTEs for hierarchy traversal, graph walking, and series generation
+- Create materialized views with scheduled, event-driven, or manual refresh
+- Chain SQL operations using pipe syntax (`|>`) for readable transformations
+- Perform geospatial analysis with 39 H3 functions and 80+ ST spatial functions
+- Configure collations for case-insensitive and accent-insensitive string matching
+- Enrich data with AI functions (`ai_classify`, `ai_extract`, `ai_query`, etc.)
+- Call external APIs from SQL with `http_request` and `remote_query`
+- Ingest raw files with `read_files` table-valued function
+- Apply data modeling best practices with star schemas and Liquid Clustering
 
-`BEGIN...END``DECLARE``IF/WHILE/FOR`
-`CREATE PROCEDURE``CALL`
-`WITH RECURSIVE`
-`BEGIN ATOMIC...END`
-`CREATE MATERIALIZED VIEW`
-`CREATE TEMPORARY TABLE`
-`\|>`
-`h3_longlatash3()``h3_polyfillash3()`
-`ST_Point()``ST_Contains()`
-`COLLATE``UTF8_LCASE`
-`ai_query()``ai_classify()`
-`http_request(conn, ...)`
-`SELECT * FROM remote_query(...)`
-`SELECT * FROM read_files(...)`
+## Related MCP Tools
 
+| Tool | Description |
+|------|-------------|
+| `execute_sql` | Run SQL queries against a warehouse |
+| `execute_sql_multi` | Run multiple SQL statements sequentially |
+| `get_best_warehouse` | Find an available SQL warehouse |
+| `get_table_details` | Inspect table schema and statistics |
+| `create_or_update_pipeline` | Build SDP pipelines with materialized views |
 
+## Example Prompts
 
-
-
-
-
-
-```sql
-BEGIN
-  DECLARE v_count INT;
-  DECLARE v_status STRING DEFAULT 'pending';
-
-  SET v_count = (SELECT COUNT(*) FROM catalog.schema.raw_orders WHERE status = 'new');
-
-  IF v_count > 0 THEN
-    INSERT INTO catalog.schema.processed_orders
-    SELECT *, current_timestamp() AS processed_at
-    FROM catalog.schema.raw_orders
-    WHERE status = 'new';
-
-    SET v_status = 'completed';
-  ELSE
-    SET v_status = 'skipped';
-  END IF;
-
-  SELECT v_status AS result, v_count AS rows_processed;
-END
+```
+Write a stored procedure that performs an upsert on my customer
+dimension table with SCD Type 2 history tracking and error handling
 ```
 
-
-
-```sql
-CREATE OR REPLACE PROCEDURE catalog.schema.upsert_customers(
-  IN p_source STRING,
-  OUT p_rows_affected INT
-)
-LANGUAGE SQL
-SQL SECURITY INVOKER
-BEGIN
-  DECLARE EXIT HANDLER FOR SQLEXCEPTION
-  BEGIN
-    SET p_rows_affected = -1;
-    SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT = concat('Upsert failed for source: ', p_source);
-  END;
-
-  MERGE INTO catalog.schema.dim_customer AS t
-  USING (SELECT * FROM identifier(p_source)) AS s
-  ON t.customer_id = s.customer_id
-  WHEN MATCHED THEN UPDATE SET *
-  WHEN NOT MATCHED THEN INSERT *;
-
-  SET p_rows_affected = (SELECT COUNT(*) FROM identifier(p_source));
-END;
-
--- Invoke:
-CALL catalog.schema.upsert_customers('catalog.schema.staging_customers', ?);
+```
+Create a materialized view for daily revenue aggregations that
+refreshes every hour using Liquid Clustering
 ```
 
-
-
-```sql
-CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.daily_revenue
-  CLUSTER BY (order_date)
-  SCHEDULE EVERY 1 HOUR
-  COMMENT 'Hourly-refreshed daily revenue by region'
-AS SELECT
-    order_date,
-    region,
-    SUM(amount) AS total_revenue,
-    COUNT(DISTINCT customer_id) AS unique_customers
-FROM catalog.schema.fact_orders
-JOIN catalog.schema.dim_store USING (store_id)
-GROUP BY order_date, region;
+```
+Rewrite this nested subquery using pipe syntax for better readability
 ```
 
-
-
-```sql
--- Traditional SQL rewritten with pipe syntax
-FROM catalog.schema.fact_orders
-  |> WHERE order_date >= current_date() - INTERVAL 30 DAYS
-  |> AGGREGATE SUM(amount) AS total, COUNT(*) AS cnt GROUP BY region, product_category
-  |> WHERE total > 10000
-  |> ORDER BY total DESC
-  |> LIMIT 20;
+```
+Find all stores within 5km of each customer using H3 hexagonal
+indexing combined with ST distance functions
 ```
 
-
-
-```sql
--- Classify support tickets
-SELECT
-  ticket_id,
-  description,
-  ai_classify(description, ARRAY('billing', 'technical', 'account', 'feature_request')) AS category,
-  ai_analyze_sentiment(description) AS sentiment
-FROM catalog.schema.support_tickets
-LIMIT 100;
-
--- Extract entities from text
-SELECT
-  doc_id,
-  ai_extract(content, ARRAY('person_name', 'company', 'dollar_amount')) AS entities
-FROM catalog.schema.contracts;
-
--- General-purpose AI query with structured output
-SELECT ai_query(
-  'databricks-meta-llama-3-3-70b-instruct',
-  concat('Summarize this customer feedback in JSON with keys: topic, sentiment, action_items. Feedback: ', feedback),
-  returnType => 'STRUCT<topic STRING, sentiment STRING, action_items ARRAY<STRING>>'
-) AS analysis
-FROM catalog.schema.customer_feedback
-LIMIT 50;
+```
+Set up case-insensitive collation on my products table so searches
+for "MacBook" match "macbook" and "MACBOOK" automatically
 ```
 
-
-
-```sql
--- Find stores within 5km of each customer using H3 indexing
-WITH customer_h3 AS (
-  SELECT *, h3_longlatash3(longitude, latitude, 7) AS h3_cell
-  FROM catalog.schema.customers
-),
-store_h3 AS (
-  SELECT *, h3_longlatash3(longitude, latitude, 7) AS h3_cell
-  FROM catalog.schema.stores
-)
-SELECT
-  c.customer_id,
-  s.store_id,
-  ST_Distance(
-    ST_Point(c.longitude, c.latitude),
-    ST_Point(s.longitude, s.latitude)
-  ) AS distance_m
-FROM customer_h3 c
-JOIN store_h3 s ON h3_ischildof(c.h3_cell, h3_toparent(s.h3_cell, 5))
-WHERE ST_Distance(
-  ST_Point(c.longitude, c.latitude),
-  ST_Point(s.longitude, s.latitude)
-) < 5000;
+```
+Classify and extract entities from support tickets using AI functions
+in a single SQL query
 ```
 
+## Key Concepts
 
+### Feature Quick Reference
 
-```sql
--- Create table with case-insensitive collation
-CREATE TABLE catalog.schema.products (
-  product_id BIGINT GENERATED ALWAYS AS IDENTITY,
-  name STRING COLLATE UTF8_LCASE,
-  category STRING COLLATE UTF8_LCASE,
-  price DECIMAL(10, 2)
-);
+| Feature | Key Syntax | Since |
+|---------|-----------|-------|
+| SQL Scripting | `BEGIN...END`, `DECLARE`, `IF/WHILE/FOR` | DBR 16.3+ |
+| Stored Procedures | `CREATE PROCEDURE`, `CALL` | DBR 17.0+ |
+| Recursive CTEs | `WITH RECURSIVE` | DBR 17.0+ |
+| Materialized Views | `CREATE MATERIALIZED VIEW` | Pro/Serverless |
+| Pipe Syntax | `\|>` operator | DBR 16.1+ |
+| Geospatial (H3) | `h3_longlatash3()`, `h3_polyfillash3()` | DBR 11.2+ |
+| Geospatial (ST) | `ST_Point()`, `ST_Contains()`, 80+ funcs | DBR 16.0+ |
+| Collations | `COLLATE`, `UTF8_LCASE`, locale-aware | DBR 16.1+ |
+| AI Functions | `ai_query()`, `ai_classify()`, 11+ funcs | DBR 15.1+ |
 
--- Queries automatically case-insensitive (no LOWER() needed)
-SELECT * FROM catalog.schema.products
-WHERE name = 'MacBook Pro';  -- matches 'macbook pro', 'MACBOOK PRO', etc.
-```
+### Data Modeling Approach
 
+Use a hybrid medallion architecture:
+- **Silver layer**: OBT or Data Vault for rapid integration and cleansing
+- **Gold layer**: Star schema dimensional models as the curated, business-ready presentation layer for BI and reporting
 
+**Liquid Clustering** is the default recommendation for all new Delta tables, replacing both partitioning and Z-ORDER. Choose 1-4 clustering keys based on the most frequently filtered columns.
 
-```sql
--- Set up connection first (one-time)
-CREATE CONNECTION my_api_conn
-  TYPE HTTP
-  OPTIONS (host 'https://api.example.com', bearer_token secret('scope', 'token'));
+### Key Guidelines
 
--- Call API from SQL
-SELECT
-  order_id,
-  http_request(
-    conn => 'my_api_conn',
-    method => 'POST',
-    path => '/v1/validate',
-    json => to_json(named_struct('order_id', order_id, 'amount', amount))
-  ).text AS api_response
-FROM catalog.schema.orders
-WHERE needs_validation = true;
-```
+- Always use Serverless SQL warehouses for AI functions, MVs, and `http_request`
+- Prefer Liquid Clustering over partitioning for new tables (1-4 keys max)
+- Use `CLUSTER BY AUTO` when unsure about clustering keys
+- Star schema in Gold layer for BI; OBT acceptable in Silver
+- Define PK/FK constraints on dimensional models for query optimization
+- Use `COLLATE UTF8_LCASE` for user-facing string columns that need case-insensitive search
 
+## References
 
-
-```sql
--- Read JSON files from a Volume with schema hints
-SELECT *
-FROM read_files(
-  '/Volumes/catalog/schema/raw/events/',
-  format => 'json',
-  schemaHints => 'event_id STRING, timestamp TIMESTAMP, payload MAP<STRING, STRING>',
-  pathGlobFilter => '*.json',
-  recursiveFileLookup => true
-);
-
--- Read CSV with options
-SELECT *
-FROM read_files(
-  '/Volumes/catalog/schema/raw/sales/',
-  format => 'csv',
-  header => true,
-  delimiter => '|',
-  dateFormat => 'yyyy-MM-dd',
-  schema => 'sale_id INT, sale_date DATE, amount DECIMAL(10,2), store STRING'
-);
-```
-
-
-
-```sql
-WITH RECURSIVE org_chart AS (
-  -- Anchor: top-level managers
-  SELECT employee_id, name, manager_id, 0 AS depth, ARRAY(name) AS path
-  FROM catalog.schema.employees
-  WHERE manager_id IS NULL
-
-  UNION ALL
-
-  -- Recursive: direct reports
-  SELECT e.employee_id, e.name, e.manager_id, o.depth + 1, array_append(o.path, e.name)
-  FROM catalog.schema.employees e
-  JOIN org_chart o ON e.manager_id = o.employee_id
-  WHERE o.depth < 10  -- safety limit
-)
-SELECT * FROM org_chart ORDER BY depth, name;
-```
-
-
-
-```sql
--- Query PostgreSQL via Lakehouse Federation
-SELECT *
-FROM remote_query(
-  'my_postgres_connection',
-  database => 'my_database',
-  query    => 'SELECT customer_id, email, created_at FROM customers WHERE active = true'
-);
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`LIMIT`
-
-`CLUSTER BY AUTO`
-
-
-`COLLATE UTF8_LCASE`
-`execute_sql``execute_sql_multi`
+- [Databricks SQL Documentation](https://docs.databricks.com/aws/en/sql/)
+- [SQL Scripting](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-sql-scripting.html)
+- [Materialized Views](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-ddl-create-materialized-view.html)
+- [AI Functions Overview](https://docs.databricks.com/aws/en/large-language-models/ai-functions)

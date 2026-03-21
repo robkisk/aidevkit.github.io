@@ -1,89 +1,84 @@
 ---
 title: Zerobus Ingest
-description: Build Zerobus Ingest clients for near real-time data ingestion into Databricks Delta tables via gRPC. Use when creating producers that write directly to Unit...
+description: Build clients that ingest data directly into Databricks Delta tables via the Zerobus gRPC API — Python, Java, Go, TypeScript, and Rust SDKs.
 sidebar:
   label: Zerobus Ingest
-  order: 0
+  order: 3
 ---
 
+## Overview
 
+The Zerobus Ingest skill teaches Claude Code how to build producers that write records directly into Unity Catalog Delta tables via gRPC, eliminating the need for message bus infrastructure (Kafka, Kinesis, Event Hub). It covers SDK setup across five languages, Protobuf schema generation from table definitions, ACK handling, retry logic, and operational limits.
 
+**Status:** GA (Generally Available since February 2026; billed under Lakeflow Jobs Serverless SKU)
 
+## Capabilities
 
+- Configure Zerobus server endpoints for AWS and Azure regions
+- Create and grant service principals for M2M authentication
+- Build Python producers with sync and async APIs
+- Build producers in Java, Go, TypeScript, and Rust
+- Generate Protobuf schemas from Unity Catalog table definitions
+- Implement ACK callbacks for high-throughput ingestion
+- Handle retries with exponential backoff and stream reinitialization
+- Monitor producer health and ingestion lag
 
+## Related MCP Tools
 
+| Tool | Description |
+|------|-------------|
+| `execute_sql` | Create target tables and grant permissions |
+| `run_python_file_on_databricks` | Execute Zerobus producer scripts on a cluster |
+| `execute_databricks_command` | Install SDKs and run ad-hoc commands |
+| `get_best_cluster` | Find a classic compute cluster (required -- serverless not supported) |
+| `get_table_details` | Inspect target table schema for proto generation |
 
+## Example Prompts
 
+```
+Set up Zerobus Ingest for my_catalog.iot.sensor_readings table
+with a Python Protobuf producer
+```
 
+```
+Create a Go producer that ingests JSON records into my Delta table
+with retry logic and ACK handling
+```
 
+```
+Generate a .proto schema from my Unity Catalog table and compile
+Python bindings
+```
 
+```
+Build a high-throughput Python producer using fire-and-forget
+ingestion with periodic flush
+```
 
+## Key Concepts
 
+### Core Pattern
 
+SDK init -> create stream -> ingest records -> handle ACKs -> flush -> close
 
+### JSON vs Protobuf
 
+| Aspect | JSON | Protobuf |
+|--------|------|----------|
+| Type safety | None | Compile-time checking |
+| Schema evolution | Manual | Forward-compatible |
+| Performance | Text parsing overhead | Binary, smaller payloads |
+| Recommended for | Prototyping | Production |
 
+### Delivery Semantics
 
+Zerobus provides **at-least-once** delivery. Design consumers to handle duplicate records.
 
+### Serverless Limitation
 
+The Zerobus SDK cannot pip-install on serverless compute. Use classic compute clusters, or use the Zerobus REST API (Beta) for notebook-based ingestion.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`execute_databricks_command`
-`code`
-
-`cluster_id``context_id`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`MODIFY``SELECT`
-
-
-
-
-
-
-
-
+## Minimal Python Example
 
 ```python
 import json
@@ -103,132 +98,18 @@ finally:
     stream.close()
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`run_python_file_on_databricks`
-`scripts/zerobus_ingest.py`
-`run_python_file_on_databricks`
-
-`cluster_id``context_id`
-
-
-
-
-
-
-
-`MODIFY``SELECT``authorization_details`
-
-
-
-
-
-
-
-`run_python_file_on_databricks`
-`file_path`
-
-`{ success, output, error, cluster_id, context_id, ... }`
-
-`cluster_id``context_id`
-
-
-
-
-`run_python_file_on_databricks`
-`file_path`
-`cluster_id`
-`context_id`
-
-
-`file_path`
-`cluster_id`
-`context_id`
-
-
-
-
-
-
-`cluster_id``context_id`
-`context_id`
-
-
-
-
-
-
-
-`execute_databricks_command`
-`code`
-`cluster_id`
-`context_id`
-
-
-
-`context_id`
-
-
-
-
-
-
-
-
-
-
-
-
-
-`RecordAcknowledgment``flush()``wait_for_offset(offset)`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`MODIFY``SELECT`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Connection refused | Verify endpoint format matches your cloud (AWS vs Azure) |
+| Authentication failed | Confirm service principal grants (`MODIFY` + `SELECT` on table) |
+| Schema mismatch | Regenerate .proto if table changed |
+| SDK install fails on serverless | Use classic compute or REST API |
+| Error 4024 / authorization_details | Grant explicit table-level permissions |
+
+## References
+
+- [Zerobus Overview](https://docs.databricks.com/aws/en/ingestion/zerobus-overview)
+- [Zerobus Ingest SDK](https://docs.databricks.com/aws/en/ingestion/zerobus-ingest)
+- [Zerobus Limits](https://docs.databricks.com/aws/en/ingestion/zerobus-limits)

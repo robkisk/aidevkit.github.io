@@ -1,338 +1,101 @@
 ---
 title: Jobs Orchestration
-description: "Use this skill proactively for ANY Databricks Jobs task - creating, listing, running, updating, or deleting jobs. Triggers include: (1) 'create a job' or 'ne..."
+description: Create, schedule, monitor, and manage Databricks Lakeflow Jobs with notebooks, Python tasks, SQL queries, triggers, and notifications.
 sidebar:
   label: Jobs Orchestration
-  order: 0
+  order: 2
 ---
 
+## Overview
 
+The Jobs Orchestration skill teaches Claude Code how to create and manage Databricks Lakeflow Jobs via CLI, Python SDK, and Asset Bundles. It covers task types (notebook, Spark Python, SQL, SDP pipeline, dbt), triggers and scheduling (cron, periodic, file arrival, table/storage change), notifications (email, webhook, PagerDuty, Slack), health rules, budgets, and multi-task pipelines with dependencies.
 
+This skill also covers scaffolding new job projects with `databricks bundle init` for CI/CD-ready deployments.
 
+## Capabilities
 
+- Create jobs with notebook, Python, SQL, SDP pipeline, and dbt tasks
+- Configure cron schedules, periodic triggers, and event-based triggers
+- Set up email, webhook, PagerDuty, and custom notifications
+- Define multi-task pipelines with sequential and parallel dependencies
+- Use health rules for SLA monitoring and automatic failure detection
+- Scaffold job projects with `databricks bundle init` for DABs integration
+- Manage jobs via CLI, Python SDK, or MCP tools
 
+## Related MCP Tools
 
+| Tool | Description |
+|------|-------------|
+| `manage_jobs` | Create, list, update, and delete jobs |
+| `manage_job_runs` | Trigger runs, check status, cancel runs |
+| `get_best_cluster` | Find available compute for job tasks |
 
+## Example Prompts
 
-
-
-
-
-
-
-
-
-
-```python
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.jobs import Task, NotebookTask, Source
-
-w = WorkspaceClient()
-
-job = w.jobs.create(
-    name="my-etl-job",
-    tasks=[
-        Task(
-            task_key="extract",
-            notebook_task=NotebookTask(
-                notebook_path="/Workspace/Users/user@example.com/extract",
-                source=Source.WORKSPACE
-            )
-        )
-    ]
-)
-print(f"Created job: {job.job_id}")
+```
+Create a job that runs my notebook at /Users/me/etl
+daily at 6am UTC on a serverless cluster
 ```
 
+```
+Set up a multi-task job with extract, transform, and load
+steps where transform depends on extract
+```
 
+```
+Add PagerDuty notifications to my job for failures and
+set a 2-hour SLA health rule
+```
+
+```
+Scaffold a new DAB job project that runs a Python wheel
+task with serverless compute
+```
+
+## Key Concepts
+
+### Job Scaffolding (DABs)
 
 ```bash
-databricks jobs create --json '{
-  "name": "my-etl-job",
-  "tasks": [{
-    "task_key": "extract",
-    "notebook_task": {
-      "notebook_path": "/Workspace/Users/user@example.com/extract",
-      "source": "WORKSPACE"
-    }
-  }]
-}'
+databricks bundle init default-python --config-file <(echo '{
+  "project_name": "my_job",
+  "include_job": "yes",
+  "include_pipeline": "no",
+  "include_python": "yes",
+  "serverless": "yes"
+}') --profile <PROFILE> < /dev/null
 ```
 
-
-
-```yaml
-# resources/jobs.yml
-resources:
-  jobs:
-    my_etl_job:
-      name: "[${bundle.target}] My ETL Job"
-      tasks:
-        - task_key: extract
-          notebook_task:
-            notebook_path: ../src/notebooks/extract.py
-```
-
-
-
-
-
-
-
-```yaml
-tasks:
-  - task_key: extract
-    notebook_task:
-      notebook_path: ../src/extract.py
-
-  - task_key: transform
-    depends_on:
-      - task_key: extract
-    notebook_task:
-      notebook_path: ../src/transform.py
-
-  - task_key: load
-    depends_on:
-      - task_key: transform
-    run_if: ALL_SUCCESS  # Only run if all dependencies succeed
-    notebook_task:
-      notebook_path: ../src/load.py
-```
-
-
-`ALL_SUCCESS`
-`ALL_DONE`
-`AT_LEAST_ONE_SUCCESS`
-`NONE_FAILED`
-`ALL_FAILED`
-`AT_LEAST_ONE_FAILED`
-
-
-
-
-
-`notebook_task`
-`spark_python_task`
-`python_wheel_task`
-`sql_task`
-`dbt_task`
-`pipeline_task`
-`spark_jar_task`
-`run_job_task`
-`for_each_task`
-
-
-
-
-
-`schedule`
-`trigger.periodic`
-`trigger.file_arrival`
-`trigger.table_update`
-`continuous`
-
-
-
-
-
-
-
-```yaml
-job_clusters:
-  - job_cluster_key: shared_cluster
-    new_cluster:
-      spark_version: "15.4.x-scala2.12"
-      node_type_id: "i3.xlarge"
-      num_workers: 2
-      spark_conf:
-        spark.speculation: "true"
-
-tasks:
-  - task_key: my_task
-    job_cluster_key: shared_cluster
-    notebook_task:
-      notebook_path: ../src/notebook.py
-```
-
-
-
-```yaml
-new_cluster:
-  spark_version: "15.4.x-scala2.12"
-  node_type_id: "i3.xlarge"
-  autoscale:
-    min_workers: 2
-    max_workers: 8
-```
-
-
-
-```yaml
-tasks:
-  - task_key: my_task
-    existing_cluster_id: "0123-456789-abcdef12"
-    notebook_task:
-      notebook_path: ../src/notebook.py
-```
-
-
-
-
-
-```yaml
-tasks:
-  - task_key: serverless_task
-    notebook_task:
-      notebook_path: ../src/notebook.py
-    # No cluster config = serverless
-```
-
-
-
-
-
-```yaml
-parameters:
-  - name: env
-    default: "dev"
-  - name: date
-    default: "{{start_date}}"  # Dynamic value reference
-```
-
-
-
-```python
-# In notebook
-dbutils.widgets.get("env")
-dbutils.widgets.get("date")
-```
-
-
-
-```yaml
-tasks:
-  - task_key: my_task
-    notebook_task:
-      notebook_path: ../src/notebook.py
-      base_parameters:
-        env: "{{job.parameters.env}}"
-        custom_param: "value"
-```
-
-
-
-
-
-```python
-from databricks.sdk import WorkspaceClient
-
-w = WorkspaceClient()
-
-# List jobs
-jobs = w.jobs.list()
-
-# Get job details
-job = w.jobs.get(job_id=12345)
-
-# Run job now
-run = w.jobs.run_now(job_id=12345)
-
-# Run with parameters
-run = w.jobs.run_now(
-    job_id=12345,
-    job_parameters={"env": "prod", "date": "2024-01-15"}
-)
-
-# Cancel run
-w.jobs.cancel_run(run_id=run.run_id)
-
-# Delete job
-w.jobs.delete(job_id=12345)
-```
-
-
-
-```bash
-# List jobs
-databricks jobs list
-
-# Get job details
-databricks jobs get 12345
-
-# Run job
-databricks jobs run-now 12345
-
-# Run with parameters
-databricks jobs run-now 12345 --job-params '{"env": "prod"}'
-
-# Cancel run
-databricks jobs cancel-run 67890
-
-# Delete job
-databricks jobs delete 12345
-```
-
-
-
-```bash
-# Validate configuration
-databricks bundle validate
-
-# Deploy job
-databricks bundle deploy
-
-# Run job
-databricks bundle run my_job_resource_key
-
-# Deploy to specific target
-databricks bundle deploy -t prod
-
-# Destroy resources
-databricks bundle destroy
-```
-
-
-
-```yaml
-resources:
-  jobs:
-    my_job:
-      name: "My Job"
-      permissions:
-        - level: CAN_VIEW
-          group_name: "data-analysts"
-        - level: CAN_MANAGE_RUN
-          group_name: "data-engineers"
-        - level: CAN_MANAGE
-          user_name: "admin@example.com"
-```
-
-
-`CAN_VIEW`
-`CAN_MANAGE_RUN`
-`CAN_MANAGE`
-
-
-
-
-
-`job_cluster_key`
-`task_key``depends_on`
-`pause_status: UNPAUSED`
-
-
-`dbutils.widgets.get()`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+### Task Types
+
+| Task Type | Use Case |
+|-----------|----------|
+| Notebook | Interactive notebooks with parameters |
+| Spark Python | Python scripts on Spark |
+| SQL | SQL statements against warehouses |
+| SDP Pipeline | SDP pipeline orchestration |
+| dbt | dbt project execution |
+| Python Wheel | Packaged Python applications |
+
+### Trigger Types
+
+| Trigger | Use Case |
+|---------|----------|
+| Cron schedule | Fixed recurring schedules |
+| Periodic | Run every N time units |
+| File arrival | Trigger on new files in cloud storage |
+| Table update | Trigger on Delta table changes |
+
+### Compute Options
+
+| Compute | When to Use |
+|---------|-------------|
+| Serverless | Default choice, no cluster management |
+| Job cluster | Custom configurations, GPU, specific libraries |
+| Existing cluster | Interactive development, shared compute |
+
+## References
+
+- [Jobs API](https://docs.databricks.com/aws/en/workflows/jobs/create-run-jobs.html)
+- [Triggers and Schedules](https://docs.databricks.com/aws/en/workflows/jobs/schedule-jobs.html)
+- [Notifications](https://docs.databricks.com/aws/en/workflows/jobs/notifications.html)

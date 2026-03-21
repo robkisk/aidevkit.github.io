@@ -1,196 +1,94 @@
 ---
 title: AI Functions
-description: Use Databricks built-in AI Functions (ai_classify, ai_extract, ai_summarize, ai_mask, ai_translate, ai_fix_grammar, ai_gen, ai_analyze_sentiment, ai_similari...
+description: Add AI capabilities directly to SQL and PySpark queries — classify, extract, summarize, translate, forecast, and parse documents without managing model endpoints.
 sidebar:
   label: AI Functions
   order: 0
 ---
 
+## Overview
 
+The AI Functions skill teaches Claude Code how to use Databricks built-in AI functions that call Foundation Model APIs directly from SQL and PySpark pipelines. These functions work on table columns as naturally as `UPPER()` or `LENGTH()`, eliminating the need to set up model endpoints, manage API keys, or write inference boilerplate.
 
+## Capabilities
 
+- Classify text into fixed categories with `ai_classify` (2-20 labels)
+- Extract structured entities from unstructured text with `ai_extract`
+- Summarize text with controllable length using `ai_summarize`
+- Detect sentiment with `ai_analyze_sentiment`
+- Redact PII (names, emails, phone numbers, addresses) with `ai_mask`
+- Translate text across supported languages with `ai_translate`
+- Fix grammar and spelling with `ai_fix_grammar`
+- Generate free-form text with `ai_gen`
+- Measure semantic similarity between text pairs with `ai_similarity`
+- Parse PDFs and Office documents with `ai_parse_document`
+- Run complex structured extraction with `ai_query` and custom model endpoints
+- Forecast time series data with `ai_forecast`
+- Build end-to-end document processing pipelines (parse, chunk, index, query)
 
+## Related MCP Tools
 
-`UPPER()``LENGTH()`
+| Tool | Description |
+|------|-------------|
+| `execute_sql` | Run SQL queries using AI functions against warehouse |
+| `get_best_warehouse` | Find an available SQL warehouse for AI function execution |
+| `get_table_details` | Inspect table schema before applying AI functions |
+| `create_or_update_pipeline` | Build SDP pipelines that use AI functions for enrichment |
 
+## Example Prompts
 
-
-
-
-`ai_analyze_sentiment``ai_classify``ai_extract``ai_fix_grammar``ai_gen``ai_mask``ai_similarity``ai_summarize``ai_translate``ai_parse_document`
-`ai_query`
-`ai_forecast`
-
-`ai_query`
-
-`ai_query`
-
-`ai_analyze_sentiment`
-`ai_classify`
-`ai_extract`
-`ai_summarize``max_words=0`
-`ai_fix_grammar`
-`ai_translate`
-`ai_mask`
-`ai_gen`
-`ai_similarity`
-`ai_parse_document`
-`ai_query`
-
-
-
-
-
-`ai_parse_document`
-`ai_forecast`
-
-
-
-
-
-
-
-```sql
-SELECT
-    ticket_id,
-    ticket_text,
-    ai_classify(ticket_text, ARRAY('urgent', 'not urgent', 'spam')) AS priority,
-    ai_extract(ticket_text, ARRAY('product', 'error_code', 'date'))  AS entities,
-    ai_analyze_sentiment(ticket_text)                                 AS sentiment
-FROM support_tickets;
+```
+Classify support tickets in my_catalog.support.tickets into
+urgent, not urgent, and spam categories using ai_classify
 ```
 
-```python
-from pyspark.sql.functions import expr
-
-df = spark.table("support_tickets")
-df = (
-    df.withColumn("priority",  expr("ai_classify(ticket_text, array('urgent', 'not urgent', 'spam'))"))
-      .withColumn("entities",  expr("ai_extract(ticket_text, array('product', 'error_code', 'date'))"))
-      .withColumn("sentiment", expr("ai_analyze_sentiment(ticket_text)"))
-)
-# Access nested STRUCT fields from ai_extract
-df.select("ticket_id", "priority", "sentiment",
-          "entities.product", "entities.error_code", "entities.date").display()
+```
+Extract product names, error codes, and dates from the
+description column in my incident reports table
 ```
 
-
-
-
-
-
-
-```sql
-SELECT
-    id,
-    content,
-    ai_analyze_sentiment(content)               AS sentiment,
-    ai_summarize(content, 30)                   AS summary,
-    ai_classify(content,
-        ARRAY('technical', 'billing', 'other')) AS category,
-    ai_fix_grammar(content)                     AS content_clean
-FROM raw_feedback;
+```
+Redact all PII (names, emails, phone numbers) from the
+messages table before writing to a clean version
 ```
 
-
-
-```python
-from pyspark.sql.functions import expr
-
-df_clean = (
-    spark.table("raw_messages")
-    .withColumn(
-        "message_safe",
-        expr("ai_mask(message, array('person', 'email', 'phone', 'address'))")
-    )
-)
-df_clean.write.format("delta").mode("append").saveAsTable("catalog.schema.messages_safe")
+```
+Parse all PDF files in /Volumes/my_catalog/docs/contracts/
+and extract vendor name, contract date, and total amount
 ```
 
-
-
-
-
-```python
-from pyspark.sql.functions import expr
-
-df = (
-    spark.read.format("binaryFile")
-    .load("/Volumes/catalog/schema/landing/documents/")
-    .withColumn("parsed", expr("ai_parse_document(content)"))
-    .selectExpr("path",
-                "parsed:pages[*].elements[*].content AS text_blocks",
-                "parsed:error AS parse_error")
-    .filter("parse_error IS NULL")
-    .withColumn("summary",  expr("ai_summarize(text_blocks, 50)"))
-    .withColumn("entities", expr("ai_extract(text_blocks, array('date', 'amount', 'vendor'))"))
-)
+```
+Forecast daily sales through end of year using ai_forecast
+on my daily_revenue table
 ```
 
+## Key Concepts
 
+### Function Selection Rule
 
-```sql
--- Find near-duplicate company names
-SELECT a.id, b.id, ai_similarity(a.name, b.name) AS score
-FROM companies a
-JOIN companies b ON a.id < b.id
-WHERE ai_similarity(a.name, b.name) > 0.85;
-```
+Always prefer a task-specific function over `ai_query`:
 
-`ai_query`
+| Task | Use This | Fall back to `ai_query` when... |
+|------|---------|--------------------------------|
+| Sentiment scoring | `ai_analyze_sentiment` | Never |
+| Fixed-label routing | `ai_classify` (2-20 labels) | Never |
+| Flat entity extraction | `ai_extract` | Nested arrays in output |
+| Summarization | `ai_summarize` | Never |
+| PII redaction | `ai_mask` | Never |
+| Free-form generation | `ai_gen` | Need structured JSON |
+| PDF/document parsing | `ai_parse_document` | Need image-level reasoning |
+| Complex JSON / reasoning | -- | This is the intended use case |
 
+### Prerequisites
 
+- Databricks SQL warehouse (not Classic) or cluster with DBR 15.1+
+- DBR 15.4 ML LTS recommended for batch workloads
+- DBR 17.1+ required for `ai_parse_document`
+- `ai_forecast` requires a Pro or Serverless SQL warehouse
 
-```python
-from pyspark.sql.functions import expr, from_json, col
+## References
 
-df = (
-    spark.table("parsed_documents")
-    .withColumn("ai_response", expr("""
-        ai_query(
-            'databricks-claude-sonnet-4',
-            concat('Extract invoice as JSON with nested itens array: ', text_blocks),
-            responseFormat => '{"type":"json_object"}',
-            failOnError     => false
-        )
-    """))
-    .withColumn("invoice", from_json(
-        col("ai_response.response"),
-        "STRUCT<numero:STRING, total:DOUBLE, "
-        "itens:ARRAY<STRUCT<codigo:STRING, descricao:STRING, qtde:DOUBLE, vlrUnit:DOUBLE>>>"
-    ))
-)
-```
-
-
-
-```sql
-SELECT *
-FROM ai_forecast(
-    observed  => TABLE(SELECT date, sales FROM daily_sales),
-    horizon   => '2026-12-31',
-    time_col  => 'date',
-    value_col => 'sales'
-);
--- Returns: date, sales_forecast, sales_upper, sales_lower
-```
-
-
-
-`ai_analyze_sentiment``ai_classify``ai_extract``ai_fix_grammar``ai_gen``ai_mask``ai_similarity``ai_summarize``ai_translate``ai_parse_document`
-`ai_query``responseFormat``files =>`
-`ai_forecast`
-`config.yml`
-
-
-
-
-
-`ai_parse_document`
-`ai_forecast`
-`WHERE col IS NOT NULL`
-`ai_translate``ai_query`
-`ai_classify`
-`ai_query``failOnError => false``.response``.error`
-
-`config.yml`
+- [AI Functions Overview](https://docs.databricks.com/aws/en/large-language-models/ai-functions)
+- [SQL Function Reference](https://docs.databricks.com/aws/en/sql/language-manual/functions/)
+- [ai_query Reference](https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_query)
+- [ai_forecast Reference](https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_forecast)

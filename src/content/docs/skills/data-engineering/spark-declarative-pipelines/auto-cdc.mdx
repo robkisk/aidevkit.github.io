@@ -1,358 +1,117 @@
 ---
-title: AUTO CDC Patterns for Change Data Capture
-description: "Keywords: Slow Changing Dimension, SCD, SCD Type 1, SCD Type 2, AUTO CDC, change data capture, dp."
+title: Auto CDC
+description: Apply change data capture automatically — SCD Type 1 for current state, Type 2 for full history, with built-in deduplication and ordering.
 sidebar:
-  order: 9
+  order: 4
 ---
 
+## What You Can Build
 
+Auto CDC takes a stream of change events (inserts, updates, deletes) and applies them to a target table with correct ordering and deduplication. You declare your keys and a sequence column — the framework handles merge logic, late-arriving data, and optionally tracks full history with SCD Type 2 temporal columns.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`stored_as_scd_type="1"`
-
-
-
-`__START_AT``__END_AT`
-
-
-
-
-
-`stored_as_scd_type=2`
-
-
-
-
-
-
-
-
+> "Build a Python pipeline that tracks full customer history as an SCD Type 2 dimension from a CDC feed"
 
 ```python
-# Cleaned data preparation (can be silver or intermediate layer)
-from pyspark import pipelines as dp
-from pyspark.sql import functions as F
+dp.create_streaming_table(name="dim_customers")
 
-schema = spark.conf.get("schema")
-
-@dp.table(
-    name=f"{schema}.users_clean",
-    comment="Cleaned and validated user data with proper typing and quality checks",
-    cluster_by=["user_id"]
-)
-def users_clean():
-    """
-    Prepare clean data with:
-    - Proper timestamp typing
-    - Data quality validations
-    - Remove records with invalid email or null user_id
-    """
-    return (
-        spark.readStream.table("bronze_users")
-        .filter(F.col("user_id").isNotNull())
-        .filter(F.col("email").isNotNull())
-        .filter(F.col("email").rlike(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"))
-        .withColumn("created_timestamp", F.to_timestamp("created_timestamp"))
-        .withColumn("updated_timestamp", F.to_timestamp("updated_timestamp"))
-        .drop("_rescued_data")
-        .select(
-            "user_id",
-            "email",
-            "name",
-            "subscription_tier",
-            "country",
-            "created_timestamp",
-            "updated_timestamp",
-            "_ingested_at",
-            "_source_file"
-        )
-    )
-```
-
-
-
-
-
-```python
-# AUTO CDC with SCD Type 2 (history tracking)
-from pyspark import pipelines as dp
-
-target_schema = spark.conf.get("target_schema")
-source_schema = spark.conf.get("source_schema")
-
-# Create the target table for AUTO CDC
-dp.create_streaming_table(f"{target_schema}.dim_users")
-
-# Apply AUTO CDC (SCD Type 2)
 dp.create_auto_cdc_flow(
-    target=f"{target_schema}.dim_users",
-    source=f"{source_schema}.users_clean",
-    keys=["user_id"],
-    sequence_by="updated_timestamp",
-    stored_as_scd_type=2  # Integer for Type 2
-)
-```
-
-
-
-`__START_AT`
-`__END_AT`
-
-
-
-
-
-```python
-# AUTO CDC with SCD Type 1 (in-place updates)
-from pyspark import pipelines as dp
-
-target_schema = spark.conf.get("target_schema")
-source_schema = spark.conf.get("source_schema")
-
-# Create the target table for AUTO CDC
-dp.create_streaming_table(f"{target_schema}.orders_current")
-
-# Apply AUTO CDC (SCD Type 1)
-dp.create_auto_cdc_flow(
-    target=f"{target_schema}.orders_current",
-    source=f"{source_schema}.orders_clean",
-    keys=["order_id"],
-    sequence_by="updated_timestamp",
-    stored_as_scd_type="1"  # String for Type 1
-)
-```
-
-
-
-
-
-
-`__START_AT``__END_AT`
-`sequence_by`
-
-
-
-
-
-
-
-
-
-
-
-```python
-# Silver: Cleaned streaming tables
-@dp.table(name="silver.customers_clean")
-def customers_clean():
-    return spark.readStream.table("bronze.customers").filter(...)
-
-# Gold: SCD Type 2 dimension
-dp.create_streaming_table("gold.dim_customers")
-dp.create_auto_cdc_flow(
-    target="gold.dim_customers",
-    source="silver.customers_clean",
+    target="dim_customers",
+    source="customers_clean",
     keys=["customer_id"],
     sequence_by="updated_at",
     stored_as_scd_type=2
 )
-
-# Gold: Fact table (no AUTO CDC)
-@dp.table(name="gold.fact_orders")
-def fact_orders():
-    return spark.read.table("silver.orders_clean")
 ```
 
+**Key decisions:**
+- **SCD Type 2** — every change creates a new row with `__START_AT` and `__END_AT` timestamps. Current records have `__END_AT IS NULL`. This preserves the full audit trail for point-in-time analysis.
+- **`sequence_by` on `updated_at`** — this is how Auto CDC resolves out-of-order arrivals. If two events arrive for the same key, the one with the later timestamp wins.
+- **Clean source first** — the CDC flow reads from `customers_clean`, not raw bronze. Type casting, null filtering, and validation happen upstream so the dimension table stays trustworthy.
 
+## More Patterns
 
+### Deduplicate without keeping history
+> "Apply SCD Type 1 to keep only the latest order record per order_id using SQL"
 
+```sql
+CREATE OR REFRESH STREAMING TABLE orders_current;
 
-```python
-# Silver: AUTO CDC for deduplication
-dp.create_streaming_table("silver.products_dedupe")
-dp.create_auto_cdc_flow(
-    target="silver.products_dedupe",
-    source="bronze.products",
-    keys=["product_id"],
-    sequence_by="modified_at",
-    stored_as_scd_type="1"  # Type 1: just dedupe, no history
-)
-
-# Silver: Join with deduplicated data
-@dp.table(name="silver.orders_enriched")
-def orders_enriched():
-    orders = spark.readStream.table("bronze.orders")
-    products = spark.read.table("silver.products_dedupe")
-    return orders.join(products, "product_id")
+CREATE FLOW orders_cdc AS AUTO CDC INTO orders_current
+FROM STREAM(orders_clean)
+KEYS (order_id)
+SEQUENCE BY updated_at;
 ```
 
+SCD Type 1 is the default — it overwrites the existing row when a newer version arrives. No `__START_AT`/`__END_AT` columns, no history. Use this when you only need current state or are deduplicating a source with duplicate deliveries.
 
-
-
+### Handle deletes and truncates from the source system
+> "Process a CDC feed where the `op` column signals DELETE and TRUNCATE operations, using Python"
 
 ```python
-# SCD Type 2: Need history
-dp.create_auto_cdc_flow(
-    target="gold.dim_customers",
-    source="silver.customers",
-    keys=["customer_id"],
-    sequence_by="updated_at",
-    stored_as_scd_type=2  # Track address changes over time
-)
+from pyspark.sql.functions import expr
 
-# SCD Type 1: Corrections only
+dp.create_streaming_table(name="orders")
+
 dp.create_auto_cdc_flow(
-    target="gold.dim_products",
-    source="silver.products",
-    keys=["product_id"],
-    sequence_by="modified_at",
-    stored_as_scd_type="1"  # Current product info only
+    target="orders",
+    source="order_changes",
+    keys=["order_id"],
+    sequence_by="event_time",
+    apply_as_deletes=expr("op = 'DELETE'"),
+    apply_as_truncates=expr("op = 'TRUNCATE'"),
+    ignore_null_updates=True
 )
 ```
 
+The `apply_as_deletes` expression maps source operations to actual DELETE behavior on the target. `ignore_null_updates` prevents partial records (with null fields) from overwriting good data — common when CDC tools emit sparse change events.
 
+### Track history only for columns that matter
+> "Set up SCD Type 2 on a products table but only create new versions when price or cost changes, in SQL"
 
+```sql
+CREATE OR REFRESH STREAMING TABLE products_history;
 
-
-
-
-```python
-dp.create_auto_cdc_flow(
-    target="gold.dim_products",
-    source="silver.products_clean",
-    keys=["product_id"],
-    sequence_by="modified_at",
-    stored_as_scd_type=2,
-    track_history_column_list=["price", "cost"]  # Only track these columns
-)
+CREATE FLOW products_scd2 AS AUTO CDC INTO products_history
+FROM STREAM(products_clean)
+KEYS (product_id)
+SEQUENCE BY modified_at
+STORED AS SCD TYPE 2
+TRACK HISTORY ON price, cost;
 ```
 
-`price``cost`
+Without `TRACK HISTORY ON`, every column change creates a new version — including trivial updates like a description edit. Selective tracking keeps the history table lean and the temporal queries fast.
 
-
-
-
-
-`@dp.temporary_view()`
-
-
-`catalog``schema`
-`cluster_by`
-
-
-
-
-
-
-
-
+### Use a temporary view for preprocessing before CDC
+> "Clean and calculate fields on raw order data before applying SCD Type 1 deduplication, in Python"
 
 ```python
-from pyspark import pipelines as dp
-from pyspark.sql import functions as F
-
-# Step 1: Temporary view for complex business logic
 @dp.temporary_view()
-def orders_with_calculated_fields():
-    """
-    Temporary view for complex calculations.
-    No catalog/schema needed - exists only in pipeline.
-    """
+def orders_prepared():
     return (
         spark.readStream.table("bronze.orders")
-        .withColumn("order_total", F.col("quantity") * F.col("unit_price"))
-        .withColumn("discount_amount", F.col("order_total") * F.col("discount_rate"))
-        .withColumn("final_amount", F.col("order_total") - F.col("discount_amount"))
-        .withColumn("order_category",
-            F.when(F.col("final_amount") > 1000, "large")
-             .when(F.col("final_amount") > 100, "medium")
-             .otherwise("small")
-        )
-        .filter(F.col("order_id").isNotNull())
-        .filter(F.col("final_amount") > 0)
-        .filter(F.col("order_date").isNotNull())
+        .withColumn("order_total", col("quantity") * col("unit_price"))
+        .filter(col("order_id").isNotNull())
+        .filter(col("order_total") > 0)
     )
 
-# Step 2: Apply AUTO CDC using the temporary view as source
-target_schema = spark.conf.get("target_schema")
+dp.create_streaming_table(name="orders_current")
 
-dp.create_streaming_table(f"{target_schema}.orders_current")
 dp.create_auto_cdc_flow(
-    target=f"{target_schema}.orders_current",
-    source="orders_with_calculated_fields",  # Reference temporary view by name
+    target="orders_current",
+    source="orders_prepared",
     keys=["order_id"],
     sequence_by="order_date",
     stored_as_scd_type="1"
 )
 ```
 
+Temporary views exist only during pipeline execution — nothing persisted, no storage cost. They're the right tool when you need to transform data before CDC but don't need that intermediate result for anything else.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`updated_timestamp``modified_at``event_timestamp`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`keys``sequence_by`
-`__START_AT``__END_AT`
-`sequence_by`
-`2``"1"`
-`track_history_column_list`
+## Watch Out For
+- **Target table must exist first** — always call `dp.create_streaming_table()` or `CREATE STREAMING TABLE` before defining the CDC flow. Auto CDC writes into an existing table; it doesn't create one.
+- **SCD type syntax differs between Python and SQL** — in Python, Type 2 is integer `2` and Type 1 is string `"1"`. In SQL, use `STORED AS SCD TYPE 2` or omit for Type 1 (the default).
+- **TRUNCATE only works with SCD Type 1** — SCD Type 2 preserves history by design, so truncation is not supported. If your source sends truncate signals and you're using Type 2, filter them out upstream.
+- **Clause order matters in SQL** — put `APPLY AS DELETE WHEN` before `SEQUENCE BY`. Getting this wrong produces a parse error that doesn't point at the real cause.
+- **Query SCD Type 2 with double-underscore columns** — the temporal columns are `__START_AT` and `__END_AT` (two underscores), not `START_AT`/`END_AT`. Use `WHERE __END_AT IS NULL` to get current records.

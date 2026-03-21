@@ -1,320 +1,27 @@
 ---
 title: Snowflake Interoperability
-description: Databricks and Snowflake can share Iceberg data bidirectionally.
+description: Share Iceberg data bidirectionally between Databricks and Snowflake using catalog integrations and foreign catalogs.
 sidebar:
   order: 4
 ---
 
+## What You Can Build
 
+Databricks and Snowflake can share Iceberg data in both directions. Snowflake reads Databricks-managed tables through a catalog integration connected to the IRC endpoint. Databricks reads Snowflake-managed Iceberg tables through a foreign catalog that hits cloud storage directly -- no Snowflake compute required for the read. Both directions use the standard Iceberg protocol, so you avoid vendor-specific ETL pipelines between the two platforms.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-`ACCESS_DELEGATION_MODE = VENDED_CREDENTIALS`
-
-
+> "Using SQL, set up Snowflake to read a Databricks-managed Iceberg table via a catalog integration with OAuth and vended credentials."
 
 ```sql
--- In Snowflake
-CREATE OR REPLACE CATALOG INTEGRATION databricks_catalog_int
-  CATALOG_SOURCE = ICEBERG_REST
-  TABLE_FORMAT = ICEBERG
-  CATALOG_NAMESPACE = 'my_schema'        -- UC schema (default namespace)
-  REST_CONFIG = (
-    CATALOG_URI = 'https://<databricks-workspace-url>/api/2.1/unity-catalog/iceberg-rest'
-    WAREHOUSE = '<catalog-name>'          -- UC catalog name
-    ACCESS_DELEGATION_MODE = VENDED_CREDENTIALS
-  )
-  REST_AUTHENTICATION = (
-    TYPE = BEARER
-    BEARER_TOKEN = '<databricks-pat-token>'
-  )
-  REFRESH_INTERVAL_SECONDS = 300
-  ENABLED = TRUE;
-```
-
-
-
-```sql
-CREATE OR REPLACE CATALOG INTEGRATION databricks_catalog_int
-  CATALOG_SOURCE = ICEBERG_REST
-  TABLE_FORMAT = ICEBERG
-  CATALOG_NAMESPACE = 'my_schema'
-  REST_CONFIG = (
-    CATALOG_URI = 'https://<databricks-workspace-url>/api/2.1/unity-catalog/iceberg-rest'
-    WAREHOUSE = '<catalog-name>'
-    ACCESS_DELEGATION_MODE = VENDED_CREDENTIALS
-  )
-  REST_AUTHENTICATION = (
-    TYPE = OAUTH
-    OAUTH_CLIENT_ID = '<service-principal-client-id>'
-    OAUTH_CLIENT_SECRET = '<service-principal-secret>'
-    OAUTH_TOKEN_URI = 'https://<databricks-workspace-url>/oidc/v1/token'
-    OAUTH_ALLOWED_SCOPES = ('all-apis', 'sql')
-  )
-  REFRESH_INTERVAL_SECONDS = 300
-  ENABLED = TRUE;
-```
-
-
-`USE CATALOG`
-`USE SCHEMA`
-`EXTERNAL USE SCHEMA`
-`SELECT`
-
-`EXTERNAL USE SCHEMA``Failed to retrieve credentials`
-
-
-
-
-
-
-
-```sql
--- Azure example (in Snowflake)
-CREATE OR REPLACE EXTERNAL VOLUME databricks_ext_vol
-  STORAGE_LOCATIONS = (
-    (
-      NAME = 'azure_location'
-      STORAGE_BASE_URL = 'azure://myaccount.blob.core.windows.net/my-container/iceberg/'
-      AZURE_TENANT_ID = '<tenant-id>'
-    )
-  );
-```
-
-
-
-
-
-
-
-```sql
--- Verify namespaces are visible (should return your UC schemas)
-SELECT SYSTEM$LIST_NAMESPACES_FROM_CATALOG('databricks_catalog_int', '', 0);
-
--- Create a linked catalog database exposing all tables in the namespace
-CREATE DATABASE my_snowflake_db
-  LINKED_CATALOG = (
-    CATALOG = 'databricks_catalog_int',
-    ALLOWED_NAMESPACES = ('my_schema')   -- UC schema
-  );
-
--- Check link health (executionState should be "RUNNING" with empty failureDetails)
-SELECT SYSTEM$CATALOG_LINK_STATUS('my_snowflake_db');
-
--- Query 
-SELECT * FROM my_snowflake_db."my_schema"."my_table"
-WHERE event_date >= '2025-01-01';
-```
-
-
-
-```sql
--- AWS (vended creds — no EXTERNAL_VOLUME needed)
-CREATE ICEBERG TABLE my_snowflake_db.my_schema.events
-  CATALOG = 'databricks_catalog_int'
-  CATALOG_TABLE_NAME = 'events';
-
--- Azure/GCS (EXTERNAL_VOLUME required)
-CREATE ICEBERG TABLE my_snowflake_db.my_schema.events
-  CATALOG = 'databricks_catalog_int'
-  CATALOG_TABLE_NAME = 'events'
-  EXTERNAL_VOLUME = 'databricks_ext_vol';
-
--- Query
-SELECT * FROM my_snowflake_db.my_schema.events
-WHERE event_date >= '2025-01-01';
-```
-
-
-
-
-
-`/api/2.1/unity-catalog/iceberg-rest``403`
-
-
-`ENABLED = TRUE``SYSTEM$CATALOG_LINK_STATUS`
-
-
-
-`REFRESH_INTERVAL_SECONDS`
-
-
-
-
-
-
-
-
-
-
-
-
-`OPTIMIZE``VACUUM`
-
-
-
-
-
-
-
-`CATALOG = 'SNOWFLAKE'`
-
-```sql
--- In Snowflake — prerequisite table
-CREATE ICEBERG TABLE sensor_readings (
-  device_id    INT,
-  device_value STRING
-)
-  CATALOG         = 'SNOWFLAKE'
-  EXTERNAL_VOLUME = 'ICEBERG_SHARED_VOL'
-  BASE_LOCATION   = 'sensor_readings/';
-
-INSERT INTO sensor_readings VALUES (1, 'value01'), (2, 'value02');
-
-SELECT * FROM sensor_readings;
-```
-
-`CATALOG = 'SNOWFLAKE'``BASE_LOCATION`
-
-
-
-
-
-```sql
--- In Snowflake
-DESCRIBE EXTERNAL VOLUME <your-external-volume-name>;
--- Note the STORAGE_BASE_URL value (e.g. s3://my-bucket/snowflake-iceberg/)
-```
-
-
-
-
-
-```bash
-# In Databricks CLI (AWS example)
-databricks storage-credentials create snowflake_storage_cred \
-  --aws-iam-role-arn "arn:aws:iam::123456789012:role/snowflake-data-access"
-```
-
-
-
-
-
-
-
-```sql
--- In Databricks (URL should be the bucket root, not a sub-path)
-CREATE EXTERNAL LOCATION snowflake_data
-URL 's3://snowflake-iceberg-bucket/'
-WITH (CREDENTIAL snowflake_storage_cred);
-```
-
-
-
-```sql
--- In Databricks
-CREATE CONNECTION snowflake_conn
-TYPE SNOWFLAKE
-OPTIONS (
-  'host' = '<account>.snowflakecomputing.com',
-  'user' = '<username>',
-  'password' = '<password>',
-  'sfWarehouse' = '<warehouse-name>'
-);
-```
-
-
-
-`database`
-
-`authorized_paths``STORAGE_BASE_URL``DESCRIBE EXTERNAL VOLUME`
-`storage_root`
-
-```sql
--- In Databricks
-CREATE FOREIGN CATALOG snowflake_iceberg
-USING CONNECTION snowflake_conn
-OPTIONS (
-  'catalog' = '<snowflake-database>',
-  'authorized_paths' = 's3://snowflake-iceberg-bucket/snowflake-iceberg/',
-  'storage_root' = 's3://snowflake-iceberg-bucket/uc-metadata/'
-);
-```
-
-
-
-
-
-```sql
--- Refresh to discover tables
-REFRESH FOREIGN CATALOG snowflake_iceberg;
-
--- Verify provider type before querying at scale:
---   Provider = Iceberg → Databricks reads directly from cloud storage (cheap)
---   Provider = Snowflake → double compute via JDBC (Snowflake + Databricks)
-DESCRIBE EXTENDED snowflake_iceberg.my_schema.my_table;
-
--- Query
-SELECT * FROM snowflake_iceberg.my_schema.my_table
-WHERE created_at >= '2025-01-01';
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```sql
--- ========================================
--- DATABRICKS SIDE (run in Databricks)
--- ========================================
-
--- 1. Create a managed Iceberg table (v2 — disable DVs and row tracking for CLUSTER BY)
-CREATE TABLE main.sales.orders (
-  order_id BIGINT,
-  customer_id BIGINT,
-  amount DECIMAL(10,2),
-  order_date DATE
-)
-USING ICEBERG
-TBLPROPERTIES (
-  'delta.enableDeletionVectors' = false,
-  'delta.enableRowTracking' = false
-)
-CLUSTER BY (order_date);
-
--- 2. Grant external access to the service principal used in Snowflake catalog integration
-GRANT EXTERNAL USE SCHEMA ON SCHEMA main.sales TO `snowflake-service-principal`;
-
--- ========================================
--- SNOWFLAKE SIDE (run in Snowflake)
--- ========================================
-
--- 3. Create catalog integration (ACCESS_DELEGATION_MODE required for vended creds on AWS)
+-- Run in Snowflake
 CREATE OR REPLACE CATALOG INTEGRATION databricks_int
   CATALOG_SOURCE = ICEBERG_REST
   TABLE_FORMAT = ICEBERG
-  CATALOG_NAMESPACE = 'sales'
+  CATALOG_NAMESPACE = 'gold'
   REST_CONFIG = (
     CATALOG_URI = 'https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest'
-    WAREHOUSE = 'main'
+    WAREHOUSE = 'analytics'
     ACCESS_DELEGATION_MODE = VENDED_CREDENTIALS
   )
   REST_AUTHENTICATION = (
@@ -326,29 +33,100 @@ CREATE OR REPLACE CATALOG INTEGRATION databricks_int
   )
   REFRESH_INTERVAL_SECONDS = 300
   ENABLED = TRUE;
-
--- 4. Verify schemas are visible
-SELECT SYSTEM$LIST_NAMESPACES_FROM_CATALOG('databricks_int', '', 0);
-
--- 5. Create linked catalog database (exposes all tables in the namespace)
-CREATE DATABASE analytics
-  LINKED_CATALOG = (
-    CATALOG = 'databricks_int',
-    ALLOWED_NAMESPACES = ('sales')
-  );
-
--- 6. Check link health
-SELECT SYSTEM$CATALOG_LINK_STATUS('analytics');
-
--- 7. Query (schema and table names are case-sensitive)
-SELECT order_date, SUM(amount) AS daily_revenue
-FROM analytics."sales"."orders"
-GROUP BY order_date
-ORDER BY order_date DESC;
 ```
 
+**Key decisions:**
+- `ACCESS_DELEGATION_MODE = VENDED_CREDENTIALS` is required on AWS -- Snowflake receives temporary STS tokens from the Databricks IRC
+- OAuth is recommended for production; PAT works for testing but tokens expire and can't be rotated programmatically
+- The Databricks service principal needs `EXTERNAL USE SCHEMA`, `USE CATALOG`, `USE SCHEMA`, and `SELECT` grants
+- `REFRESH_INTERVAL_SECONDS` controls how often Snowflake polls for metadata changes (minimum 60 seconds, applies to all tables in the integration)
 
+## More Patterns
 
+### Expose all tables via linked catalog
 
+> "Using SQL in Snowflake, create a linked catalog database that auto-discovers all tables in a Databricks schema."
 
+```sql
+-- Run in Snowflake
+CREATE DATABASE analytics_from_dbx
+  LINKED_CATALOG = (
+    CATALOG = 'databricks_int',
+    ALLOWED_NAMESPACES = ('gold')
+  );
 
+-- Verify the link is healthy
+SELECT SYSTEM$CATALOG_LINK_STATUS('analytics_from_dbx');
+
+-- Query a Databricks table (schema and table names are case-sensitive)
+SELECT region, SUM(amount) AS total_revenue
+FROM analytics_from_dbx."gold"."orders"
+WHERE order_date >= '2025-01-01'
+GROUP BY region;
+```
+
+Linked catalogs are the preferred approach -- they expose all tables in the namespace automatically and pick up new tables as they appear. Individual table references still work but require manual creation per table.
+
+### Databricks reading Snowflake Iceberg tables
+
+> "Using SQL, set up a foreign catalog in Databricks to read Snowflake-managed Iceberg tables directly from cloud storage."
+
+```sql
+-- Run in Databricks: create connection to Snowflake
+CREATE CONNECTION snowflake_conn
+TYPE SNOWFLAKE
+OPTIONS (
+  'host' = 'my-account.snowflakecomputing.com',
+  'user' = 'databricks_svc',
+  'password' = '<password>',
+  'sfWarehouse' = 'COMPUTE_WH'
+);
+
+-- Create foreign catalog with authorized storage paths
+CREATE FOREIGN CATALOG snowflake_iceberg
+USING CONNECTION snowflake_conn
+OPTIONS (
+  'catalog' = 'SNOWFLAKE_DB',
+  'authorized_paths' = 's3://snowflake-bucket/iceberg-data/',
+  'storage_root' = 's3://snowflake-bucket/uc-metadata/'
+);
+
+-- Refresh and query
+REFRESH FOREIGN CATALOG snowflake_iceberg;
+SELECT * FROM snowflake_iceberg.my_schema.sensor_readings
+WHERE created_at >= '2025-01-01';
+```
+
+Databricks reads the Parquet files directly from cloud storage -- no Snowflake compute is consumed. This only works for Snowflake Iceberg tables (created with `CATALOG = 'SNOWFLAKE'`). Native Snowflake tables federate through JDBC and consume compute on both sides.
+
+### Azure/GCS setup with external volumes
+
+> "Using SQL, configure the Snowflake side for Azure where vended credentials aren't supported."
+
+```sql
+-- Run in Snowflake: external volume required on Azure/GCS
+CREATE OR REPLACE EXTERNAL VOLUME databricks_ext_vol
+  STORAGE_LOCATIONS = (
+    (
+      NAME = 'azure_loc'
+      STORAGE_BASE_URL = 'azure://myaccount.blob.core.windows.net/container/iceberg/'
+      AZURE_TENANT_ID = '<tenant-id>'
+    )
+  );
+
+-- Create table with external volume
+CREATE ICEBERG TABLE my_db.my_schema.orders
+  CATALOG = 'databricks_int'
+  CATALOG_TABLE_NAME = 'orders'
+  EXTERNAL_VOLUME = 'databricks_ext_vol';
+```
+
+On AWS, vended credentials eliminate the need for external volumes. On Azure and GCS, you must create an external volume because credential vending is not supported for those clouds.
+
+## Watch Out For
+
+- **IP access lists are the silent blocker** -- Snowflake's outbound NAT IPs must be on the Databricks workspace allowlist. If `SYSTEM$CATALOG_LINK_STATUS` returns a connection error (not a credentials error), check IP access lists first.
+- **1,000-commit limit per refresh** -- Snowflake processes a maximum of 1,000 Delta commit files per refresh cycle. High-frequency writers can outpace this. Enable Predictive Optimization for auto-compaction, or run `OPTIMIZE` manually to consolidate metadata.
+- **`REFRESH_INTERVAL_SECONDS` is per-integration, not per-table** -- you can't set different refresh intervals for different tables in the same catalog integration. Lower values give fresher data but increase API calls.
+- **Missing `EXTERNAL USE SCHEMA` produces a misleading error** -- Snowflake reports "Failed to retrieve credentials" rather than a permissions error. Grant `EXTERNAL USE SCHEMA` on the Databricks side for the service principal.
+- **Verify provider type before querying at scale** -- run `DESCRIBE EXTENDED snowflake_iceberg.schema.table` in Databricks. If the provider is "Iceberg," reads go directly to storage (cheap). If it's "Snowflake," reads go through JDBC with double compute costs.

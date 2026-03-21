@@ -1,175 +1,89 @@
 ---
-title: ai_query — Full Reference
-description: "Docs: https://docs."
+title: ai_query
+description: Use ai_query for structured JSON extraction, custom model endpoints, multimodal image input, and batch inference with error handling.
 sidebar:
   order: 2
 ---
 
+## What You Can Build
 
+`ai_query` is the general-purpose AI function for everything the task-specific functions can't handle -- nested JSON extraction, custom model endpoints, multimodal image analysis, and fine-grained sampling control. Use it when you need structured output schemas, want to target a specific model, or need to process images alongside text.
 
-`ai_query`
+## In Action
 
-`ai_query`
-
-`itens: [{codigo, descricao, qtde}]`
-
-`files =>`
-
-`temperature``max_tokens`
-
-
-
-```sql
-ai_query(
-    endpoint,
-    request
-    [, returnType      => ddl_schema]
-    [, failOnError     => boolean]
-    [, modelParameters => named_struct(...)]
-    [, responseFormat  => json_string]
-    [, files           => binary_column]
-)
-```
-
-
-
-
-
-`endpoint`
-`request`
-`returnType``from_json`
-`failOnError``true``false``{response, error}`
-`modelParameters``temperature``max_tokens``top_p`
-`responseFormat``'{"type":"json_object"}'`
-`files`
-
-
-
-
-
-`databricks-claude-sonnet-4`
-`databricks-meta-llama-3-1-8b-instruct`
-`databricks-meta-llama-3-3-70b-instruct`
-`databricks-llama-4-maverick`
-`databricks-gte-large-en`
-
-
-
-
-
-```sql
-SELECT ai_query(
-    'databricks-meta-llama-3-3-70b-instruct',
-    'Describe Databricks SQL in 30 words.'
-) AS response;
-```
-
-
-
-```sql
-SELECT ticket_id,
-       ai_query(
-           'databricks-meta-llama-3-3-70b-instruct',
-           CONCAT('Summarize in one sentence: ', ticket_body)
-       ) AS summary
-FROM support_tickets;
-```
-
-`responseFormat`
-
-`returnType`
+> "Write a SQL query that extracts structured invoice data as JSON from parsed document text, using a specific model endpoint."
 
 ```sql
 SELECT ai_query(
     'databricks-claude-sonnet-4',
-    CONCAT('Extract invoice fields as JSON. Fields: numero, fornecedor, total, '
-           'itens:[{codigo, descricao, qtde, vlrUnit}]. Input: ', text_blocks),
+    CONCAT('Extract invoice as JSON: ', text_blocks),
     responseFormat => '{"type":"json_object"}',
-    failOnError     => false
+    failOnError => false
 ) AS ai_response
-FROM parsed_documents;
+FROM catalog.schema.parsed_documents;
 ```
 
-`from_json`
+**Key decisions:**
+- `responseFormat => '{"type":"json_object"}'` forces the model to return valid JSON instead of free-form text
+- `failOnError => false` returns a `{response, error}` struct instead of killing the entire batch on a single row failure
+- The endpoint name (`databricks-claude-sonnet-4`) targets a specific Foundation Model -- swap it for any serving endpoint in your workspace
+- `CONCAT` builds the prompt from a column value, giving the model per-row context
+
+## More Patterns
+
+### Parse structured output in PySpark
+
+> "Write PySpark code that parses the JSON response from ai_query into a strongly typed struct column."
 
 ```python
 from pyspark.sql.functions import from_json, col
 
-df = df.withColumn(
-    "invoice",
-    from_json(
-        col("ai_response.response"),
-        "STRUCT<numero:STRING, fornecedor:STRING, total:DOUBLE, "
-        "itens:ARRAY<STRUCT<codigo:STRING, descricao:STRING, qtde:DOUBLE, vlrUnit:DOUBLE>>>"
-    )
-)
-# Access fields
-df.select("invoice.numero", "invoice.total", "invoice.itens").display()
+df = df.withColumn("invoice", from_json(
+    col("ai_response.response"),
+    "STRUCT<number:STRING, total:DOUBLE, items:ARRAY<STRUCT<code:STRING, description:STRING>>>"
+))
 ```
 
-`failOnError`
+The `response` field contains the raw JSON string. `from_json` maps it to a Spark struct so you can access nested fields like `invoice.items[0].code` in downstream queries.
+
+### Analyze images with multimodal models
+
+> "Write a SQL query that reads images from a Unity Catalog volume and generates descriptions using a vision model."
 
 ```sql
-SELECT
-    id,
-    ai_response.response,
-    ai_response.error
-FROM (
-    SELECT id,
-           ai_query(
-               'databricks-claude-sonnet-4',
-               CONCAT('Classify: ', text),
-               failOnError => false
-           ) AS ai_response
-    FROM documents
-)
--- Route errors to a separate table downstream
-```
-
-`modelParameters`
-
-```sql
-SELECT ai_query(
-    'databricks-meta-llama-3-3-70b-instruct',
-    CONCAT('Extract entities from: ', text),
-    failOnError     => false,
-    modelParameters => named_struct('temperature', CAST(0.0 AS DOUBLE), 'max_tokens', 500)
-) AS result
-FROM documents;
-```
-
-`files =>`
-
-
-
-```sql
-SELECT
-    path,
-    ai_query(
-        'databricks-llama-4-maverick',
-        'Describe what is in this image in detail.',
-        files => content
-    ) AS description
+SELECT path, ai_query(
+    'databricks-llama-4-maverick',
+    'Describe what is in this image.',
+    files => content
+) AS description
 FROM read_files('/Volumes/catalog/schema/images/', format => 'binaryFile');
 ```
 
-```python
-from pyspark.sql.functions import expr
+The `files` parameter accepts binary content from `read_files`. Currently supports JPEG and PNG formats. The model receives both the text prompt and the image, so you can ask specific questions about the visual content.
 
-df = (
-    spark.read.format("binaryFile")
-    .load("/Volumes/catalog/schema/images/")
-    .withColumn("description", expr("""
-        ai_query(
-            'databricks-llama-4-maverick',
-            'Describe the contents of this image.',
-            files => content
-        )
-    """))
-)
+### Handle errors gracefully in batch pipelines
+
+> "Write a SQL query that classifies documents in batch while capturing individual row errors in a separate column."
+
+```sql
+SELECT id,
+  ai_response.response AS classification,
+  ai_response.error AS error_message
+FROM (
+    SELECT id, ai_query(
+        'databricks-claude-sonnet-4',
+        CONCAT('Classify this document: ', text),
+        failOnError => false
+    ) AS ai_response
+    FROM catalog.schema.documents
+);
 ```
 
+With `failOnError => false`, failed rows get a NULL `response` and a populated `error` field. Write these to a sidecar error table for retry or manual review instead of losing the entire batch.
 
+### Wrap reusable logic in a SQL UDF
+
+> "Write a SQL UDF that encapsulates invoice extraction logic so any query can call it by name."
 
 ```sql
 CREATE FUNCTION catalog.schema.extract_invoice(text STRING)
@@ -179,50 +93,13 @@ RETURN ai_query(
     CONCAT('Extract invoice JSON from: ', text),
     responseFormat => '{"type":"json_object"}'
 );
-
-SELECT extract_invoice(document_text) FROM raw_documents;
 ```
 
-`expr`
+Now any query can call `catalog.schema.extract_invoice(some_column)` without repeating the prompt or model configuration. When the model or prompt changes, you update one function definition.
 
-```python
-from pyspark.sql.functions import expr
+## Watch Out For
 
-df = spark.table("documents")
-df = df.withColumn("result", expr("""
-    ai_query(
-        'databricks-claude-sonnet-4',
-        concat('Extract structured data from: ', content),
-        responseFormat => '{"type":"json_object"}',
-        failOnError     => false
-    )
-"""))
-```
-
-
-
-`failOnError => false`
-
-```python
-import dlt
-from pyspark.sql.functions import expr, col
-
-@dlt.table(comment="AI extraction results")
-def extracted():
-    return (
-        dlt.read("raw")
-        .withColumn("ai_response", expr("""
-            ai_query('databricks-claude-sonnet-4', prompt,
-                     responseFormat => '{"type":"json_object"}',
-                     failOnError     => false)
-        """))
-    )
-
-@dlt.table(comment="Rows that failed AI extraction")
-def extraction_errors():
-    return (
-        dlt.read("extracted")
-        .filter(col("ai_response.error").isNotNull())
-        .select("id", "prompt", col("ai_response.error").alias("error"))
-    )
-```
+- **Skipping `failOnError => false` in batch jobs** -- a single malformed row kills the entire query. Always use `false` for production batch inference and route errors to a sidecar table.
+- **Passing raw binary to `ai_query` for text extraction** -- parse documents with `ai_parse_document` first, then feed the extracted text to `ai_query`. Raw binary content produces garbage output.
+- **Exceeding context window limits** -- long text columns silently truncate or fail. Use `LEFT(text, 6000)` to cap input length before passing to `ai_query`.
+- **Using `ai_query` when a task-specific function exists** -- `ai_classify`, `ai_extract`, and the other built-in functions are faster and cheaper because they use optimized endpoints. Reach for `ai_query` only when the task-specific functions don't fit.

@@ -1,284 +1,158 @@
 ---
-title: Lakebase Connection Patterns
-description: This document covers different connection patterns for Lakebase Provisioned, from simple scripts to production applications with token refresh.
+title: Connection Patterns
+description: Connect to Lakebase Provisioned with psycopg, SQLAlchemy token refresh, and DNS workarounds.
 sidebar:
-  order: 99
+  order: 1
 ---
 
+## What You Can Build
 
+You can connect applications, notebooks, and external tools to Lakebase Provisioned using standard PostgreSQL drivers. Like Lakebase Autoscaling, authentication uses OAuth tokens that expire after one hour, so production apps need a token refresh strategy. This page covers the connection patterns -- from quick scripts to production-grade pooled connections with background refresh.
 
+## In Action
 
-
-
-
-
-
-
+> "Using Python, connect to a Lakebase Provisioned instance from a notebook."
 
 ```python
 import psycopg
 from databricks.sdk import WorkspaceClient
 import uuid
 
-def get_connection(instance_name: str, database_name: str = "postgres"):
-    """Get a database connection with fresh OAuth token."""
-    w = WorkspaceClient()
-    
-    # Get instance details
-    instance = w.database.get_database_instance(name=instance_name)
-    
-    # Generate OAuth token (valid for 1 hour)
-    cred = w.database.generate_database_credential(
-        request_id=str(uuid.uuid4()),
-        instance_names=[instance_name]
-    )
-    
-    # Build connection string
-    conn_string = (
-        f"host={instance.read_write_dns} "
-        f"dbname={database_name} "
-        f"user={w.current_user.me().user_name} "
-        f"password={cred.token} "
-        f"sslmode=require"
-    )
-    
-    return psycopg.connect(conn_string)
+w = WorkspaceClient()
 
-# Usage
-with get_connection("my-instance") as conn:
+instance = w.database.get_database_instance(name="my-lakebase-instance")
+cred = w.database.generate_database_credential(
+    request_id=str(uuid.uuid4()),
+    instance_names=["my-lakebase-instance"],
+)
+
+conn_string = (
+    f"host={instance.read_write_dns} "
+    f"dbname=postgres "
+    f"user={w.current_user.me().user_name} "
+    f"password={cred.token} sslmode=require"
+)
+with psycopg.connect(conn_string) as conn:
     with conn.cursor() as cur:
-        cur.execute("SELECT NOW()")
+        cur.execute("SELECT version()")
         print(cur.fetchone())
 ```
 
+**Key decisions:**
+- Lakebase Provisioned uses `w.database` (not `w.postgres` -- that is Autoscaling). The SDK modules are different.
+- `generate_database_credential` requires a `request_id` (UUID) and an `instance_names` list -- the API uses these for audit logging
+- Tokens expire after 1 hour. For notebook sessions, generate a fresh token at the start. For long-running apps, implement a background refresh loop.
+- Always use `sslmode=require` -- unencrypted connections are rejected
 
+## More Patterns
 
+### Production token refresh with SQLAlchemy
 
+> "Using Python, set up a SQLAlchemy async engine that refreshes tokens every 50 minutes."
 
 ```python
-import asyncio
-import uuid
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional
-
 from sqlalchemy import event
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from databricks.sdk import WorkspaceClient
+from sqlalchemy.ext.asyncio import create_async_engine
 
-class LakebaseConnectionManager:
-    """Manages Lakebase connections with automatic token refresh."""
-    
-    def __init__(
-        self,
-        instance_name: str,
-        database_name: str,
-        pool_size: int = 5,
-        max_overflow: int = 10,
-        token_refresh_seconds: int = 3000  # 50 minutes
-    ):
-        self.instance_name = instance_name
-        self.database_name = database_name
-        self.pool_size = pool_size
-        self.max_overflow = max_overflow
-        self.token_refresh_seconds = token_refresh_seconds
-        
-        self._current_token: Optional[str] = None
-        self._refresh_task: Optional[asyncio.Task] = None
-        self._engine = None
-        self._session_maker = None
-    
-    def _generate_token(self) -> str:
-        """Generate fresh OAuth token."""
-        w = WorkspaceClient()
-        cred = w.database.generate_database_credential(
-            request_id=str(uuid.uuid4()),
-            instance_names=[self.instance_name]
-        )
-        return cred.token
-    
-    async def _refresh_loop(self):
-        """Background task to refresh token periodically."""
-        while True:
-            await asyncio.sleep(self.token_refresh_seconds)
-            try:
-                self._current_token = await asyncio.to_thread(self._generate_token)
-            except Exception as e:
-                print(f"Token refresh failed: {e}")
-    
-    def initialize(self):
-        """Initialize database engine and start token refresh."""
-        w = WorkspaceClient()
-        
-        # Get instance info
-        instance = w.database.get_database_instance(name=self.instance_name)
-        username = w.current_user.me().user_name
-        
-        # Generate initial token
-        self._current_token = self._generate_token()
-        
-        # Create engine (password injected via event)
-        url = (
-            f"postgresql+psycopg://{username}@"
-            f"{instance.read_write_dns}:5432/{self.database_name}"
-        )
-        
-        self._engine = create_async_engine(
-            url,
-            pool_size=self.pool_size,
-            max_overflow=self.max_overflow,
-            pool_recycle=3600,
-            connect_args={"sslmode": "require"}
-        )
-        
-        # Inject token on connect
-        @event.listens_for(self._engine.sync_engine, "do_connect")
-        def inject_token(dialect, conn_rec, cargs, cparams):
-            cparams["password"] = self._current_token
-        
-        self._session_maker = async_sessionmaker(
-            self._engine, 
-            class_=AsyncSession,
-            expire_on_commit=False
-        )
-    
-    def start_refresh(self):
-        """Start background token refresh task."""
-        if not self._refresh_task:
-            self._refresh_task = asyncio.create_task(self._refresh_loop())
-    
-    async def stop_refresh(self):
-        """Stop token refresh task."""
-        if self._refresh_task:
-            self._refresh_task.cancel()
-            try:
-                await self._refresh_task
-            except asyncio.CancelledError:
-                pass
-            self._refresh_task = None
-    
-    @asynccontextmanager
-    async def session(self) -> AsyncGenerator[AsyncSession, None]:
-        """Get a database session."""
-        async with self._session_maker() as session:
-            yield session
-    
-    async def close(self):
-        """Close all connections."""
-        await self.stop_refresh()
-        if self._engine:
-            await self._engine.dispose()
+engine = create_async_engine(
+    f"postgresql+psycopg://{username}@{instance.read_write_dns}:5432/{database}",
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=3600,
+    connect_args={"sslmode": "require"},
+)
 
-# Usage in FastAPI
-from fastapi import FastAPI
-
-app = FastAPI()
-db_manager = LakebaseConnectionManager("my-instance", "my_database")
-
-@app.on_event("startup")
-async def startup():
-    db_manager.initialize()
-    db_manager.start_refresh()
-
-@app.on_event("shutdown")
-async def shutdown():
-    await db_manager.close()
-
-@app.get("/data")
-async def get_data():
-    async with db_manager.session() as session:
-        result = await session.execute("SELECT * FROM my_table")
-        return result.fetchall()
+@event.listens_for(engine.sync_engine, "do_connect")
+def provide_token(dialect, conn_rec, cargs, cparams):
+    cparams["password"] = _current_token  # Refreshed every 50 minutes in a background task
 ```
 
+The `do_connect` event injects a fresh token into every new physical connection. A background asyncio task generates a new token every 50 minutes (before the 1-hour expiry). This pattern ensures connections never fail due to expired credentials.
 
+### Reverse ETL from Delta tables
 
+> "Using Python, create a synced table that copies data from Unity Catalog to Lakebase Provisioned."
 
+```python
+from databricks.sdk.service.database import (
+    SyncedDatabaseTable,
+    SyncedTableSpec,
+    SyncedTableSchedulingPolicy,
+)
+
+w.database.create_synced_database_table(
+    SyncedDatabaseTable(
+        name="lakebase_catalog.schema.synced_table",
+        database_instance_name="my-lakebase-instance",
+        spec=SyncedTableSpec(
+            source_table_full_name="analytics.gold.user_profiles",
+            primary_key_columns=["user_id"],
+            scheduling_policy=SyncedTableSchedulingPolicy.TRIGGERED,
+        ),
+    )
+)
+```
+
+Lakebase Provisioned reverse ETL uses `database_instance_name` to identify the target (Autoscaling uses project/branch paths instead). Triggered and Continuous modes require Change Data Feed enabled on the source table.
+
+### Static URL for local development
+
+> "Using Python, connect to Lakebase via a static URL during local development."
 
 ```python
 import os
 from sqlalchemy.ext.asyncio import create_async_engine
 
-# Set environment variable with full connection URL
-# LAKEBASE_PG_URL=postgresql://user:password@host:5432/database
-
 def get_database_url() -> str:
-    """Get database URL from environment."""
     url = os.environ.get("LAKEBASE_PG_URL")
     if url and url.startswith("postgresql://"):
-        # Convert to psycopg3 async driver
         url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url
 
 engine = create_async_engine(
     get_database_url(),
     pool_size=5,
-    connect_args={"sslmode": "require"}
+    connect_args={"sslmode": "require"},
 )
 ```
 
+Set `LAKEBASE_PG_URL` in your `.env` file for local development. The `postgresql://` to `postgresql+psycopg://` conversion switches to the psycopg3 async driver, which SQLAlchemy 2.x requires for async operations.
 
+### DNS workaround for macOS
 
-`socket.getaddrinfo()``dig`
+> "Using Python, resolve Lakebase hostnames when Python's socket module fails on macOS."
 
 ```python
 import subprocess
 import socket
 
 def resolve_hostname(hostname: str) -> str:
-    """Resolve hostname using dig command (macOS workaround)."""
     try:
-        # Try Python's resolver first
         return socket.gethostbyname(hostname)
     except socket.gaierror:
         pass
-    
-    # Fallback to dig command
-    try:
-        result = subprocess.run(
-            ["dig", "+short", hostname],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        ips = result.stdout.strip().split('\n')
-        for ip in ips:
-            if ip and not ip.startswith(';'):
-                return ip
-    except Exception:
-        pass
-    
+    result = subprocess.run(
+        ["dig", "+short", hostname],
+        capture_output=True, text=True, timeout=5,
+    )
+    ips = result.stdout.strip().split("\n")
+    for ip in ips:
+        if ip and not ip.startswith(";"):
+            return ip
     raise RuntimeError(f"Could not resolve hostname: {hostname}")
 
-# Use with psycopg
 conn_params = {
-    "host": hostname,  # For TLS SNI
-    "hostaddr": resolve_hostname(hostname),  # Actual IP
-    "dbname": database_name,
-    "user": username,
-    "password": token,
-    "sslmode": "require"
+    "host": hostname,           # For TLS SNI
+    "hostaddr": resolve_hostname(hostname),  # Resolved IP
+    "sslmode": "require",
 }
-conn = psycopg.connect(**conn_params)
 ```
 
+Python's `socket.getaddrinfo()` truncates long hostnames on macOS. Passing `hostaddr` with the resolved IP bypasses the issue while keeping `host` for TLS certificate validation.
 
+## Watch Out For
 
-
-
-`LAKEBASE_PG_URL`
-`LAKEBASE_INSTANCE_NAME`
-`LAKEBASE_DATABASE_NAME`
-`LAKEBASE_USERNAME`
-`LAKEBASE_HOST`
-`DB_POOL_SIZE`
-`DB_MAX_OVERFLOW`
-`DB_POOL_RECYCLE_INTERVAL`
-
-
-
-`sslmode=require`
-
-
-`hostaddr`
-
-
+- **Using `w.postgres` instead of `w.database`** -- Lakebase Provisioned uses the `w.database` SDK module. The `w.postgres` module is for Lakebase Autoscaling. Mixing them produces "not found" errors that are hard to diagnose.
+- **Omitting `request_id` from `generate_database_credential`** -- the Provisioned API requires a UUID `request_id` parameter. Autoscaling does not. Forgetting it causes an API validation error.
+- **Running an instance stopped to save cost and forgetting to restart it** -- stopped instances reject all connections. Check `instance.state` before connecting, or call `w.database.start_database_instance()` first.
+- **Skipping `sslmode=require`** -- unencrypted connections are rejected by default. Without SSL, you get a "connection refused" error that looks like a network issue rather than a configuration problem.

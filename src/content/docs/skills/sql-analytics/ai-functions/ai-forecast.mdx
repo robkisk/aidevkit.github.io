@@ -1,64 +1,21 @@
 ---
-title: ai_forecast — Full Reference
-description: "Docs: https://docs."
+title: ai_forecast
+description: Forecast time series data with confidence intervals using a single SQL function call -- single metric, multi-group, or multi-metric.
 sidebar:
   order: 3
 ---
 
+## What You Can Build
 
+`ai_forecast` is a table-valued function that projects time series data into the future with confidence intervals. You pass it a table of historical observations and a horizon date, and it returns point forecasts plus upper and lower bounds. It handles single metrics, multiple groups (forecast per region), and multiple metrics (revenue and units in one call). Requires a Pro or Serverless SQL warehouse.
 
-`ai_forecast``SELECT * FROM ai_forecast(...)`
+## In Action
 
-
-
-
-
-
-
+> "Write a SQL query that forecasts daily revenue through end of year based on historical order data."
 
 ```sql
-SELECT *
-FROM ai_forecast(
-    observed                   => TABLE(...) or query,
-    horizon                    => 'YYYY-MM-DD' or TIMESTAMP,
-    time_col                   => 'column_name',
-    value_col                  => 'column_name',
-    [group_col                 => 'column_name'],
-    [prediction_interval_width => 0.95]
-)
-```
-
-
-
-
-
-`observed`
-`horizon`
-`time_col``observed`
-`value_col`
-`group_col`
-`prediction_interval_width`
-
-
-
-`value_col``metric`
-
-
-
-
-`metric_forecast`
-`metric_upper`
-`metric_lower`
-`group_col`
-
-
-
-
-
-```sql
-SELECT *
-FROM ai_forecast(
-    observed  => TABLE(SELECT order_date, revenue FROM daily_revenue),
+SELECT * FROM ai_forecast(
+    observed  => TABLE(SELECT order_date, revenue FROM catalog.schema.daily_revenue),
     horizon   => '2026-12-31',
     time_col  => 'order_date',
     value_col => 'revenue'
@@ -66,102 +23,83 @@ FROM ai_forecast(
 -- Returns: order_date, revenue_forecast, revenue_upper, revenue_lower
 ```
 
+**Key decisions:**
+- `observed` takes a TABLE expression containing your historical data -- filter it to relevant rows before passing it in
+- `horizon` is the right-exclusive end date for the forecast window
+- Output columns follow the pattern `{value_col}_forecast`, `{value_col}_upper`, `{value_col}_lower`
+- The underlying model is prophet-like (piecewise linear with seasonality detection)
+- The time column type is preserved in output -- DATE stays DATE, TIMESTAMP stays TIMESTAMP
 
+## More Patterns
 
-`group_col`
+### Forecast by group
+
+> "Write a SQL query that produces independent sales forecasts for each region."
 
 ```sql
-SELECT *
-FROM ai_forecast(
-    observed  => TABLE(SELECT date, region, sales FROM regional_sales),
+SELECT * FROM ai_forecast(
+    observed  => TABLE(SELECT date, region, sales FROM catalog.schema.regional_sales),
     horizon   => '2026-12-31',
     time_col  => 'date',
     value_col => 'sales',
     group_col => 'region'
 );
--- Returns: date, region, sales_forecast, sales_upper, sales_lower
--- One row per date per region
 ```
 
+Each distinct value of `group_col` gets its own independent forecast model. The output includes the group column so you can filter or join results by region downstream.
 
+### Forecast multiple metrics simultaneously
+
+> "Write a SQL query that forecasts both units sold and revenue in a single call."
 
 ```sql
-SELECT *
-FROM ai_forecast(
-    observed  => TABLE(SELECT date, units, revenue FROM daily_kpis),
+SELECT * FROM ai_forecast(
+    observed  => TABLE(SELECT date, units, revenue FROM catalog.schema.daily_kpis),
     horizon   => '2026-06-30',
     time_col  => 'date',
-    value_col => 'units,revenue'   -- comma-separated
+    value_col => 'units,revenue'
 );
--- Returns: date, units_forecast, units_upper, units_lower,
---                revenue_forecast, revenue_upper, revenue_lower
 ```
 
+Pass a comma-separated list to `value_col` to forecast up to 100 metrics per group in one call. The output contains `units_forecast`, `units_upper`, `units_lower`, `revenue_forecast`, `revenue_upper`, `revenue_lower`.
 
+### Narrow the confidence interval for anomaly detection
+
+> "Write a SQL query that forecasts sensor readings with an 80% prediction interval for tighter anomaly bounds."
 
 ```sql
-SELECT *
-FROM ai_forecast(
-    observed                   => TABLE(SELECT ts, sensor_value FROM iot_readings),
+SELECT * FROM ai_forecast(
+    observed                   => TABLE(SELECT ts, sensor_value FROM catalog.schema.iot_readings),
     horizon                    => '2026-03-31',
     time_col                   => 'ts',
     value_col                  => 'sensor_value',
-    prediction_interval_width  => 0.80   -- narrower interval = less conservative
+    prediction_interval_width  => 0.80
 );
 ```
 
+The default prediction interval is 0.95. Narrowing it to 0.80 produces tighter upper/lower bounds, which is useful when you want to flag values outside the forecast range as anomalies.
 
+### Save forecasts to a Delta table
 
-```sql
-SELECT *
-FROM ai_forecast(
-    observed  => TABLE(
-        SELECT date, sales
-        FROM daily_sales
-        WHERE region = 'BR' AND date >= '2024-01-01'
-    ),
-    horizon   => '2026-12-31',
-    time_col  => 'date',
-    value_col => 'sales'
-);
-```
-
-`spark.sql()`
-
-`ai_forecast``spark.sql()`
+> "Write PySpark code that runs a forecast and persists the results as a Delta table for downstream dashboards."
 
 ```python
 result = spark.sql("""
-    SELECT *
-    FROM ai_forecast(
+    SELECT * FROM ai_forecast(
         observed  => TABLE(SELECT date, sales FROM catalog.schema.daily_sales),
         horizon   => '2026-12-31',
         time_col  => 'date',
         value_col => 'sales'
     )
 """)
-result.display()
+result.write.format("delta").mode("overwrite").saveAsTable("catalog.schema.sales_forecast")
 ```
 
+Materializing forecast output to Delta lets dashboards and downstream queries read precomputed predictions without re-running the model on every access.
 
+## Watch Out For
 
-```python
-result = spark.sql("""
-    SELECT *
-    FROM ai_forecast(
-        observed  => TABLE(SELECT date, region, revenue FROM catalog.schema.sales),
-        horizon   => '2026-12-31',
-        time_col  => 'date',
-        value_col => 'revenue',
-        group_col => 'region'
-    )
-""")
-result.write.format("delta").mode("overwrite").saveAsTable("catalog.schema.revenue_forecast")
-```
-
-
-
-
-
-
-
+- **Using `'M'` for monthly frequency with DATE columns** -- DATE columns need `frequency => 'month'`, not `'M'`. The `'M'` shorthand is for TIMESTAMP columns only. Mismatching this produces incorrect intervals.
+- **Passing unfiltered data as the observed table** -- the model trains on whatever you give it. Outliers, nulls, and gaps in the time series degrade forecast quality. Clean and filter the input TABLE expression before calling `ai_forecast`.
+- **Expecting causal explanations** -- `ai_forecast` fits a statistical trend model. It doesn't know about promotions, holidays, or business events. For those, you need to add regressors or post-process the output.
+- **Forecasting high-cardinality groups without limits** -- forecasting 10,000 ZIP codes in one call is expensive. Aggregate to a coarser level or limit groups to the top N by volume.
