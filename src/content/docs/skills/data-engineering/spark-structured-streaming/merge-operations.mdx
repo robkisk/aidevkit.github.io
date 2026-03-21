@@ -5,6 +5,8 @@ sidebar:
   order: 3
 ---
 
+**Skill:** `databricks-spark-structured-streaming`
+
 ## What You Can Build
 
 A raw append is fine for bronze ingestion, but most silver and gold tables need upsert semantics -- insert new records, update existing ones, and optionally delete. Delta MERGE inside `foreachBatch` gives you that. Combined with Liquid Clustering, Deletion Vectors, and Row-Level Concurrency, you get production-grade merge performance without manual OPTIMIZE pauses.

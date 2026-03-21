@@ -5,6 +5,8 @@ sidebar:
   order: 4
 ---
 
+**Skill:** `databricks-spark-structured-streaming`
+
 ## What You Can Build
 
 You have one stream of events, but three different tables need them -- raw bronze, cleansed silver, and aggregated gold. Reading the source three times wastes resources and triplicates your Kafka consumer lag. `foreachBatch` lets you read once and write many, with all sinks sharing a single checkpoint and seeing the same data per batch.

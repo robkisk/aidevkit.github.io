@@ -5,6 +5,8 @@ sidebar:
   order: 5
 ---
 
+**Skill:** `databricks-spark-structured-streaming`
+
 ## What You Can Build
 
 Stateless streaming works until you need to deduplicate, aggregate over time windows, or track running totals. At that point, Spark needs to remember what it's seen -- and that state must be bounded, or your job will eventually OOM. Watermarks define how long state lives; RocksDB handles state that exceeds memory. Together, they make stateful operations production-safe.

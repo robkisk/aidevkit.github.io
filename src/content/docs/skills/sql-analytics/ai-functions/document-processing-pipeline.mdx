@@ -5,6 +5,8 @@ sidebar:
   order: 4
 ---
 
+**Skill:** `databricks-ai-functions`
+
 ## What You Can Build
 
 A multi-stage document processing pipeline that parses PDFs and images, classifies document types, extracts structured fields, and matches entities against master data -- all using SQL AI Functions inside a Spark Declarative Pipeline. Each stage uses the cheapest function that can handle the job: `ai_parse_document` for OCR, `ai_classify` for routing, `ai_extract` for flat fields, and `ai_query` only when you need nested JSON output.
