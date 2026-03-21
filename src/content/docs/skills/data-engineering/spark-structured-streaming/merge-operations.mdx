@@ -5,11 +5,11 @@ sidebar:
   order: 99
 ---
 
-Comprehensive guide to Delta MERGE operations: performance optimization, parallel merges to multiple tables, and modern Delta features (Liquid Clustering + Deletion Vectors + Row-Level Concurrency).
 
-## Quick Start
 
-### Basic MERGE with Optimization
+
+
+
 
 ```python
 from delta.tables import DeltaTable
@@ -40,7 +40,7 @@ stream.writeStream \
     .start()
 ```
 
-### Parallel MERGE to Multiple Tables
+
 
 ```python
 from delta.tables import DeltaTable
@@ -87,11 +87,11 @@ stream.writeStream \
     .start()
 ```
 
-## Core Concepts
 
-### Liquid Clustering + DV + RLC
 
-Enable modern Delta features for optimal merge performance:
+
+
+
 
 ```sql
 -- Enable for target table
@@ -102,15 +102,15 @@ ALTER TABLE target_table SET TBLPROPERTIES (
 );
 ```
 
-**Benefits:**
-- **Deletion Vectors**: Soft deletes without file rewrite
-- **Row-Level Concurrency**: Concurrent updates to different rows
-- **Liquid Clustering**: Automatic optimization without pauses
-- **Result**: Eliminates optimize pauses, lower P99 latency, simpler code
 
-## Common Patterns
 
-### Pattern 1: Basic MERGE with Optimization
+
+
+
+
+
+
+
 
 ```python
 def optimized_merge(batch_df, batch_id):
@@ -131,7 +131,7 @@ stream.writeStream \
     .start()
 ```
 
-### Pattern 2: Parallel MERGE to Multiple Tables
+
 
 ```python
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -182,7 +182,7 @@ def parallel_merge(batch_df, batch_id):
         raise Exception(f"Merge failures: {errors}")
 ```
 
-### Pattern 3: MERGE with Partition Pruning
+
 
 ```python
 def partition_pruned_merge(batch_df, batch_id):
@@ -200,7 +200,7 @@ def partition_pruned_merge(batch_df, batch_id):
     # Skips irrelevant partitions for faster execution
 ```
 
-### Pattern 4: CDC Multi-Target with Parallel MERGE
+
 
 ```python
 def cdc_parallel_merge(batch_df, batch_id):
@@ -249,9 +249,9 @@ def cdc_parallel_merge(batch_df, batch_id):
     batch_df.unpersist()
 ```
 
-## Performance Optimization
 
-### Enable Liquid Clustering + DV + RLC
+
+
 
 ```sql
 -- Create table with Liquid Clustering
@@ -275,7 +275,7 @@ ALTER TABLE target_table SET TBLPROPERTIES (
 ALTER TABLE target_table CLUSTER BY (id);
 ```
 
-### Z-Ordering on Merge Key
+
 
 ```sql
 -- Z-Order on merge key for faster lookups
@@ -285,7 +285,7 @@ OPTIMIZE target_table ZORDER BY (id);
 -- 5-10x faster for targeted lookups
 ```
 
-### File Size Tuning
+
 
 ```sql
 -- Target file size for optimal merge
@@ -294,7 +294,7 @@ ALTER TABLE target_table SET TBLPROPERTIES (
 );
 ```
 
-### Optimal Thread Count
+
 
 ```python
 # Formula: min(number_of_tables, cluster_cores / 2)
@@ -304,9 +304,9 @@ ALTER TABLE target_table SET TBLPROPERTIES (
 max_workers = min(len(tables), max(2, total_cores // 2))
 ```
 
-## Monitoring
 
-### Track Merge Performance
+
+
 
 ```python
 import time
@@ -330,29 +330,29 @@ def monitored_merge(batch_df, batch_id):
         print(f"WARNING: Merge duration {duration:.2f}s exceeds threshold")
 ```
 
-## Common Issues
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **High P99 latency** | OPTIMIZE pauses | Enable Liquid Clustering (no pauses) |
-| **Merge conflicts** | Concurrent updates to same rows | Enable Row-Level Concurrency |
-| **Slow merges** | Large files, no optimization | Enable Liquid Clustering; Z-Order on merge key |
-| **Too many threads** | Resource contention | Reduce max_workers; match to cluster capacity |
-| **Partial failures** | One merge fails | Collect all errors; fail batch if any error |
 
-## Production Checklist
 
-- [ ] Liquid Clustering + DV + RLC enabled on all target tables
-- [ ] Z-Ordering configured on merge keys
-- [ ] Optimal thread count configured (start with 2)
-- [ ] Error handling implemented (collect all errors)
-- [ ] Performance monitoring per table
-- [ ] Cache used to avoid recomputation
-- [ ] Unpersist after writes
-- [ ] File size tuned (128MB target)
 
-## Related Skills
 
-- `multi-sink-writes` - Multi-sink write patterns
-- `partitioning-strategy` - Partition optimization for merges
-- `checkpoint-best-practices` - Checkpoint configuration
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`multi-sink-writes`
+`partitioning-strategy`
+`checkpoint-best-practices`

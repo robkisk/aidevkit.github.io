@@ -5,13 +5,13 @@ sidebar:
   order: 3
 ---
 
-How to query SCD Type 2 history tables effectively, including current state queries, point-in-time analysis, and change tracking.
 
----
 
-## Understanding SCD Type 2 Structure
 
-When you create an SCD Type 2 flow, the system automatically adds temporal columns:
+
+
+
+
 
 ```sql
 CREATE FLOW customers_scd2_flow AS
@@ -23,7 +23,7 @@ STORED AS SCD TYPE 2
 TRACK HISTORY ON *;
 ```
 
-**Resulting table structure** (Lakeflow uses double-underscore temporal columns):
+
 ```
 customers_history
 ├── customer_id        -- Business key
@@ -35,13 +35,13 @@ customers_history
 └── ...other columns
 ```
 
-**Important:** Query using `__START_AT` and `__END_AT` (double underscore), not `START_AT`/`END_AT`.
+`__START_AT``__END_AT``START_AT``END_AT`
 
----
 
-## Current State Queries
 
-### All Current Records
+
+
+
 
 ```sql
 -- __END_AT IS NULL indicates active record (Lakeflow uses double underscore)
@@ -53,7 +53,7 @@ FROM customers_history
 WHERE __END_AT IS NULL;
 ```
 
-### Specific Customer
+
 
 ```sql
 SELECT *
@@ -62,13 +62,13 @@ WHERE customer_id = '12345'
   AND __END_AT IS NULL;
 ```
 
----
 
-## Point-in-Time Queries
 
-### As-Of Date Query
 
-Get state of records as they were on a specific date:
+
+
+
+
 
 ```sql
 -- Products as of January 1, 2024 (use __START_AT / __END_AT)
@@ -81,11 +81,11 @@ WHERE __START_AT <= '2024-01-01'
   AND (__END_AT > '2024-01-01' OR __END_AT IS NULL);
 ```
 
----
 
-## Change Analysis
 
-### Track All Changes for Entity
+
+
+
 
 ```sql
 -- Complete history for a customer (use __START_AT / __END_AT)
@@ -101,7 +101,7 @@ WHERE customer_id = '12345'
 ORDER BY __START_AT DESC;
 ```
 
-### Changes Within Time Period
+
 
 ```sql
 -- Customers who changed during Q1 2024 (use __START_AT)
@@ -119,11 +119,11 @@ WHERE __START_AT BETWEEN '2024-01-01' AND '2024-03-31'
 ORDER BY __START_AT;
 ```
 
----
 
-## Joining Facts with Historical Dimensions
 
-### Enrich Facts with Dimension at Transaction Time
+
+
+
 
 ```sql
 -- Join sales with product prices at time of sale
@@ -140,7 +140,7 @@ INNER JOIN products_history p
   AND (s.sale_date < p.__END_AT OR p.__END_AT IS NULL);
 ```
 
-### Join with Current Dimension
+
 
 ```sql
 -- Join sales with current product information
@@ -157,11 +157,11 @@ INNER JOIN products_history p
   AND p.__END_AT IS NULL;  -- Current version only
 ```
 
----
 
-## Selective History Tracking
 
-When using `TRACK HISTORY ON specific_columns`:
+
+
+`TRACK HISTORY ON specific_columns`
 
 ```sql
 -- Only price changes trigger new versions
@@ -174,11 +174,11 @@ STORED AS SCD TYPE 2
 TRACK HISTORY ON price, cost;  -- Only these columns
 ```
 
----
 
-## Optimization Patterns
 
-### Pre-Filter Materialized Views
+
+
+
 
 ```sql
 -- Current state view (most common pattern)
@@ -201,11 +201,11 @@ FROM products_history
 GROUP BY product_id;
 ```
 
----
 
-## Best Practices
 
-### 1. Always Filter by __END_AT for Current (Lakeflow uses double underscore)
+
+
+
 
 ```sql
 -- ✅ Efficient
@@ -215,7 +215,7 @@ WHERE __END_AT IS NULL
 WHERE __START_AT = (SELECT MAX(__START_AT) FROM table WHERE ...)
 ```
 
-### 2. Use Inclusive Lower, Exclusive Upper
+
 
 ```sql
 -- ✅ Standard pattern
@@ -223,7 +223,7 @@ WHERE __START_AT <= '2024-01-01'
   AND (__END_AT > '2024-01-01' OR __END_AT IS NULL)
 ```
 
-### 3. Create MVs for Common Patterns
+
 
 ```sql
 -- Current state
@@ -236,13 +236,13 @@ SELECT * FROM history
 WHERE __START_AT >= CURRENT_DATE() - INTERVAL 90 DAYS;
 ```
 
----
 
-## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| Multiple rows for same key | Missing `__END_AT IS NULL` filter for current state |
-| Point-in-time no results | Use `__START_AT <= date AND (__END_AT > date OR __END_AT IS NULL)` |
-| Slow temporal join | Create materialized view for specific time period |
-| Unexpected duplicates | Multiple changes same day - use SEQUENCE BY with high precision |
+
+
+
+
+`__END_AT IS NULL`
+`__START_AT <= date AND (__END_AT > date OR __END_AT IS NULL)`
+
+

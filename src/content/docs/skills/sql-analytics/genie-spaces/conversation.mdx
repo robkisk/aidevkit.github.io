@@ -5,42 +5,42 @@ sidebar:
   order: 99
 ---
 
-Use the Genie Conversation API to ask natural language questions to a curated Genie Space.
 
-## Overview
 
-The `ask_genie` tool allows you to programmatically send questions to a Genie Space and receive SQL-generated answers. Instead of writing SQL directly, you delegate the query generation to Genie, which has been curated with business logic, instructions, and certified queries.
 
-## When to Use `ask_genie`
 
-### Use `ask_genie` When:
+`ask_genie`
 
-| Scenario | Why |
-|----------|-----|
-| Genie Space has curated business logic | Genie knows rules like "active customer = ordered in 90 days" |
-| User explicitly says "ask Genie" or "use my Genie Space" | User intent to use their curated space |
-| Complex business metrics with specific definitions | Genie has certified queries for official metrics |
-| Testing a Genie Space after creating it | Validate the space works correctly |
-| User wants conversational data exploration | Genie handles context for follow-up questions |
+`ask_genie`
 
-### Use Direct SQL (`execute_sql`) Instead When:
+`ask_genie`
 
-| Scenario | Why |
-|----------|-----|
-| Simple ad-hoc query | Direct SQL is faster, no curation needed |
-| You already have the exact SQL | No need for Genie to regenerate |
-| Genie Space doesn't exist for this data | Can't use Genie without a space |
-| Need precise control over the query | Direct SQL gives exact control |
 
-## MCP Tools
 
-| Tool | Purpose |
-|------|---------|
-| `ask_genie` | Ask a question or follow-up (`conversation_id` optional) |
 
-## Basic Usage
 
-### Ask a Question
+
+
+
+
+`execute_sql`
+
+
+
+
+
+
+
+
+
+
+
+
+`ask_genie``conversation_id`
+
+
+
+
 
 ```python
 ask_genie(
@@ -49,7 +49,7 @@ ask_genie(
 )
 ```
 
-**Response:**
+
 ```python
 {
     "question": "What were total sales last month?",
@@ -63,9 +63,9 @@ ask_genie(
 }
 ```
 
-### Ask Follow-up Questions
 
-Use the `conversation_id` from the first response to ask follow-up questions with context:
+
+`conversation_id`
 
 ```python
 # First question
@@ -82,26 +82,26 @@ ask_genie(
 )
 ```
 
-Genie remembers the context, so "that" refers to "total sales last month".
 
-## Response Fields
 
-| Field | Description |
-|-------|-------------|
-| `question` | The original question asked |
-| `conversation_id` | ID for follow-up questions |
-| `message_id` | Unique message identifier |
-| `status` | `COMPLETED`, `FAILED`, `CANCELLED`, `TIMEOUT` |
-| `sql` | The SQL query Genie generated |
-| `columns` | List of column names in result |
-| `data` | Query results as list of rows |
-| `row_count` | Number of rows returned |
-| `text_response` | Text explanation (if Genie asks for clarification) |
-| `error` | Error message (if status is not COMPLETED) |
 
-## Handling Responses
 
-### Successful Response
+
+
+`question`
+`conversation_id`
+`message_id`
+`status``COMPLETED``FAILED``CANCELLED``TIMEOUT`
+`sql`
+`columns`
+`data`
+`row_count`
+`text_response`
+`error`
+
+
+
+
 
 ```python
 result = ask_genie(space_id, "Who are our top 10 customers?")
@@ -113,7 +113,7 @@ if result["status"] == "COMPLETED":
         print(row)
 ```
 
-### Failed Response
+
 
 ```python
 result = ask_genie(space_id, "What is the meaning of life?")
@@ -123,7 +123,7 @@ if result["status"] == "FAILED":
     # Genie couldn't answer - may need to rephrase or use direct SQL
 ```
 
-### Timeout
+
 
 ```python
 result = ask_genie(space_id, question, timeout_seconds=60)
@@ -132,9 +132,9 @@ if result["status"] == "TIMEOUT":
     print("Query took too long - try a simpler question or increase timeout")
 ```
 
-## Example Workflows
 
-### Workflow 1: User Asks to Use Genie
+
+
 
 ```
 User: "Ask my Sales Genie what the churn rate is"
@@ -146,7 +146,7 @@ Claude:
    Genie used this SQL: SELECT ..."
 ```
 
-### Workflow 2: Testing a New Genie Space
+
 
 ```
 User: "I just created a Genie Space for HR data. Can you test it?"
@@ -159,7 +159,7 @@ Claude:
 3. Reports results: "Your HR Genie is working. It correctly answered..."
 ```
 
-### Workflow 3: Data Exploration with Follow-ups
+
 
 ```
 User: "Use my analytics Genie to explore sales trends"
@@ -172,11 +172,11 @@ Claude:
 5. ask_genie(space_id, "What products drove that growth?", conversation_id=conv_id)
 ```
 
-## Best Practices
 
-### Start New Conversations for New Topics
 
-Don't reuse conversations across unrelated questions:
+
+
+
 
 ```python
 # Good: New conversation for new topic
@@ -189,9 +189,9 @@ result2 = ask_genie(space_id, "Break that down by product",
                     conversation_id=result1["conversation_id"])  # Related follow-up
 ```
 
-### Handle Clarification Requests
 
-Genie may ask for clarification instead of returning results:
+
+
 
 ```python
 result = ask_genie(space_id, "Show me the data")
@@ -202,11 +202,11 @@ if result.get("text_response"):
     # Rephrase with more specifics
 ```
 
-### Set Appropriate Timeouts
 
-- Simple aggregations: 30-60 seconds
-- Complex joins: 60-120 seconds
-- Large data scans: 120+ seconds
+
+
+
+
 
 ```python
 # Quick question
@@ -217,28 +217,28 @@ ask_genie(space_id, "Calculate customer lifetime value for all customers",
           timeout_seconds=180)
 ```
 
-## Troubleshooting
 
-### "Genie Space not found"
 
-- Verify the `space_id` is correct
-- Check you have access to the space
-- Use `get_genie(space_id)` to verify it exists
 
-### "Query timed out"
 
-- Increase `timeout_seconds`
-- Simplify the question
-- Check if the SQL warehouse is running
+`space_id`
 
-### "Failed to generate SQL"
+`get_genie(space_id)`
 
-- Rephrase the question more clearly
-- Check if the question is answerable with the available tables
-- Add more instructions/curation to the Genie Space
 
-### Unexpected Results
 
-- Review the generated SQL in the response
-- Add SQL instructions to the Genie Space via the Databricks UI
-- Add sample questions that demonstrate correct patterns
+`timeout_seconds`
+
+
+
+
+
+
+
+
+
+
+
+
+
+

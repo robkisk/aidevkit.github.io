@@ -5,15 +5,15 @@ sidebar:
   order: 3
 ---
 
-All frameworks below are **pre-installed** in the Databricks Apps runtime. Claude already knows how to use them — this guide covers only **Databricks-specific** patterns. For full examples and recipes, see the **[Databricks Apps Cookbook](https://apps-cookbook.dev/)**.
 
----
 
-## Dash
 
-**Best for**: Production dashboards, BI tools, complex interactive visualizations.
 
-**Critical**: Always use `dash-bootstrap-components` for layout and styling.
+
+
+
+
+`dash-bootstrap-components`
 
 ```python
 import dash
@@ -26,28 +26,28 @@ app = dash.Dash(
 )
 ```
 
-| Detail | Value |
-|--------|-------|
-| Pre-installed version | 2.18.1 |
-| app.yaml command | `["python", "app.py"]` |
-| Default port | 8050 — override in code: `app.run(port=int(os.environ.get("DATABRICKS_APP_PORT", 8000)))` |
-| Auth header | `request.headers.get('x-forwarded-access-token')` (Flask under the hood) |
 
-**Databricks tips**:
-- Use `dbc.themes.BOOTSTRAP` and `dbc.icons.FONT_AWESOME` for consistent styling
-- Use Bootstrap badge color names (`"success"`, `"danger"`), not hex colors, for `dbc.Badge`
-- Use `prevent_initial_call=True` on expensive callbacks
-- Use `dcc.Store` for client-side caching
 
-**Cookbook**: [apps-cookbook.dev/docs/category/dash](https://apps-cookbook.dev/docs/category/dash) — tables, volumes, AI/ML, workflows, dashboards, compute, auth, external services.
 
----
+`["python", "app.py"]`
+`app.run(port=int(os.environ.get("DATABRICKS_APP_PORT", 8000)))`
+`request.headers.get('x-forwarded-access-token')`
 
-## Streamlit
 
-**Best for**: Rapid prototyping, data science apps, internal tools, notebook-to-app workflow.
+`dbc.themes.BOOTSTRAP``dbc.icons.FONT_AWESOME`
+`"success"``"danger"``dbc.Badge`
+`prevent_initial_call=True`
+`dcc.Store`
 
-**Critical**: Always use `@st.cache_resource` for database connections.
+
+
+
+
+
+
+
+
+`@st.cache_resource`
 
 ```python
 import streamlit as st
@@ -66,27 +66,27 @@ def get_connection():
     )
 ```
 
-| Detail | Value |
-|--------|-------|
-| Pre-installed version | 1.38.0 |
-| app.yaml command | `["streamlit", "run", "app.py"]` |
-| Auth header | `st.context.headers.get('x-forwarded-access-token')` |
 
-**Databricks tips**:
-- `st.set_page_config()` must be the **first** Streamlit command
-- `@st.cache_resource` for connections/models; `@st.cache_data(ttl=...)` for query results
-- Use `st.form()` to batch inputs and prevent reruns on every keystroke
-- Use `st.column_config` for formatted DataFrames (currency, dates)
 
-**Cookbook**: [apps-cookbook.dev/docs/category/streamlit](https://apps-cookbook.dev/docs/category/streamlit) — tables, volumes, AI/ML, workflows, visualizations, dashboards, compute, auth, external services.
 
----
+`["streamlit", "run", "app.py"]`
+`st.context.headers.get('x-forwarded-access-token')`
 
-## Gradio
 
-**Best for**: ML model demos, chat interfaces, image/audio/video processing UIs.
+`st.set_page_config()`
+`@st.cache_resource``@st.cache_data(ttl=...)`
+`st.form()`
+`st.column_config`
 
-**Critical**: Use `gr.Request` parameter to access auth headers.
+
+
+
+
+
+
+
+
+`gr.Request`
 
 ```python
 import os
@@ -112,27 +112,27 @@ port = int(os.environ.get("DATABRICKS_APP_PORT", 8000))
 demo.launch(server_name="0.0.0.0", server_port=port)
 ```
 
-| Detail | Value |
-|--------|-------|
-| Pre-installed version | 4.44.0 |
-| app.yaml command | `["python", "app.py"]` |
-| Default port | 7860 — override in code: `server_port=int(os.environ.get("DATABRICKS_APP_PORT", 8000))` |
-| Auth header | `request.headers.get('x-forwarded-access-token')` via `gr.Request` |
 
-**Databricks tips**:
-- Natural fit for model serving endpoint integration
-- Use `gr.ChatInterface` for conversational AI demos
-- Use `gr.Blocks` for complex multi-component layouts
 
-**Docs**: [gradio.app/docs](https://www.gradio.app/docs)
 
----
+`["python", "app.py"]`
+`server_port=int(os.environ.get("DATABRICKS_APP_PORT", 8000))`
+`request.headers.get('x-forwarded-access-token')``gr.Request`
 
-## Flask
 
-**Best for**: Custom REST APIs, lightweight web apps, webhook receivers.
 
-**Critical**: Deploy with Gunicorn — never use Flask's dev server in production.
+`gr.ChatInterface`
+`gr.Blocks`
+
+
+
+
+
+
+
+
+
+
 
 ```python
 from flask import Flask, request, jsonify
@@ -154,24 +154,24 @@ def get_data():
         return jsonify(cursor.fetchall())
 ```
 
-| Detail | Value |
-|--------|-------|
-| Pre-installed version | 3.0.3 |
-| app.yaml command | `["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]` |
-| Auth header | `request.headers.get('x-forwarded-access-token')` |
 
-**Databricks tips**:
-- Use connection pooling (Flask doesn't cache connections like Streamlit)
-- Gunicorn workers (`-w 4`) handle concurrent requests
-- Use `request.headers` for user authorization tokens
 
----
 
-## FastAPI
+`["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]`
+`request.headers.get('x-forwarded-access-token')`
 
-**Best for**: Modern async APIs, auto-generated OpenAPI/Swagger docs, high-performance backends.
 
-**Critical**: Deploy with uvicorn.
+
+`-w 4`
+`request.headers`
+
+
+
+
+
+
+
+
 
 ```python
 from fastapi import FastAPI, Request
@@ -194,24 +194,24 @@ async def get_data(request: Request):
         return cursor.fetchall()
 ```
 
-| Detail | Value |
-|--------|-------|
-| Pre-installed version | 0.115.0 |
-| app.yaml command | `["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]` |
-| Auth header | `request.headers.get('x-forwarded-access-token')` via `Request` |
 
-**Databricks tips**:
-- Auto-generates OpenAPI docs at `/docs` (Swagger) and `/redoc`
-- Databricks SQL connector is synchronous — use `asyncio.to_thread()` for async endpoints
-- Good choice for API backends that serve APX (FastAPI + React) apps
 
-**Cookbook**: [apps-cookbook.dev/docs/category/fastapi](https://apps-cookbook.dev/docs/category/fastapi) — getting started, endpoint examples.
 
----
+`["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]`
+`request.headers.get('x-forwarded-access-token')``Request`
 
-## Reflex
 
-**Best for**: Full-stack Python apps with reactive UIs, no JavaScript required.
+`/docs``/redoc`
+`asyncio.to_thread()`
+
+
+
+
+
+
+
+
+
 
 ```python
 import reflex as rx
@@ -234,20 +234,20 @@ class State(rx.State):
             self.data = [dict(zip([d[0] for d in cursor.description], row)) for row in cursor.fetchall()]
 ```
 
-| Detail | Value |
-|--------|-------|
-| app.yaml command | `["reflex", "run", "--env", "prod"]` |
-| Auth header | `session.http_conn.headers.get('x-forwarded-access-token')` |
 
-**Cookbook**: [apps-cookbook.dev/docs/category/reflex](https://apps-cookbook.dev/docs/category/reflex) — tables, volumes, AI/ML, workflows, dashboards, compute, auth, external services.
 
----
+`["reflex", "run", "--env", "prod"]`
+`session.http_conn.headers.get('x-forwarded-access-token')`
 
-## Common: All Frameworks
 
-- All frameworks are **pre-installed** — no need to add them to `requirements.txt`
-- Add only additional packages your app needs to `requirements.txt`
-- SDK `Config()` auto-detects credentials from injected environment variables
-- Apps must bind to `DATABRICKS_APP_PORT` env var (defaults to 8000). Streamlit is auto-configured by the runtime; for other frameworks, read the env var in code or hardcode 8000 in `app.yaml` command. **Never use 8080**
-- For framework-specific deployment commands, see [4-deployment.md](4-deployment.md)
-- For authorization integration, see [1-authorization.md](1-authorization.md)
+
+
+
+
+
+`requirements.txt`
+`requirements.txt`
+`Config()`
+`DATABRICKS_APP_PORT``app.yaml`
+
+

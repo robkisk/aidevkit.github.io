@@ -5,22 +5,22 @@ sidebar:
   order: 7
 ---
 
-Deploy models to serving endpoints. Uses async job-based approach for agents (deployment takes ~15 min).
 
-> **If MCP tools are not available**, use `databricks.agents.deploy()` directly in a notebook, or create jobs via CLI: `databricks jobs create --json @job.json`
 
-## Deployment Options
+`databricks.agents.deploy()``databricks jobs create --json @job.json`
 
-| Model Type | Method | Time |
-|------------|--------|------|
-| **Classical ML** | SDK/UI | 2-5 min |
-| **GenAI Agent** | `databricks.agents.deploy()` | ~15 min |
 
-## GenAI Agent Deployment (Job-Based)
 
-Since agent deployment takes ~15 minutes, use a job to avoid MCP timeouts.
 
-### Step 1: Create Deployment Script
+
+
+`databricks.agents.deploy()`
+
+
+
+
+
+
 
 ```python
 # deploy_agent.py
@@ -44,9 +44,9 @@ print(f"Deployment complete!")
 print(f"Endpoint: {deployment.endpoint_name}")
 ```
 
-### Step 2: Create Deployment Job (One-Time)
 
-Use the `manage_jobs` MCP tool with action="create":
+
+`manage_jobs`
 
 ```
 manage_jobs(
@@ -68,11 +68,11 @@ manage_jobs(
 )
 ```
 
-Save the returned `job_id`.
+`job_id`
 
-### Step 3: Run Deployment (Async)
 
-Use `manage_job_runs` with action="run_now" - returns immediately:
+
+`manage_job_runs`
 
 ```
 manage_job_runs(
@@ -82,27 +82,27 @@ manage_job_runs(
 )
 ```
 
-Save the returned `run_id`.
+`run_id`
 
-### Step 4: Check Status
 
-Check job run status:
+
+
 
 ```
 manage_job_runs(action="get", run_id="<run_id>")
 ```
 
-Or check endpoint directly:
+
 
 ```
 get_serving_endpoint_status(name="<endpoint_name>")
 ```
 
-## Classical ML Deployment
 
-For traditional ML models, deployment is faster - use SDK directly.
 
-### Via MLflow Deployments SDK
+
+
+
 
 ```python
 from mlflow.deployments import get_deploy_client
@@ -125,7 +125,7 @@ endpoint = client.create_endpoint(
 )
 ```
 
-### Via Databricks SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -149,19 +149,19 @@ endpoint = w.serving_endpoints.create_and_wait(
 )
 ```
 
-## Endpoint Naming and Visibility
 
-### Auto-generated Names
 
-When you call `agents.deploy()`, the endpoint name is auto-derived from the UC model path by replacing dots with underscores and prefixing with `agents_`:
 
-| UC Model Path | Auto-generated Endpoint Name |
-|---------------|------------------------------|
-| `main.agents.my_agent` | `agents_main-agents-my_agent` |
-| `catalog.schema.model` | `agents_catalog-schema-model` |
-| `users.jane.demo_bot` | `agents_users-jane-demo_bot` |
 
-The exact format can vary. To avoid surprises, **always specify the endpoint name explicitly**:
+`agents.deploy()``agents_`
+
+
+
+`main.agents.my_agent``agents_main-agents-my_agent`
+`catalog.schema.model``agents_catalog-schema-model`
+`users.jane.demo_bot``agents_users-jane-demo_bot`
+
+
 
 ```python
 deployment = agents.deploy(
@@ -172,15 +172,15 @@ deployment = agents.deploy(
 )
 ```
 
-### Finding Endpoints in the UI
 
-Endpoints created via `agents.deploy()` appear under **Serving** in the Databricks UI. If you don't see your endpoint:
 
-1. **Check the filter** - The Serving page defaults to "Owned by me". If the deployment ran as a service principal (e.g., via a job), switch to "All" to see it.
-2. **Verify via API** - Use `list_serving_endpoints()` or `get_serving_endpoint_status(name="...")` to confirm the endpoint exists and check its state.
-3. **Check the name** - The auto-generated name may not be what you expect. Print `deployment.endpoint_name` in the deploy script or check the job run output.
+`agents.deploy()`
 
-### Deployment Script with Explicit Naming
+
+`list_serving_endpoints()``get_serving_endpoint_status(name="...")`
+`deployment.endpoint_name`
+
+
 
 ```python
 # deploy_agent.py - recommended pattern
@@ -205,9 +205,9 @@ print(f"Endpoint name: {deployment.endpoint_name}")
 print(f"Query URL: {deployment.query_endpoint}")
 ```
 
-## Deployment Job Template
 
-Complete job definition for reusable agent deployment:
+
+
 
 ```yaml
 # resources/deploy_agent_job.yml (for Asset Bundles)
@@ -235,9 +235,9 @@ resources:
               spark.master: "local[*]"
 ```
 
-## Update Existing Endpoint
 
-To update an endpoint with a new model version:
+
+
 
 ```python
 from mlflow.deployments import get_deploy_client
@@ -264,20 +264,20 @@ client.update_endpoint(
 )
 ```
 
-## Workflow Summary
 
-| Step | MCP Tool | Waits? |
-|------|----------|--------|
-| Upload deploy script | `upload_folder` | Yes |
-| Create job (one-time) | `manage_jobs` (action="create") | Yes |
-| Run deployment | `manage_job_runs` (action="run_now") | **No** - returns immediately |
-| Check job status | `manage_job_runs` (action="get") | Yes |
-| Check endpoint status | `get_serving_endpoint_status` | Yes |
 
-## After Deployment
 
-Once endpoint is READY:
 
-1. **Test with MCP**: `query_serving_endpoint(name="...", messages=[...])`
-2. **Share with team**: Endpoint URL in Databricks UI
-3. **Integrate in apps**: Use REST API or SDK
+`upload_folder`
+`manage_jobs`
+`manage_job_runs`
+`manage_job_runs`
+`get_serving_endpoint_status`
+
+
+
+
+
+`query_serving_endpoint(name="...", messages=[...])`
+
+

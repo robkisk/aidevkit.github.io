@@ -5,15 +5,15 @@ sidebar:
   order: 1
 ---
 
-These functions require no model endpoint selection. They call pre-configured Foundation Model APIs optimized for each task. All require DBR 15.1+ (15.4 ML LTS for batch); `ai_parse_document` requires DBR 17.1+.
+`ai_parse_document`
 
----
 
-## `ai_analyze_sentiment`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_analyze_sentiment
+`ai_analyze_sentiment`
 
-Returns one of: `positive`, `negative`, `neutral`, `mixed`, or `NULL`.
+
+
+`positive``negative``neutral``mixed``NULL`
 
 ```sql
 SELECT ai_analyze_sentiment(review_text) AS sentiment
@@ -26,17 +26,17 @@ df = spark.table("customer_reviews")
 df.withColumn("sentiment", expr("ai_analyze_sentiment(review_text)")).display()
 ```
 
----
 
-## `ai_classify`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_classify
+`ai_classify`
 
-**Syntax:** `ai_classify(content, labels)`
-- `content`: STRING — text to classify
-- `labels`: ARRAY\<STRING\> — 2 to 20 mutually exclusive categories
 
-Returns the matching label or `NULL`.
+
+`ai_classify(content, labels)`
+`content`
+`labels`
+
+`NULL`
 
 ```sql
 SELECT ticket_text,
@@ -53,22 +53,22 @@ df.withColumn(
 ).display()
 ```
 
-**Tips:**
-- Fewer labels = more consistent results (2–5 is optimal)
-- Labels should be mutually exclusive and clearly distinguishable
-- Not suitable for multi-label classification — run multiple calls if needed
 
----
 
-## `ai_extract`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_extract
 
-**Syntax:** `ai_extract(content, labels)`
-- `content`: STRING — source text
-- `labels`: ARRAY\<STRING\> — entity types to extract
 
-Returns a STRUCT where each field name matches a label. Fields are `NULL` if not found.
+
+
+`ai_extract`
+
+
+
+`ai_extract(content, labels)`
+`content`
+`labels`
+
+`NULL`
 
 ```sql
 -- Extract and access fields directly
@@ -95,17 +95,17 @@ df = df.withColumn(
 df.select("entities.person", "entities.location", "entities.date").display()
 ```
 
-**Use `ai_query` instead when:** the output has nested arrays or more than ~5 levels of hierarchy.
+`ai_query`
 
----
 
-## `ai_fix_grammar`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_fix_grammar
+`ai_fix_grammar`
 
-**Syntax:** `ai_fix_grammar(content)` — Returns corrected STRING.
 
-Optimized for English. Useful for cleaning user-generated content before downstream processing.
+
+`ai_fix_grammar(content)`
+
+
 
 ```sql
 SELECT ai_fix_grammar(user_comment) AS corrected FROM user_feedback;
@@ -117,15 +117,15 @@ df = spark.table("user_feedback")
 df.withColumn("corrected", expr("ai_fix_grammar(user_comment)")).display()
 ```
 
----
 
-## `ai_gen`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_gen
+`ai_gen`
 
-**Syntax:** `ai_gen(prompt)` — Returns a generated STRING.
 
-Use for free-form text generation where the output format doesn't need to be structured. For structured JSON output, use `ai_query` with `responseFormat`.
+
+`ai_gen(prompt)`
+
+`ai_query``responseFormat`
 
 ```sql
 SELECT product_name,
@@ -142,19 +142,19 @@ df.withColumn(
 ).display()
 ```
 
----
 
-## `ai_mask`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_mask
+`ai_mask`
 
-**Syntax:** `ai_mask(content, labels)`
-- `content`: STRING — text with sensitive data
-- `labels`: ARRAY\<STRING\> — entity types to redact
 
-Returns text with identified entities replaced by `[MASKED]`.
 
-Common label values: `'person'`, `'email'`, `'phone'`, `'address'`, `'ssn'`, `'credit_card'`
+`ai_mask(content, labels)`
+`content`
+`labels`
+
+`[MASKED]`
+
+`'person'``'email'``'phone'``'address'``'ssn'``'credit_card'`
 
 ```sql
 SELECT ai_mask(
@@ -173,15 +173,15 @@ df.withColumn(
 ).write.format("delta").mode("append").saveAsTable("catalog.schema.messages_safe")
 ```
 
----
 
-## `ai_similarity`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_similarity
+`ai_similarity`
 
-**Syntax:** `ai_similarity(expr1, expr2)` — Returns a FLOAT between 0.0 and 1.0.
 
-Use for fuzzy deduplication, search result ranking, or item matching across datasets.
+
+`ai_similarity(expr1, expr2)`
+
+
 
 ```sql
 -- Deduplicate company names (similarity > 0.85 = likely duplicate)
@@ -202,15 +202,15 @@ df.withColumn(
 ).orderBy("match_score", ascending=False).display()
 ```
 
----
 
-## `ai_summarize`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_summarize
+`ai_summarize`
 
-**Syntax:** `ai_summarize(content [, max_words])`
-- `content`: STRING — text to summarize
-- `max_words`: INTEGER (optional) — word limit; default 50; use `0` for uncapped
+
+
+`ai_summarize(content [, max_words])`
+`content`
+`max_words``0`
 
 ```sql
 -- Default (50 words)
@@ -227,19 +227,19 @@ df = spark.table("news_articles")
 df.withColumn("summary", expr("ai_summarize(article_body, 30)")).display()
 ```
 
----
 
-## `ai_translate`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_translate
+`ai_translate`
 
-**Syntax:** `ai_translate(content, to_lang)`
-- `content`: STRING — source text
-- `to_lang`: STRING — target language code
 
-**Supported languages:** `en`, `de`, `fr`, `it`, `pt`, `hi`, `es`, `th`
 
-For unsupported languages, use `ai_query` with a multilingual model endpoint.
+`ai_translate(content, to_lang)`
+`content`
+`to_lang`
+
+`en``de``fr``it``pt``hi``es``th`
+
+`ai_query`
 
 ```sql
 -- Single language
@@ -262,31 +262,31 @@ df.withColumn(
 ).display()
 ```
 
----
 
-## `ai_parse_document`
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_parse_document
+`ai_parse_document`
 
-**Requires:** DBR 17.1+
 
-**Syntax:** `ai_parse_document(content [, options])`
-- `content`: BINARY — document content loaded from `read_files()` or `spark.read.format("binaryFile")`
-- `options`: MAP\<STRING, STRING\> (optional) — parsing configuration
 
-**Supported formats:** PDF, JPG/JPEG, PNG, DOCX, PPTX
 
-Returns a VARIANT with pages, elements (text paragraphs, tables, figures, headers, footers), bounding boxes, and error metadata.
 
-**Options:**
+`ai_parse_document(content [, options])`
+`content``read_files()``spark.read.format("binaryFile")`
+`options`
 
-| Key | Values | Description |
-|-----|--------|-------------|
-| `version` | `'2.0'` | Output schema version |
-| `imageOutputPath` | Volume path | Save rendered page images |
-| `descriptionElementTypes` | `''`, `'figure'`, `'*'` | AI-generated descriptions (default: `'*'` for all) |
 
-**Output schema:**
+
+
+
+
+
+
+
+`version``'2.0'`
+`imageOutputPath`
+`descriptionElementTypes``''``'figure'``'*'``'*'`
+
+
 
 ```
 document
@@ -347,7 +347,7 @@ df = (
 df.display()
 ```
 
-**Limitations:**
-- Processing is slow for dense or low-resolution documents
-- Suboptimal for non-Latin alphabets and digitally signed PDFs
-- Custom models not supported — always uses the built-in parsing model
+
+
+
+

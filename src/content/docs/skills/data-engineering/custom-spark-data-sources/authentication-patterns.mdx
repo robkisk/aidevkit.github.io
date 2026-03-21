@@ -5,11 +5,11 @@ sidebar:
   order: 99
 ---
 
-Multi-method authentication strategies with clear priority ordering.
 
-## Priority-Based Authentication
 
-Support multiple authentication methods with fallback:
+
+
+
 
 ```python
 class AuthenticatedDataSource(DataSource):
@@ -52,9 +52,9 @@ class AuthenticatedDataSource(DataSource):
             )
 ```
 
-## Azure Authentication
 
-### Unity Catalog Service Credential
+
+
 
 ```python
 def _get_azure_credential_uc(credential_name):
@@ -64,7 +64,7 @@ def _get_azure_credential_uc(credential_name):
     return databricks.service_credentials.getServiceCredentialsProvider(credential_name)
 ```
 
-### Default Credential (Managed Identity)
+
 
 ```python
 def _get_azure_credential_default(authority=None):
@@ -76,7 +76,7 @@ def _get_azure_credential_default(authority=None):
     return DefaultAzureCredential()
 ```
 
-### Service Principal
+
 
 ```python
 def _get_azure_credential_sp(tenant_id, client_id, client_secret, authority=None):
@@ -97,7 +97,7 @@ def _get_azure_credential_sp(tenant_id, client_id, client_secret, authority=None
     )
 ```
 
-### Multi-Cloud Support
+
 
 ```python
 def _get_azure_cloud_config(cloud_name):
@@ -140,9 +140,9 @@ def _create_azure_client_with_cloud(options):
     return LogsQueryClient(credential)
 ```
 
-## API Key Authentication
 
-### Header-Based
+
+
 
 ```python
 def _get_api_key_auth(api_key):
@@ -158,7 +158,7 @@ def _create_session_with_api_key(api_key):
     return session
 ```
 
-### Query Parameter-Based
+
 
 ```python
 def _build_url_with_api_key(base_url, api_key):
@@ -169,7 +169,7 @@ def _build_url_with_api_key(base_url, api_key):
     return f"{base_url}?{urlencode(params)}"
 ```
 
-## Basic Authentication
+
 
 ```python
 def _get_basic_auth(username, password):
@@ -186,9 +186,9 @@ def _create_session_with_basic_auth(username, password):
     return session
 ```
 
-## OAuth2 Authentication
 
-### Client Credentials Flow
+
+
 
 ```python
 def _get_oauth2_token(token_url, client_id, client_secret, scope):
@@ -244,7 +244,7 @@ class OAuth2Writer:
             requests.post(self.url, json=row.asDict(), headers=headers)
 ```
 
-## Complete Authentication Factory
+
 
 ```python
 def get_credential(options):
@@ -304,9 +304,9 @@ def get_credential(options):
     raise ValueError("No valid authentication method configured")
 ```
 
-## Security Best Practices
 
-### Never Log Sensitive Values
+
+
 
 ```python
 class SecureDataSource(DataSource):
@@ -335,7 +335,7 @@ class SecureDataSource(DataSource):
         return f"SecureDataSource({self._safe_options})"
 ```
 
-### Use Secrets Management
+
 
 ```python
 def _load_secrets_from_dbutils(scope, keys):

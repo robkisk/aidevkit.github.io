@@ -5,11 +5,11 @@ sidebar:
   order: 1
 ---
 
-Deploy traditional ML models (sklearn, xgboost, pytorch, etc.) with MLflow autolog.
 
-## Autolog Pattern (Recommended)
 
-The simplest way to deploy ML models - train and everything is logged automatically.
+
+
+
 
 ```python
 import mlflow
@@ -38,18 +38,18 @@ model.fit(X_train, y_train)
 # That's it! Model is now in Unity Catalog ready for serving
 ```
 
-## Supported Frameworks
 
-| Framework | Autolog Function | Notes |
-|-----------|------------------|-------|
-| sklearn | `mlflow.sklearn.autolog()` | Most sklearn estimators |
-| xgboost | `mlflow.xgboost.autolog()` | XGBClassifier, XGBRegressor |
-| lightgbm | `mlflow.lightgbm.autolog()` | LGBMClassifier, etc. |
-| pytorch | `mlflow.pytorch.autolog()` | Lightning supported |
-| tensorflow | `mlflow.tensorflow.autolog()` | Keras models |
-| spark | `mlflow.spark.autolog()` | Spark ML pipelines |
 
-## Manual Logging (When Autolog Isn't Enough)
+
+
+`mlflow.sklearn.autolog()`
+`mlflow.xgboost.autolog()`
+`mlflow.lightgbm.autolog()`
+`mlflow.pytorch.autolog()`
+`mlflow.tensorflow.autolog()`
+`mlflow.spark.autolog()`
+
+
 
 ```python
 import mlflow
@@ -79,17 +79,17 @@ with mlflow.start_run():
     )
 ```
 
-## Deploy to Serving Endpoint
 
-### Option 1: Databricks UI
 
-1. Go to **Serving** in the workspace
-2. Click **Create serving endpoint**
-3. Select your model from Unity Catalog
-4. Configure scaling (workload size, scale-to-zero)
-5. Click **Create**
 
-### Option 2: MLflow Deployments SDK
+
+
+
+
+
+
+
+
 
 ```python
 from mlflow.deployments import get_deploy_client
@@ -120,7 +120,7 @@ endpoint = client.create_endpoint(
 )
 ```
 
-### Option 3: Databricks SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -143,9 +143,9 @@ endpoint = w.serving_endpoints.create_and_wait(
 )
 ```
 
-## Query the Endpoint
 
-### Via MCP Tool
+
+
 
 ```
 query_serving_endpoint(
@@ -156,7 +156,7 @@ query_serving_endpoint(
 )
 ```
 
-### Via Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -171,10 +171,10 @@ response = w.serving_endpoints.query(
 print(response.predictions)
 ```
 
-## Best Practices
 
-1. **Always use `log_input_examples=True`** - helps with debugging and schema inference
-2. **Use Unity Catalog** - `registered_model_name="catalog.schema.model"`
-3. **Enable scale-to-zero** - saves costs when endpoint is idle
-4. **Test locally first** - use `mlflow.pyfunc.load_model()` before deploying
-5. **Version your models** - UC tracks versions automatically
+
+`log_input_examples=True`
+`registered_model_name="catalog.schema.model"`
+
+`mlflow.pyfunc.load_model()`
+

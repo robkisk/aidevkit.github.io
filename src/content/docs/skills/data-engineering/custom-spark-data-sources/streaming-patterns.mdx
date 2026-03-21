@@ -5,11 +5,11 @@ sidebar:
   order: 99
 ---
 
-Offset management and streaming implementation patterns for exactly-once semantics.
 
-## Basic Offset Implementation
 
-Simple JSON-serializable offset:
+
+
+
 
 ```python
 class SimpleOffset:
@@ -31,9 +31,9 @@ class SimpleOffset:
         return SimpleOffset(data["timestamp"])
 ```
 
-## Multi-Field Offset
 
-Complex offset with multiple fields:
+
+
 
 ```python
 class MultiFieldOffset:
@@ -71,9 +71,9 @@ class MultiFieldOffset:
         return self.partition_id < other.partition_id
 ```
 
-## Stream Reader Implementation
 
-Complete streaming reader with offset management:
+
+
 
 ```python
 from pyspark.sql.datasource import DataSourceStreamReader
@@ -189,9 +189,9 @@ class YourStreamReader(DataSourceStreamReader):
             yield self._convert_to_row(item)
 ```
 
-## Watermarking Support
 
-Support for event-time watermarking:
+
+
 
 ```python
 class WatermarkedStreamReader(DataSourceStreamReader):
@@ -231,9 +231,9 @@ class WatermarkedStreamReader(DataSourceStreamReader):
             yield row
 ```
 
-## Stateful Streaming
 
-Track state across batches:
+
+
 
 ```python
 class StatefulStreamReader(DataSourceStreamReader):
@@ -292,9 +292,9 @@ class StatefulStreamReader(DataSourceStreamReader):
         self._save_state()
 ```
 
-## Exactly-Once Semantics
 
-Ensure exactly-once delivery with idempotent writes:
+
+
 
 ```python
 class ExactlyOnceWriter(DataSourceStreamWriter):
@@ -363,9 +363,9 @@ class ExactlyOnceWriter(DataSourceStreamWriter):
         print(f"Batch {batchId} aborted")
 ```
 
-## Monitoring and Progress
 
-Track streaming progress:
+
+
 
 ```python
 class MonitoredStreamReader(DataSourceStreamReader):
@@ -394,12 +394,12 @@ class MonitoredStreamReader(DataSourceStreamReader):
         print(f"Partition {partition_id}: {row_count} rows in {duration:.2f}s")
 ```
 
-## Best Practices
 
-1. **Non-Overlapping Partitions**: Use microsecond adjustments to prevent duplicates
-2. **Idempotency**: Generate deterministic keys for exactly-once semantics
-3. **State Management**: Store offsets in Spark checkpoints
-4. **Watermarking**: Support event-time processing for late data
-5. **Monitoring**: Track batch progress and lag metrics
-6. **Error Handling**: Streaming writers are especially susceptible to transient failures (network blips, rate limits) since they run continuously. Use retry with exponential backoff from [error-handling.md](error-handling.md) in your `write()` methods.
-7. **Backpressure**: Respect rate limits with appropriate partition sizing
+
+
+
+
+
+
+`write()`
+

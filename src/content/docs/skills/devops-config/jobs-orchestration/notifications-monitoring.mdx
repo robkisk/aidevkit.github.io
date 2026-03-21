@@ -5,21 +5,21 @@ sidebar:
   order: 99
 ---
 
-## Contents
-- [Email Notifications](#email-notifications)
-- [Webhook Notifications](#webhook-notifications)
-- [Health Rules](#health-rules)
-- [Timeout Configuration](#timeout-configuration)
-- [Retry Configuration](#retry-configuration)
-- [Run Queue Settings](#run-queue-settings)
 
----
 
-## Email Notifications
 
-Send email alerts for job lifecycle events.
 
-### DABs YAML
+
+
+
+
+
+
+
+
+
+
+
 
 ```yaml
 resources:
@@ -43,7 +43,7 @@ resources:
             notebook_path: ../src/main.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -64,17 +64,17 @@ job = w.jobs.create(
 )
 ```
 
-### Email Notification Events
 
-| Event | Description |
-|-------|-------------|
-| `on_start` | When job run starts |
-| `on_success` | When job run completes successfully |
-| `on_failure` | When job run fails |
-| `on_duration_warning_threshold_exceeded` | When run exceeds duration warning threshold |
-| `on_streaming_backlog_exceeded` | When streaming backlog exceeds threshold |
 
-### Task-Level Email Notifications
+
+
+`on_start`
+`on_success`
+`on_failure`
+`on_duration_warning_threshold_exceeded`
+`on_streaming_backlog_exceeded`
+
+
 
 ```yaml
 tasks:
@@ -90,17 +90,17 @@ tasks:
       notebook_path: ../src/critical.py
 ```
 
----
 
-## Webhook Notifications
 
-Send HTTP webhooks for job events (Slack, PagerDuty, custom endpoints).
 
-### Create Notification Destination First
 
-Before using webhooks, create a notification destination in the workspace:
 
-**Python SDK:**
+
+
+
+
+
+
 ```python
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.settings import (
@@ -122,7 +122,7 @@ destination = w.notification_destinations.create(
 print(f"Destination ID: {destination.id}")
 ```
 
-### DABs YAML
+
 
 ```yaml
 resources:
@@ -144,7 +144,7 @@ resources:
             notebook_path: ../src/main.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -164,17 +164,17 @@ job = w.jobs.create(
 )
 ```
 
-### Supported Destinations
 
-| Type | Configuration |
-|------|---------------|
-| Slack | Slack webhook URL |
-| Microsoft Teams | Teams webhook URL |
-| PagerDuty | PagerDuty integration key |
-| Generic Webhook | Custom HTTP endpoint |
-| Email | Email addresses |
 
-### Task-Level Webhooks
+
+
+
+
+
+
+
+
+
 
 ```yaml
 tasks:
@@ -186,13 +186,13 @@ tasks:
       notebook_path: ../src/critical.py
 ```
 
----
 
-## Health Rules
 
-Monitor job health metrics and trigger alerts.
 
-### DABs YAML
+
+
+
+
 
 ```yaml
 resources:
@@ -227,7 +227,7 @@ resources:
             notebook_path: ../src/streaming.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -255,27 +255,27 @@ job = w.jobs.create(
 )
 ```
 
-### Health Metrics
 
-| Metric | Description | Use Case |
-|--------|-------------|----------|
-| `RUN_DURATION_SECONDS` | Total run time | Detect stuck/slow jobs |
-| `STREAMING_BACKLOG_BYTES` | Unprocessed data size | Streaming lag |
-| `STREAMING_BACKLOG_SECONDS` | Processing delay time | Streaming lag |
-| `STREAMING_BACKLOG_FILES` | Unprocessed file count | File processing lag |
-| `STREAMING_BACKLOG_RECORDS` | Unprocessed record count | Record processing lag |
 
-### Operators
 
-| Operator | Description |
-|----------|-------------|
-| `GREATER_THAN` | Value exceeds threshold |
 
----
+`RUN_DURATION_SECONDS`
+`STREAMING_BACKLOG_BYTES`
+`STREAMING_BACKLOG_SECONDS`
+`STREAMING_BACKLOG_FILES`
+`STREAMING_BACKLOG_RECORDS`
 
-## Timeout Configuration
 
-### Job-Level Timeout
+
+
+
+`GREATER_THAN`
+
+
+
+
+
+
 
 ```yaml
 resources:
@@ -289,7 +289,7 @@ resources:
             notebook_path: ../src/main.py
 ```
 
-### Task-Level Timeout
+
 
 ```yaml
 tasks:
@@ -299,7 +299,7 @@ tasks:
       notebook_path: ../src/long_running.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk.service.jobs import Task, NotebookTask
@@ -313,18 +313,18 @@ Task(
 )
 ```
 
-### Timeout Behavior
 
-- Value `0` = no timeout (default)
-- When timeout exceeds, task/job is cancelled
-- Partial results may be lost
-- Triggers `on_failure` notifications
 
----
+`0`
 
-## Retry Configuration
 
-### Task Retry Settings
+`on_failure`
+
+
+
+
+
+
 
 ```yaml
 tasks:
@@ -336,7 +336,7 @@ tasks:
       notebook_path: ../src/flaky_task.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk.service.jobs import Task, NotebookTask
@@ -352,28 +352,28 @@ Task(
 )
 ```
 
-### Retry Parameters
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `max_retries` | 0 | Number of retry attempts |
-| `min_retry_interval_millis` | 0 | Minimum wait between retries |
-| `retry_on_timeout` | false | Retry when task times out |
 
-### Retry Behavior
 
-- Retries only apply to task failures
-- Each retry is a new task attempt
-- Retry count resets for each job run
-- Dependencies wait for retries to complete
 
----
+`max_retries`
+`min_retry_interval_millis`
+`retry_on_timeout`
 
-## Run Queue Settings
 
-Control concurrent run behavior.
 
-### Maximum Concurrent Runs
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```yaml
 resources:
@@ -387,7 +387,7 @@ resources:
             notebook_path: ../src/main.py
 ```
 
-### Queue Settings
+
 
 ```yaml
 resources:
@@ -403,7 +403,7 @@ resources:
             notebook_path: ../src/main.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -419,21 +419,21 @@ job = w.jobs.create(
 )
 ```
 
-### Behavior Options
 
-| Setting | Behavior |
-|---------|----------|
-| `max_concurrent_runs=1`, `queue.enabled=false` | Skip if already running |
-| `max_concurrent_runs=1`, `queue.enabled=true` | Queue runs, execute sequentially |
-| `max_concurrent_runs=N` | Allow N simultaneous runs |
 
----
 
-## Notification Settings
 
-Fine-tune notification behavior.
+`max_concurrent_runs=1``queue.enabled=false`
+`max_concurrent_runs=1``queue.enabled=true`
+`max_concurrent_runs=N`
 
-### Job-Level Settings
+
+
+
+
+
+
+
 
 ```yaml
 resources:
@@ -452,7 +452,7 @@ resources:
             notebook_path: ../src/main.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -470,16 +470,16 @@ job = w.jobs.create(
 )
 ```
 
-### Settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `no_alert_for_skipped_runs` | false | Suppress alerts when runs are skipped |
-| `no_alert_for_canceled_runs` | false | Suppress alerts when runs are canceled |
 
----
 
-## Complete Monitoring Example
+
+`no_alert_for_skipped_runs`
+`no_alert_for_canceled_runs`
+
+
+
+
 
 ```yaml
 resources:

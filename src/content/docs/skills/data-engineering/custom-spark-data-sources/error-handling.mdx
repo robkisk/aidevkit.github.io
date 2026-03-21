@@ -5,11 +5,11 @@ sidebar:
   order: 99
 ---
 
-Patterns for retries, circuit breakers, and graceful degradation.
 
-## Exponential Backoff
 
-Retry with exponential backoff for transient failures:
+
+
+
 
 ```python
 def write_with_retry(self, iterator):
@@ -60,9 +60,9 @@ def _is_retryable_error(self, error):
     return False
 ```
 
-## Retry with Throttling Respect
 
-Handle API rate limiting with Retry-After header:
+
+
 
 ```python
 def write_with_throttling(self, iterator):
@@ -113,9 +113,9 @@ def _get_retry_after(self, response):
     return 1.0
 ```
 
-## Circuit Breaker
 
-Prevent cascading failures with circuit breaker pattern:
+
+
 
 ```python
 class CircuitBreaker:
@@ -178,9 +178,9 @@ class ResilientWriter:
                 raise
 ```
 
-## Graceful Degradation
 
-Handle partial failures and fallback strategies:
+
+
 
 ```python
 def read_with_fallback(self, partition):
@@ -212,9 +212,9 @@ def read_with_fallback(self, partition):
         yield from e.partial_results
 ```
 
-## Bulk Operation Error Handling
 
-Handle errors in bulk operations:
+
+
 
 ```python
 def write_batch_with_error_handling(self, iterator):
@@ -270,9 +270,9 @@ def write_batch_with_error_handling(self, iterator):
             print(f"Warning: {len(failed_rows)} rows failed to write")
 ```
 
-## Dead Letter Queue
 
-Store failed records for later processing:
+
+
 
 ```python
 class DeadLetterQueueWriter:
@@ -328,9 +328,9 @@ class DeadLetterQueueWriter:
             f.write(json.dumps(dlq_record) + '\n')
 ```
 
-## Timeout Handling
 
-Enforce operation timeouts:
+
+
 
 ```python
 import signal
@@ -367,9 +367,9 @@ class TimeoutWriter:
                 raise
 ```
 
-## Error Aggregation
 
-Collect and report errors systematically:
+
+
 
 ```python
 class ErrorAggregator:
@@ -425,13 +425,13 @@ class ErrorAwareWriter:
                 raise Exception(f"Too many errors: {summary}")
 ```
 
-## Best Practices
 
-1. **Retry Only Transient Errors**: Don't retry client errors (4xx)
-2. **Respect Rate Limits**: Use Retry-After headers and backoff
-3. **Circuit Breakers**: Prevent cascading failures in distributed systems
-4. **Timeout Operations**: Set reasonable timeouts to prevent hangs
-5. **Log Errors**: Capture error context for debugging
-6. **Dead Letter Queues**: Store failed records for later analysis
-7. **Monitor Failure Rates**: Alert on anomalous error rates
-8. **Graceful Degradation**: Continue with partial results when appropriate
+
+
+
+
+
+
+
+
+

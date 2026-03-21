@@ -5,7 +5,7 @@ sidebar:
   order: 99
 ---
 
-Full skeleton for a Python data source covering all four modes: batch read, batch write, stream read, stream write. Adapt to your needs — most connectors only implement a subset.
+
 
 ```python
 from pyspark.sql.datasource import (
@@ -125,7 +125,7 @@ class YourStreamReader(YourReader, DataSourceStreamReader):
         pass
 ```
 
-## Registration and Usage
+
 
 ```python
 # Register

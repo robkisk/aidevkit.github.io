@@ -5,36 +5,36 @@ sidebar:
   order: 5
 ---
 
-Comprehensive reference for Unity Catalog system tables: lineage, audit, billing, compute, jobs, and metadata.
 
-## Overview
 
-System tables are read-only tables in the `system` catalog providing operational data about your Databricks account.
 
-| Schema | Purpose |
-|--------|---------|
-| `system.access` | Audit logs, lineage tracking |
-| `system.billing` | Usage and cost data |
-| `system.compute` | Clusters, warehouses, node metrics |
-| `system.lakeflow` | Jobs and pipelines |
-| `system.query` | Query history and performance |
-| `system.storage` | Storage metrics and predictive IO |
-| `system.information_schema` | Metadata about UC objects |
 
----
+`system`
 
-## Enable System Schemas
 
-System schemas must be enabled before querying.
 
-**SQL:**
+`system.access`
+`system.billing`
+`system.compute`
+`system.lakeflow`
+`system.query`
+`system.storage`
+`system.information_schema`
+
+
+
+
+
+
+
+
 ```sql
 -- Check available system schemas
 SELECT * FROM system.information_schema.schemata
 WHERE catalog_name = 'system';
 ```
 
-**Python SDK:**
+
 ```python
 from databricks.sdk import WorkspaceClient
 
@@ -51,7 +51,7 @@ w.system_schemas.enable(
 )
 ```
 
-**CLI:**
+
 ```bash
 # List system schemas
 databricks system-schemas list --metastore-id your-metastore-id
@@ -61,27 +61,27 @@ databricks system-schemas enable --metastore-id your-metastore-id \
     --schema-name access
 ```
 
----
 
-## Access Schema (Audit & Lineage)
 
-### system.access.audit
 
-Audit logs for all Unity Catalog operations.
 
-**Schema:**
-| Column | Type | Description |
-|--------|------|-------------|
-| `event_date` | DATE | Partition key - always filter on this |
-| `event_time` | TIMESTAMP | When the event occurred |
-| `workspace_id` | BIGINT | Workspace where event occurred |
-| `user_identity` | STRUCT | User email, IP, session info |
-| `action_name` | STRING | Operation performed |
-| `request_params` | MAP | Request parameters |
-| `response` | STRUCT | Response status and error |
-| `source_ip_address` | STRING | Client IP address |
 
-**Common Queries:**
+
+
+
+
+
+
+`event_date`
+`event_time`
+`workspace_id`
+`user_identity`
+`action_name`
+`request_params`
+`response`
+`source_ip_address`
+
+
 
 ```sql
 -- Recent table access events
@@ -186,21 +186,21 @@ WHERE event_date >= current_date() - 7
 ORDER BY event_time DESC;
 ```
 
-### system.access.table_lineage
 
-Track data flow between tables.
 
-**Schema:**
-| Column | Type | Description |
-|--------|------|-------------|
-| `source_table_full_name` | STRING | Source table (catalog.schema.table) |
-| `source_type` | STRING | TABLE, VIEW, PATH |
-| `target_table_full_name` | STRING | Target table |
-| `target_type` | STRING | TABLE, VIEW |
-| `created_by` | STRING | User who created the lineage |
-| `event_time` | TIMESTAMP | When lineage was captured |
 
-**Common Queries:**
+
+
+
+
+`source_table_full_name`
+`source_type`
+`target_table_full_name`
+`target_type`
+`created_by`
+`event_time`
+
+
 
 ```sql
 -- Find upstream tables (what feeds this table)
@@ -267,11 +267,11 @@ WHERE target_table_full_name LIKE 'analytics.gold.%'
   AND event_time >= current_date() - 30;
 ```
 
-### system.access.column_lineage
 
-Column-level lineage tracking.
 
-**Common Queries:**
+
+
+
 
 ```sql
 -- Find column origins
@@ -314,26 +314,26 @@ WHERE target_column_name = 'customer_ltv'
 ORDER BY event_time DESC;
 ```
 
----
 
-## Billing Schema
 
-### system.billing.usage
 
-Detailed usage records for cost analysis.
 
-**Schema:**
-| Column | Type | Description |
-|--------|------|-------------|
-| `usage_date` | DATE | Date of usage |
-| `workspace_id` | BIGINT | Workspace ID |
-| `sku_name` | STRING | Product SKU |
-| `usage_quantity` | DECIMAL | Amount consumed |
-| `usage_unit` | STRING | Unit of measure (DBU) |
-| `cloud` | STRING | Cloud provider |
-| `usage_metadata` | MAP | Additional metadata |
 
-**Common Queries:**
+
+
+
+
+
+
+`usage_date`
+`workspace_id`
+`sku_name`
+`usage_quantity`
+`usage_unit`
+`cloud`
+`usage_metadata`
+
+
 
 ```sql
 -- Daily DBU consumption by SKU
@@ -401,9 +401,9 @@ GROUP BY workspace_id, u.sku_name
 ORDER BY estimated_cost DESC;
 ```
 
-### system.billing.list_prices
 
-Reference prices for SKUs.
+
+
 
 ```sql
 -- Get current list prices
@@ -417,13 +417,13 @@ WHERE price_end_time IS NULL
 ORDER BY sku_name;
 ```
 
----
 
-## Compute Schema
 
-### system.compute.clusters
 
-Cluster configurations and metadata (historical definitions, not live state).
+
+
+
+
 
 ```sql
 -- Clusters by source type
@@ -467,9 +467,9 @@ GROUP BY worker_node_type
 ORDER BY cluster_count DESC;
 ```
 
-### system.compute.warehouse_events
 
-SQL Warehouse scaling and state events.
+
+
 
 ```sql
 -- Warehouse uptime analysis
@@ -494,13 +494,13 @@ GROUP BY DATE(event_time), HOUR(event_time)
 ORDER BY event_date, event_hour;
 ```
 
----
 
-## Lakeflow Schema (Jobs & Pipelines)
 
-### system.lakeflow.jobs
 
-Job definitions and configurations.
+
+
+
+
 
 ```sql
 -- Jobs by trigger type
@@ -532,9 +532,9 @@ HAVING MAX(r.period_start_time) < current_date() - 30
     OR MAX(r.period_start_time) IS NULL;
 ```
 
-### system.lakeflow.job_run_timeline
 
-Job run history and performance.
+
+
 
 ```sql
 -- Job success rate
@@ -584,9 +584,9 @@ WHERE period_start_time >= current_date() - 30
 GROUP BY job_id;
 ```
 
-### system.lakeflow.pipeline_events
 
-DLT/SDP pipeline execution events.
+
+
 
 ```sql
 -- Pipeline success rate
@@ -613,13 +613,13 @@ WHERE timestamp >= current_date() - 7
 ORDER BY timestamp DESC;
 ```
 
----
 
-## Query Schema
 
-### system.query.history
 
-Query execution history and performance.
+
+
+
+
 
 ```sql
 -- Slowest queries in last 7 days
@@ -683,11 +683,11 @@ GROUP BY statement_type
 ORDER BY query_count DESC;
 ```
 
----
 
-## Information Schema
 
-Metadata about Unity Catalog objects.
+
+
+
 
 ```sql
 -- List all catalogs
@@ -807,13 +807,13 @@ SELECT
 FROM system.information_schema.share_recipients;
 ```
 
----
 
-## External Lineage
 
-Track lineage to external systems.
 
-**Python SDK:**
+
+
+
+
 ```python
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.catalog import (
@@ -848,7 +848,7 @@ for rel in lineage:
     print(f"Source: {rel.source}")
 ```
 
-**CLI:**
+
 ```bash
 # Create external lineage
 databricks external-lineage create-external-lineage-relationship --json '{
@@ -870,30 +870,30 @@ databricks external-lineage list-external-lineage-relationships --json '{
 }'
 ```
 
----
 
-## Best Practices
 
-### Query Performance
 
-1. **Always filter by date partitions** - System tables are partitioned by date
+
+
+
+
 ```sql
 WHERE event_date >= current_date() - 30  -- Good
 WHERE event_time >= '2024-01-01'         -- Slower (scans all partitions)
 ```
 
-2. **Use LIMIT for exploration** - System tables can be very large
+
 ```sql
 LIMIT 100  -- Always add for exploratory queries
 ```
 
-3. **Create views for common queries** - Avoid repeating complex logic
+
 ```sql
 CREATE VIEW analytics.governance.daily_audit_summary AS
 SELECT ...
 ```
 
-4. **Schedule aggregation jobs** - Pre-aggregate for dashboards
+
 ```sql
 CREATE TABLE analytics.monitoring.daily_usage_summary AS
 SELECT usage_date, sku_name, SUM(usage_quantity) AS total_dbus
@@ -901,17 +901,17 @@ FROM system.billing.usage
 GROUP BY usage_date, sku_name;
 ```
 
-### Retention Periods
 
-| System Table | Retention |
-|--------------|-----------|
-| Audit logs | 365 days |
-| Billing usage | 365 days |
-| Query history | 30 days |
-| Lineage | 365 days |
-| Compute events | 30 days |
 
-### Access Control
+
+
+
+
+
+
+
+
+
 
 ```sql
 -- Grant access to monitoring team
@@ -920,11 +920,11 @@ GRANT SELECT ON SCHEMA system.billing TO `finance_team`;
 GRANT SELECT ON SCHEMA system.query TO `platform_team`;
 ```
 
-### Governance Tips
 
-1. **Enable system tables early** in your UC setup
-2. **Use column lineage** for sensitive data tracking
-3. **Register external sources** for complete visibility
-4. **Retain audit logs** for compliance (typically 1-7 years)
-5. **Monitor failed access** for security threats
-6. **Automate alerts** for sensitive operations
+
+
+
+
+
+
+

@@ -5,28 +5,28 @@ sidebar:
   order: 99
 ---
 
-## Comparison Matrix
 
-| Feature | Delta Sync (Managed) | Delta Sync (Self-Managed) | Direct Access |
-|---------|---------------------|---------------------------|---------------|
-| **Embeddings** | Databricks computes | You provide | You provide |
-| **Sync** | Auto from Delta | Auto from Delta | Manual CRUD |
-| **Setup** | Easiest | Medium | Most control |
-| **Source** | Delta table + text | Delta table + vectors | API calls |
-| **Best for** | Quick start, RAG | Custom models | Real-time apps |
 
-## Delta Sync with Managed Embeddings
 
-Databricks automatically computes embeddings from your text column.
 
-### Requirements
 
-- Source Delta table with:
-  - Primary key column (unique identifier)
-  - Text column (content to embed)
-- Embedding model endpoint (or use built-in)
 
-### Create Index
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -52,14 +52,14 @@ index = w.vector_search_indexes.create_index(
 )
 ```
 
-### Pipeline Types
 
-| Type | Behavior | Cost | Use Case |
-|------|----------|------|----------|
-| `TRIGGERED` | Manual sync via API | Lower | Batch updates |
-| `CONTINUOUS` | Auto-sync on changes | Higher | Real-time sync |
 
-### Source Table Example
+
+
+`TRIGGERED`
+`CONTINUOUS`
+
+
 
 ```sql
 CREATE TABLE catalog.schema.documents (
@@ -71,17 +71,17 @@ CREATE TABLE catalog.schema.documents (
 );
 ```
 
-## Delta Sync with Self-Managed Embeddings
 
-You pre-compute embeddings and store them in the source table.
 
-### Requirements
 
-- Source Delta table with:
-  - Primary key column
-  - Embedding vector column (array of floats)
 
-### Create Index
+
+
+
+
+
+
+
 
 ```python
 index = w.vector_search_indexes.create_index(
@@ -102,7 +102,7 @@ index = w.vector_search_indexes.create_index(
 )
 ```
 
-### Compute Embeddings
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -128,7 +128,7 @@ spark.createDataFrame(df).write.mode("overwrite").saveAsTable(
 )
 ```
 
-### Source Table Example
+
 
 ```sql
 CREATE TABLE catalog.schema.embedded_docs (
@@ -139,16 +139,16 @@ CREATE TABLE catalog.schema.embedded_docs (
 );
 ```
 
-## Direct Access Index
 
-Full control over vector data via CRUD API. No Delta table sync.
 
-### Requirements
 
-- Define schema upfront
-- Manage upsert/delete operations yourself
 
-### Create Index
+
+
+
+
+
+
 
 ```python
 import json
@@ -173,7 +173,7 @@ index = w.vector_search_indexes.create_index(
 )
 ```
 
-### Upsert Data
+
 
 ```python
 import json
@@ -200,7 +200,7 @@ w.vector_search_indexes.upsert_data_vector_index(
 )
 ```
 
-### Delete Data
+
 
 ```python
 w.vector_search_indexes.delete_data_vector_index(
@@ -209,9 +209,9 @@ w.vector_search_indexes.delete_data_vector_index(
 )
 ```
 
-### Attach Embedding Model (Optional)
 
-For Direct Access with text queries:
+
+
 
 ```python
 # Create index with embedding model for query-time embedding
@@ -230,7 +230,7 @@ index = w.vector_search_indexes.create_index(
 )
 ```
 
-## Choosing the Right Type
+
 
 ```
 Start here:
@@ -247,13 +247,13 @@ Start here:
     └─ No  → Delta Sync (any type)
 ```
 
-## Endpoint Selection
 
-After choosing index type, choose endpoint:
 
-| Scenario | Endpoint Type |
-|----------|---------------|
-| Need <100ms latency | Standard |
-| >100M vectors | Storage-Optimized |
-| Cost-sensitive | Storage-Optimized |
-| Default choice | Storage-Optimized |
+
+
+
+
+
+
+
+

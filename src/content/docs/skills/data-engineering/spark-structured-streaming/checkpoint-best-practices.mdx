@@ -5,9 +5,9 @@ sidebar:
   order: 99
 ---
 
-Configure checkpoint locations for reliable streaming with exactly-once semantics. Checkpoints track progress and enable fault tolerance.
 
-## Quick Start
+
+
 
 ```python
 def get_checkpoint_location(table_name):
@@ -26,9 +26,9 @@ query = (df
 )
 ```
 
-## Checkpoint Storage
 
-### Use Persistent Storage
+
+
 
 ```python
 # DO: Use Unity Catalog volumes (S3/ADLS-backed)
@@ -38,7 +38,7 @@ checkpoint_path = "/Volumes/catalog/checkpoints/stream_name"
 checkpoint_path = "/dbfs/checkpoints/stream_name"  # Avoid
 ```
 
-### Target-Tied Organization
+
 
 ```python
 def get_checkpoint_location(table_name):
@@ -52,7 +52,7 @@ def get_checkpoint_location(table_name):
 # - Clear ownership
 ```
 
-### Unique Checkpoint Per Stream
+
 
 ```python
 # CORRECT: Each stream has its own checkpoint
@@ -68,9 +68,9 @@ stream2.writeStream \
 # This causes data loss and corruption
 ```
 
-## Checkpoint Structure
 
-### Folder Contents
+
+
 
 ```
 checkpoint_location/
@@ -81,7 +81,7 @@ checkpoint_location/
 └── state/         # Stateful operations (if any)
 ```
 
-### Stateless vs Stateful
+
 
 ```python
 # Stateless (read from Kafka, write to Delta)
@@ -101,9 +101,9 @@ df_stateful = (df
 )
 ```
 
-## Reading Checkpoint Contents
 
-### Read Offset Files
+
+
 
 ```python
 import json
@@ -124,7 +124,7 @@ print(json.dumps(offset_data, indent=2))
 # - source[0].latestOffset: Current position in source
 ```
 
-### Read State Store
+
 
 ```python
 # Query state store directly
@@ -147,9 +147,9 @@ state_metadata.show()
 # Shows: operatorName, numPartitions, minBatchId, maxBatchId
 ```
 
-## Recovery Scenarios
 
-### Lost Checkpoint
+
+
 
 ```python
 # Steps to recover:
@@ -167,7 +167,7 @@ df.writeStream \
 # 4. Delta sink handles deduplication (if idempotent writes configured)
 ```
 
-### Corrupted Checkpoint
+
 
 ```python
 # Same as lost checkpoint:
@@ -183,7 +183,7 @@ dbutils.fs.cp(
 )
 ```
 
-### Crash During Batch
+
 
 ```python
 # Scenario: Crash during batch processing
@@ -193,9 +193,9 @@ dbutils.fs.cp(
 # - Delta deduplication prevents duplicates (if txnVersion configured)
 ```
 
-## Monitoring
 
-### Checkpoint Size
+
+
 
 ```python
 # Track checkpoint folder size
@@ -211,7 +211,7 @@ except Exception as e:
     # Send alert
 ```
 
-### State Store Growth
+
 
 ```python
 # Monitor state store size (stateful jobs)
@@ -224,7 +224,7 @@ state_df.groupBy("partitionId").count().orderBy(desc("count")).show()
 # State size = f(watermark duration, key cardinality)
 ```
 
-### Offset vs Commit Sync
+
 
 ```python
 # Check if offsets have matching commits
@@ -243,19 +243,19 @@ else:
     print(f"Batch {batch_id}: Not committed (will reprocess)")
 ```
 
-## Common Issues
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **State growing too large** | Long watermark duration or high cardinality keys | Reduce watermark duration; reduce key cardinality |
-| **Checkpoint corruption** | File system issues or manual deletion | Delete checkpoint and restart; restore from backup |
-| **Slow state operations** | Partition imbalance | Check partition balance; ensure keys are evenly distributed |
-| **Can't find commit file** | Normal if job crashed | Spark will reprocess on restart |
-| **Offsets out of sync** | Offsets without matching commits | Indicates unprocessed batch; will reprocess |
 
-## Production Best Practices
 
-### Checkpoint Location Pattern
+
+
+
+
+
+
+
+
+
+
 
 ```python
 def get_checkpoint_path(table_name, environment="prod"):
@@ -271,7 +271,7 @@ def get_checkpoint_path(table_name, environment="prod"):
 checkpoint = get_checkpoint_path("orders", "prod")
 ```
 
-### Backup Strategy
+
 
 ```python
 # Backup checkpoint before major changes
@@ -284,7 +284,7 @@ def backup_checkpoint(checkpoint_path, backup_suffix):
 backup_checkpoint("/checkpoints/stream", "20240101")
 ```
 
-### Migration
+
 
 ```python
 # Migrate checkpoint to new location
@@ -298,19 +298,19 @@ def migrate_checkpoint(old_path, new_path):
     # Restart stream with new checkpoint location
 ```
 
-## Production Checklist
 
-- [ ] Checkpoint location is persistent (S3/ADLS, not DBFS)
-- [ ] Unique checkpoint per stream
-- [ ] Target-tied checkpoint organization
-- [ ] Backup strategy defined
-- [ ] Monitoring configured (checkpoint size, access failures)
-- [ ] State store growth monitored (if stateful)
-- [ ] Recovery procedure documented
-- [ ] Migration procedure documented
 
-## Related Skills
 
-- `kafka-to-delta` - Kafka ingestion with checkpoint management
-- `stream-stream-joins` - Stateful operations and state stores
-- `state-store-management` - Deep dive on state store optimization
+
+
+
+
+
+
+
+
+
+
+`kafka-to-delta`
+`stream-stream-joins`
+`state-store-management`

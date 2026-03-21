@@ -5,21 +5,21 @@ sidebar:
   order: 99
 ---
 
-## Contents
-- [Cron Schedule](#cron-schedule)
-- [Periodic Trigger](#periodic-trigger)
-- [File Arrival Trigger](#file-arrival-trigger)
-- [Table Update Trigger](#table-update-trigger)
-- [Continuous Jobs](#continuous-jobs)
-- [Manual Runs](#manual-runs)
 
----
 
-## Cron Schedule
 
-Run jobs on a cron-based schedule.
 
-### DABs YAML
+
+
+
+
+
+
+
+
+
+
+
 
 ```yaml
 resources:
@@ -36,7 +36,7 @@ resources:
             notebook_path: ../src/etl.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -55,7 +55,7 @@ job = w.jobs.create(
 )
 ```
 
-### CLI JSON
+
 
 ```json
 {
@@ -69,41 +69,41 @@ job = w.jobs.create(
 }
 ```
 
-### Cron Expression Reference
 
-Format: `seconds minutes hours day-of-month month day-of-week`
 
-| Expression | Description |
-|------------|-------------|
-| `0 0 8 * * ?` | Daily at 8:00 AM |
-| `0 0 8 * * MON-FRI` | Weekdays at 8:00 AM |
-| `0 0 */2 * * ?` | Every 2 hours |
-| `0 30 9 * * ?` | Daily at 9:30 AM |
-| `0 0 0 1 * ?` | First day of month at midnight |
-| `0 0 6 ? * MON` | Every Monday at 6:00 AM |
-| `0 0 8 15 * ?` | 15th of each month at 8:00 AM |
-| `0 0 8 L * ?` | Last day of month at 8:00 AM |
+`seconds minutes hours day-of-month month day-of-week`
 
-### Common Timezones
 
-| Timezone ID | Description |
-|-------------|-------------|
-| `UTC` | Coordinated Universal Time |
-| `America/New_York` | Eastern Time (US) |
-| `America/Chicago` | Central Time (US) |
-| `America/Denver` | Mountain Time (US) |
-| `America/Los_Angeles` | Pacific Time (US) |
-| `Europe/London` | British Time |
-| `Europe/Paris` | Central European Time |
-| `Asia/Tokyo` | Japan Standard Time |
 
----
+`0 0 8 * * ?`
+`0 0 8 * * MON-FRI`
+`0 0 */2 * * ?`
+`0 30 9 * * ?`
+`0 0 0 1 * ?`
+`0 0 6 ? * MON`
+`0 0 8 15 * ?`
+`0 0 8 L * ?`
 
-## Periodic Trigger
 
-Run jobs at fixed intervals (simpler than cron).
 
-### DABs YAML
+
+
+`UTC`
+`America/New_York`
+`America/Chicago`
+`America/Denver`
+`America/Los_Angeles`
+`Europe/London`
+`Europe/Paris`
+`Asia/Tokyo`
+
+
+
+
+
+
+
+
 
 ```yaml
 resources:
@@ -121,7 +121,7 @@ resources:
             notebook_path: ../src/sync.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -142,15 +142,15 @@ job = w.jobs.create(
 )
 ```
 
-### Interval Units
 
-| Unit | Description |
-|------|-------------|
-| `HOURS` | Run every N hours |
-| `DAYS` | Run every N days |
-| `WEEKS` | Run every N weeks |
 
-### Examples
+
+
+`HOURS`
+`DAYS`
+`WEEKS`
+
+
 
 ```yaml
 # Every 30 minutes (not supported - use cron)
@@ -175,13 +175,13 @@ trigger:
     unit: WEEKS
 ```
 
----
 
-## File Arrival Trigger
 
-Run jobs when new files arrive in cloud storage.
 
-### DABs YAML
+
+
+
+
 
 ```yaml
 resources:
@@ -200,7 +200,7 @@ resources:
             notebook_path: ../src/process_files.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -222,24 +222,24 @@ job = w.jobs.create(
 )
 ```
 
-### Parameters
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `url` | Yes | Cloud storage URL to monitor |
-| `min_time_between_triggers_seconds` | No | Minimum wait between triggers (default: 0) |
-| `wait_after_last_change_seconds` | No | Wait time after last file change (default: 0) |
 
-### Supported URL Formats
 
-| Cloud | Format | Example |
-|-------|--------|---------|
-| AWS S3 | `s3://bucket/path/` | `s3://my-bucket/data/uploads/` |
-| Azure ADLS | `abfss://container@account.dfs.core.windows.net/path/` | `abfss://data@myaccount.dfs.core.windows.net/uploads/` |
-| GCS | `gs://bucket/path/` | `gs://my-bucket/uploads/` |
-| Unity Catalog Volume | `/Volumes/catalog/schema/volume/path/` | `/Volumes/main/data/uploads/` |
 
-### Access File Information in Notebook
+`url`
+`min_time_between_triggers_seconds`
+`wait_after_last_change_seconds`
+
+
+
+
+
+`s3://bucket/path/``s3://my-bucket/data/uploads/`
+`abfss://container@account.dfs.core.windows.net/path/``abfss://data@myaccount.dfs.core.windows.net/uploads/`
+`gs://bucket/path/``gs://my-bucket/uploads/`
+`/Volumes/catalog/schema/volume/path/``/Volumes/main/data/uploads/`
+
+
 
 ```python
 # The trigger provides file information via task context
@@ -256,13 +256,13 @@ trigger_info = dbutils.jobs.taskValues.get(
 print(f"New files: {trigger_info.get('files', [])}")
 ```
 
----
 
-## Table Update Trigger
 
-Run jobs when Unity Catalog tables are updated.
 
-### DABs YAML
+
+
+
+
 
 ```yaml
 resources:
@@ -284,7 +284,7 @@ resources:
             notebook_path: ../src/process_changes.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -312,28 +312,28 @@ job = w.jobs.create(
 )
 ```
 
-### Parameters
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `table_names` | Yes | List of Unity Catalog tables to monitor |
-| `condition` | No | `ANY_UPDATED` (default) - trigger when any table updates |
-| `min_time_between_triggers_seconds` | No | Minimum wait between triggers |
-| `wait_after_last_change_seconds` | No | Wait time after last change |
 
-### Requirements
 
-- Tables must be in Unity Catalog
-- Job identity needs `SELECT` permission on monitored tables
-- Works with Delta tables (managed and external)
 
----
+`table_names`
+`condition``ANY_UPDATED`
+`min_time_between_triggers_seconds`
+`wait_after_last_change_seconds`
 
-## Continuous Jobs
 
-Always-running jobs that automatically restart.
 
-### DABs YAML
+
+`SELECT`
+
+
+
+
+
+
+
+
+
 
 ```yaml
 resources:
@@ -348,7 +348,7 @@ resources:
             notebook_path: ../src/streaming_processor.py
 ```
 
-### Python SDK
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -365,14 +365,14 @@ job = w.jobs.create(
 )
 ```
 
-### Continuous Job Behavior
 
-- Job runs immediately when created/unpaused
-- Automatically restarts after completion or failure
-- Maintains one active run at a time
-- Use `pause_status: PAUSED` to stop
 
-### Control Continuous Jobs
+
+
+
+`pause_status: PAUSED`
+
+
 
 ```python
 # Pause continuous job
@@ -392,15 +392,15 @@ w.jobs.update(
 )
 ```
 
----
 
-## Manual Runs
 
-Run jobs on-demand without automatic triggers.
 
-### No Trigger Configuration
 
-Simply omit `schedule`, `trigger`, and `continuous`:
+
+
+
+
+`schedule``trigger``continuous`
 
 ```yaml
 resources:
@@ -414,9 +414,9 @@ resources:
             notebook_path: ../src/manual_task.py
 ```
 
-### Trigger Manual Run
 
-**Python SDK:**
+
+
 ```python
 # Run with default parameters
 run = w.jobs.run_now(job_id=12345)
@@ -431,7 +431,7 @@ run = w.jobs.run_now(
 run_result = w.jobs.run_now_and_wait(job_id=12345)
 ```
 
-**CLI:**
+
 ```bash
 # Run job
 databricks jobs run-now 12345
@@ -440,16 +440,16 @@ databricks jobs run-now 12345
 databricks jobs run-now 12345 --job-params '{"env": "prod"}'
 ```
 
-**DABs:**
+
 ```bash
 databricks bundle run my_job_resource_key
 ```
 
----
 
-## Combining Triggers
 
-A job can have multiple trigger types (evaluated independently):
+
+
+
 
 ```yaml
 resources:
@@ -472,21 +472,21 @@ resources:
             notebook_path: ../src/process.py
 ```
 
-### Trigger Priority
 
-When multiple triggers fire simultaneously:
-- Job queues runs if `max_concurrent_runs > 1`
-- Otherwise, subsequent triggers are skipped while a run is active
+
+
+`max_concurrent_runs > 1`
+
 
 ```yaml
 max_concurrent_runs: 1  # Only one run at a time (default)
 ```
 
----
 
-## Pause and Resume
 
-### Pause Scheduled Job
+
+
+
 
 ```yaml
 schedule:
@@ -495,7 +495,7 @@ schedule:
   pause_status: PAUSED  # Job won't run on schedule
 ```
 
-### Pause via SDK
+
 
 ```python
 from databricks.sdk.service.jobs import JobSettings, CronSchedule, PauseStatus
@@ -512,7 +512,7 @@ w.jobs.update(
 )
 ```
 
-### Pause via CLI
+
 
 ```bash
 databricks jobs update 12345 --json '{

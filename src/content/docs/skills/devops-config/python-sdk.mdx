@@ -5,31 +5,31 @@ sidebar:
   label: Python SDK
 ---
 
-This skill provides guidance for Databricks SDK, Databricks Connect, CLI, and REST API.
 
-**SDK Documentation:** https://databricks-sdk-py.readthedocs.io/en/latest/
-**GitHub Repository:** https://github.com/databricks/databricks-sdk-py
 
----
 
-## Environment Setup
 
-- Use existing virtual environment at `.venv` or use `uv` to create one
-- For Spark operations: `uv pip install databricks-connect`
-- For SDK operations: `uv pip install databricks-sdk`
-- Databricks CLI version should be 0.278.0 or higher
 
-## Configuration
 
-- Default profile name: `DEFAULT`
-- Config file: `~/.databrickscfg`
-- Environment variables: `DATABRICKS_HOST`, `DATABRICKS_TOKEN`
 
----
 
-## Databricks Connect (Spark Operations)
 
-Use `databricks-connect` for running Spark code locally against a Databricks cluster.
+`.venv``uv`
+`uv pip install databricks-connect`
+`uv pip install databricks-sdk`
+
+
+
+
+`DEFAULT`
+`~/.databrickscfg`
+`DATABRICKS_HOST``DATABRICKS_TOKEN`
+
+
+
+
+
+`databricks-connect`
 
 ```python
 from databricks.connect import DatabricksSession
@@ -45,13 +45,13 @@ df = spark.sql("SELECT * FROM catalog.schema.table")
 df.show()
 ```
 
-**IMPORTANT:** Do NOT set `.master("local[*]")` - this will cause issues with Databricks Connect.
+`.master("local[*]")`
 
----
 
-## Direct REST API Access
 
-For operations not yet in SDK or overly complex via SDK, use direct REST API:
+
+
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -72,14 +72,14 @@ response = w.api_client.do(
 )
 ```
 
-**When to use:** Prefer SDK methods when available. Use `api_client.do` for:
-- New API endpoints not yet in SDK
-- Complex operations where SDK abstraction is problematic
-- Debugging/testing raw API responses
+`api_client.do`
 
----
 
-## Databricks CLI
+
+
+
+
+
 
 ```bash
 # Check version (should be >= 0.278.0)
@@ -94,11 +94,11 @@ databricks jobs list
 databricks workspace ls /Users/me
 ```
 
----
 
-## SDK Documentation Architecture
 
-The SDK documentation follows a predictable URL pattern:
+
+
+
 
 ```
 Base: https://databricks-sdk-py.readthedocs.io/en/latest/
@@ -109,33 +109,33 @@ Authentication:  /authentication.html
 DBUtils:         /dbutils.html
 ```
 
-### Workspace API Categories
-| Category | Services |
-|----------|----------|
-| `compute` | clusters, cluster_policies, command_execution, instance_pools, libraries |
-| `catalog` | catalogs, schemas, tables, volumes, functions, storage_credentials, external_locations |
-| `jobs` | jobs |
-| `sql` | warehouses, statement_execution, queries, alerts, dashboards |
-| `serving` | serving_endpoints |
-| `vectorsearch` | vector_search_indexes, vector_search_endpoints |
-| `pipelines` | pipelines |
-| `workspace` | repos, secrets, workspace, git_credentials |
-| `files` | files, dbfs |
-| `ml` | experiments, model_registry |
 
----
 
-## Authentication
 
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/authentication.html
+`compute`
+`catalog`
+`jobs`
+`sql`
+`serving`
+`vectorsearch`
+`pipelines`
+`workspace`
+`files`
+`ml`
 
-### Environment Variables
+
+
+
+
+
+
+
 ```bash
 DATABRICKS_HOST=https://your-workspace.cloud.databricks.com
 DATABRICKS_TOKEN=dapi...  # Personal Access Token
 ```
 
-### Code Patterns
+
 
 ```python
 # Auto-detect credentials from environment
@@ -161,12 +161,12 @@ w = WorkspaceClient(
 w = WorkspaceClient(profile="MY_PROFILE")
 ```
 
----
 
-## Core API Reference
 
-### Clusters API
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/compute/clusters.html
+
+
+
+
 
 ```python
 # List all clusters
@@ -200,8 +200,8 @@ w.clusters.stop(cluster_id="...")
 w.clusters.delete(cluster_id="...")
 ```
 
-### Jobs API
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/jobs/jobs.html
+
+
 
 ```python
 from databricks.sdk.service.jobs import Task, NotebookTask
@@ -230,8 +230,8 @@ print(f"Run completed: {run.state.result_state}")
 output = w.jobs.get_run_output(run_id=run.run_id)
 ```
 
-### SQL Statement Execution
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/sql/statement_execution.html
+
+
 
 ```python
 # Execute SQL query
@@ -253,8 +253,8 @@ chunk = w.statement_execution.get_statement_result_chunk_n(
 )
 ```
 
-### SQL Warehouses
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/sql/warehouses.html
+
+
 
 ```python
 # List warehouses
@@ -277,8 +277,8 @@ w.warehouses.start(id="abc123").result()
 w.warehouses.stop(id="abc123").result()
 ```
 
-### Unity Catalog - Tables
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/tables.html
+
+
 
 ```python
 # List tables in a schema
@@ -293,9 +293,9 @@ print(f"Columns: {[c.name for c in table.columns]}")
 exists = w.tables.exists(full_name="main.default.my_table")
 ```
 
-### Unity Catalog - Catalogs & Schemas
-**Doc (Catalogs):** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/catalogs.html
-**Doc (Schemas):** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/schemas.html
+
+
+
 
 ```python
 # List catalogs
@@ -313,8 +313,8 @@ for schema in w.schemas.list(catalog_name="main"):
 w.schemas.create(name="my_schema", catalog_name="main")
 ```
 
-### Volumes
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/volumes.html
+
+
 
 ```python
 from databricks.sdk.service.catalog import VolumeType
@@ -335,8 +335,8 @@ w.volumes.create(
 vol = w.volumes.read(name="main.default.my_volume")
 ```
 
-### Files API
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/files/files.html
+
+
 
 ```python
 # Upload file to volume
@@ -367,8 +367,8 @@ w.files.download_to(
 )
 ```
 
-### Serving Endpoints (Model Serving)
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/serving/serving_endpoints.html
+
+
 
 ```python
 # List endpoints
@@ -394,9 +394,9 @@ response = w.serving_endpoints.query(
 openai_client = w.serving_endpoints.get_open_ai_client()
 ```
 
-### Vector Search
-**Doc (Indexes):** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/vectorsearch/vector_search_indexes.html
-**Doc (Endpoints):** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/vectorsearch/vector_search_endpoints.html
+
+
+
 
 ```python
 # List vector search indexes
@@ -414,8 +414,8 @@ for doc in results.result.data_array:
     print(doc)
 ```
 
-### Pipelines (Delta Live Tables)
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/pipelines/pipelines.html
+
+
 
 ```python
 # List pipelines
@@ -432,8 +432,8 @@ w.pipelines.start_update(pipeline_id="abc123")
 w.pipelines.stop_and_wait(pipeline_id="abc123")
 ```
 
-### Secrets
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/workspace/workspace/secrets.html
+
+
 
 ```python
 # List secret scopes
@@ -454,8 +454,8 @@ for s in w.secrets.list_secrets(scope="my-scope"):
     print(s.key)
 ```
 
-### DBUtils
-**Doc:** https://databricks-sdk-py.readthedocs.io/en/latest/dbutils.html
+
+
 
 ```python
 # Access dbutils through WorkspaceClient
@@ -470,13 +470,13 @@ dbutils.fs.rm("dbfs:/path", recurse=True)
 value = dbutils.secrets.get(scope="my-scope", key="my-key")
 ```
 
----
 
-## Common Patterns
 
-### CRITICAL: Async Applications (FastAPI, etc.)
 
-**The Databricks SDK is fully synchronous.** All calls block the thread. In async applications (FastAPI, asyncio), you MUST wrap SDK calls with `asyncio.to_thread()` to avoid blocking the event loop.
+
+
+
+`asyncio.to_thread()`
 
 ```python
 import asyncio
@@ -517,11 +517,11 @@ async def run_query(sql: str, warehouse_id: str):
     return response.result.data_array
 ```
 
-**Note:** `WorkspaceClient().config.host` is NOT a network call - it just reads config. No need to wrap property access.
+`WorkspaceClient().config.host`
 
----
 
-### Wait for Long-Running Operations
+
+
 ```python
 from datetime import timedelta
 
@@ -549,7 +549,7 @@ cluster = w.clusters.wait_get_cluster_running(
 )
 ```
 
-### Pagination
+
 ```python
 # All list methods return iterators that handle pagination automatically
 for job in w.jobs.list():  # Fetches all pages
@@ -562,7 +562,7 @@ for job in response:
     print(job)
 ```
 
-### Error Handling
+
 ```python
 from databricks.sdk.errors import NotFound, PermissionDenied, ResourceAlreadyExists
 
@@ -574,316 +574,316 @@ except PermissionDenied:
     print("Access denied")
 ```
 
----
 
-## When Uncertain
 
-If I'm unsure about a method, I should:
 
-1. **Check the documentation URL pattern:**
-   - `https://databricks-sdk-py.readthedocs.io/en/latest/workspace/{category}/{service}.html`
 
-2. **Common categories:**
-   - Clusters: `/workspace/compute/clusters.html`
-   - Jobs: `/workspace/jobs/jobs.html`
-   - Tables: `/workspace/catalog/tables.html`
-   - Warehouses: `/workspace/sql/warehouses.html`
-   - Serving: `/workspace/serving/serving_endpoints.html`
 
-3. **Fetch and verify** before providing guidance on parameters or return types.
 
----
 
-## Quick Reference Links
+`https://databricks-sdk-py.readthedocs.io/en/latest/workspace/{category}/{service}.html`
 
-| API | Documentation URL |
-|-----|-------------------|
-| Authentication | https://databricks-sdk-py.readthedocs.io/en/latest/authentication.html |
-| Clusters | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/compute/clusters.html |
-| Jobs | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/jobs/jobs.html |
-| SQL Warehouses | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/sql/warehouses.html |
-| Statement Execution | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/sql/statement_execution.html |
-| Tables | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/tables.html |
-| Catalogs | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/catalogs.html |
-| Schemas | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/schemas.html |
-| Volumes | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/volumes.html |
-| Files | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/files/files.html |
-| Serving Endpoints | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/serving/serving_endpoints.html |
-| Vector Search | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/vectorsearch/vector_search_indexes.html |
-| Pipelines | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/pipelines/pipelines.html |
-| Secrets | https://databricks-sdk-py.readthedocs.io/en/latest/workspace/workspace/secrets.html |
-| DBUtils | https://databricks-sdk-py.readthedocs.io/en/latest/dbutils.html |
 
-## Related Skills
+`/workspace/compute/clusters.html`
+`/workspace/jobs/jobs.html`
+`/workspace/catalog/tables.html`
+`/workspace/sql/warehouses.html`
+`/workspace/serving/serving_endpoints.html`
 
-- **[databricks-config](../databricks-config/SKILL.md)** - profile and authentication setup
-- **[databricks-bundles](../databricks-bundles/SKILL.md)** - deploying resources via DABs
-- **[databricks-jobs](../databricks-jobs/SKILL.md)** - job orchestration patterns
-- **[databricks-unity-catalog](../databricks-unity-catalog/SKILL.md)** - catalog governance
-- **[databricks-model-serving](../databricks-model-serving/SKILL.md)** - serving endpoint management
-- **[databricks-vector-search](../databricks-vector-search/SKILL.md)** - vector index operations
-- **[databricks-lakebase-provisioned](../databricks-lakebase-provisioned/SKILL.md)** - managed PostgreSQL via SDK
 
----
 
-# Databricks Python SDK - Documentation Index
 
-Complete mapping of API operations to documentation URLs.
 
-**Base URL:** `https://databricks-sdk-py.readthedocs.io/en/latest`
 
-> **CRITICAL:** The SDK is synchronous. In async apps (FastAPI), wrap all SDK calls with `asyncio.to_thread()` to avoid blocking the event loop. See skill.md for examples.
 
----
 
-## Clusters API
-**Doc:** /workspace/compute/clusters.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.clusters.list()` | `([filter_by, page_size, page_token, sort_by]) → Iterator[ClusterDetails]` |
-| `w.clusters.get()` | `(cluster_id: str) → ClusterDetails` |
-| `w.clusters.create()` | `(spark_version, [cluster_name, num_workers, ...]) → Wait[ClusterDetails]` |
-| `w.clusters.create_and_wait()` | `(..., timeout) → ClusterDetails` |
-| `w.clusters.edit()` | `(cluster_id, spark_version, [...]) → Wait[ClusterDetails]` |
-| `w.clusters.delete()` | `(cluster_id) → Wait[ClusterDetails]` |
-| `w.clusters.permanent_delete()` | `(cluster_id) → None` |
-| `w.clusters.start()` | `(cluster_id) → Wait[ClusterDetails]` |
-| `w.clusters.start_and_wait()` | `(cluster_id, timeout) → ClusterDetails` |
-| `w.clusters.restart()` | `(cluster_id, [restart_user]) → Wait[ClusterDetails]` |
-| `w.clusters.resize()` | `(cluster_id, [autoscale, num_workers]) → Wait[ClusterDetails]` |
-| `w.clusters.events()` | `(cluster_id, [...]) → Iterator[ClusterEvent]` |
-| `w.clusters.pin()` | `(cluster_id) → None` |
-| `w.clusters.unpin()` | `(cluster_id) → None` |
-| `w.clusters.select_spark_version()` | `([latest, long_term_support, ml, gpu, ...]) → str` |
-| `w.clusters.select_node_type()` | `([min_memory_gb, min_cores, local_disk, ...]) → str` |
-| `w.clusters.list_node_types()` | `() → ListNodeTypesResponse` |
-| `w.clusters.spark_versions()` | `() → GetSparkVersionsResponse` |
-| `w.clusters.list_zones()` | `() → ListAvailableZonesResponse` |
-| `w.clusters.ensure_cluster_is_running()` | `(cluster_id) → None` |
-| `w.clusters.change_owner()` | `(cluster_id, owner_username) → None` |
-| `w.clusters.get_permissions()` | `(cluster_id) → ClusterPermissions` |
-| `w.clusters.set_permissions()` | `(cluster_id, [access_control_list]) → ClusterPermissions` |
-| `w.clusters.update_permissions()` | `(cluster_id, [access_control_list]) → ClusterPermissions` |
 
----
 
-## Jobs API
-**Doc:** /workspace/jobs/jobs.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.jobs.list()` | `([expand_tasks, limit, name, offset]) → Iterator[BaseJob]` |
-| `w.jobs.get()` | `(job_id, [page_token]) → Job` |
-| `w.jobs.create()` | `([name, tasks, schedule, ...]) → CreateResponse` |
-| `w.jobs.update()` | `(job_id, [new_settings, fields_to_remove]) → None` |
-| `w.jobs.reset()` | `(job_id, new_settings: JobSettings) → None` |
-| `w.jobs.delete()` | `(job_id) → None` |
-| `w.jobs.run_now()` | `(job_id, [notebook_params, job_parameters, ...]) → Wait[Run]` |
-| `w.jobs.run_now_and_wait()` | `(job_id, [...], timeout) → Run` |
-| `w.jobs.submit()` | `([tasks, run_name, ...]) → Wait[Run]` |
-| `w.jobs.submit_and_wait()` | `([...], timeout) → Run` |
-| `w.jobs.cancel_run()` | `(run_id) → Wait[Run]` |
-| `w.jobs.cancel_all_runs()` | `([all_queued_runs, job_id]) → None` |
-| `w.jobs.list_runs()` | `([job_id, active_only, completed_only, ...]) → Iterator[BaseRun]` |
-| `w.jobs.get_run()` | `(run_id, [include_history, include_resolved_values]) → Run` |
-| `w.jobs.get_run_output()` | `(run_id) → RunOutput` |
-| `w.jobs.export_run()` | `(run_id, [views_to_export]) → ExportRunOutput` |
-| `w.jobs.delete_run()` | `(run_id) → None` |
-| `w.jobs.repair_run()` | `(run_id, [rerun_tasks, rerun_all_failed_tasks, ...]) → Wait[Run]` |
-| `w.jobs.get_permissions()` | `(job_id) → JobPermissions` |
-| `w.jobs.set_permissions()` | `(job_id, [access_control_list]) → JobPermissions` |
 
----
 
-## SQL Warehouses API
-**Doc:** /workspace/sql/warehouses.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.warehouses.list()` | `([page_size, page_token, run_as_user_id]) → Iterator[EndpointInfo]` |
-| `w.warehouses.get()` | `(id: str) → GetWarehouseResponse` |
-| `w.warehouses.create()` | `([name, cluster_size, max_num_clusters, auto_stop_mins, ...]) → Wait[...]` |
-| `w.warehouses.create_and_wait()` | `([...], timeout) → GetWarehouseResponse` |
-| `w.warehouses.edit()` | `(id, [...]) → Wait[GetWarehouseResponse]` |
-| `w.warehouses.delete()` | `(id) → None` |
-| `w.warehouses.start()` | `(id) → Wait[GetWarehouseResponse]` |
-| `w.warehouses.start_and_wait()` | `(id, timeout) → GetWarehouseResponse` |
-| `w.warehouses.stop()` | `(id) → Wait[GetWarehouseResponse]` |
-| `w.warehouses.stop_and_wait()` | `(id, timeout) → GetWarehouseResponse` |
-| `w.warehouses.get_workspace_warehouse_config()` | `() → GetWorkspaceWarehouseConfigResponse` |
-| `w.warehouses.set_workspace_warehouse_config()` | `([...]) → None` |
-| `w.warehouses.get_permissions()` | `(warehouse_id) → WarehousePermissions` |
-| `w.warehouses.set_permissions()` | `(warehouse_id, [access_control_list]) → WarehousePermissions` |
 
----
 
-## Statement Execution API
-**Doc:** /workspace/sql/statement_execution.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.statement_execution.execute_statement()` | `(statement, warehouse_id, [catalog, schema, wait_timeout, ...]) → StatementResponse` |
-| `w.statement_execution.get_statement()` | `(statement_id) → StatementResponse` |
-| `w.statement_execution.get_statement_result_chunk_n()` | `(statement_id, chunk_index) → ResultData` |
-| `w.statement_execution.cancel_execution()` | `(statement_id) → None` |
 
----
 
-## Tables API (Unity Catalog)
-**Doc:** /workspace/catalog/tables.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.tables.list()` | `(catalog_name, schema_name, [max_results, omit_columns, ...]) → Iterator[TableInfo]` |
-| `w.tables.list_summaries()` | `(catalog_name, [schema_name_pattern, table_name_pattern, ...]) → Iterator[TableSummary]` |
-| `w.tables.get()` | `(full_name, [include_delta_metadata, ...]) → TableInfo` |
-| `w.tables.exists()` | `(full_name) → TableExistsResponse` |
-| `w.tables.create()` | `(name, catalog_name, schema_name, table_type, data_source_format, storage_location, [columns, ...]) → TableInfo` |
-| `w.tables.update()` | `(full_name, [owner]) → None` |
-| `w.tables.delete()` | `(full_name) → None` |
 
----
 
-## Catalogs API
-**Doc:** /workspace/catalog/catalogs.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.catalogs.list()` | `([include_browse, max_results, page_token]) → Iterator[CatalogInfo]` |
-| `w.catalogs.get()` | `(name, [include_browse]) → CatalogInfo` |
-| `w.catalogs.create()` | `(name, [comment, storage_root, ...]) → CatalogInfo` |
-| `w.catalogs.update()` | `(name, [new_name, owner, comment, ...]) → CatalogInfo` |
-| `w.catalogs.delete()` | `(name, [force]) → None` |
 
----
 
-## Schemas API
-**Doc:** /workspace/catalog/schemas.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.schemas.list()` | `(catalog_name, [max_results, page_token]) → Iterator[SchemaInfo]` |
-| `w.schemas.get()` | `(full_name) → SchemaInfo` |
-| `w.schemas.create()` | `(name, catalog_name, [comment, storage_root, ...]) → SchemaInfo` |
-| `w.schemas.update()` | `(full_name, [new_name, owner, comment, ...]) → SchemaInfo` |
-| `w.schemas.delete()` | `(full_name, [force]) → None` |
 
----
 
-## Volumes API
-**Doc:** /workspace/catalog/volumes.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.volumes.list()` | `(catalog_name, schema_name, [max_results, page_token]) → Iterator[VolumeInfo]` |
-| `w.volumes.read()` | `(name, [include_browse]) → VolumeInfo` |
-| `w.volumes.create()` | `(catalog_name, schema_name, name, volume_type, [comment, storage_location]) → VolumeInfo` |
-| `w.volumes.update()` | `(name, [new_name, owner, comment]) → VolumeInfo` |
-| `w.volumes.delete()` | `(name) → None` |
 
----
 
-## Files API
-**Doc:** /workspace/files/files.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.files.upload()` | `(file_path, contents: BinaryIO, [overwrite, use_parallel]) → UploadStreamResult` |
-| `w.files.upload_from()` | `(file_path, source_path, [overwrite, use_parallel]) → UploadFileResult` |
-| `w.files.download()` | `(file_path) → DownloadResponse` |
-| `w.files.download_to()` | `(file_path, destination, [overwrite, use_parallel]) → DownloadFileResult` |
-| `w.files.delete()` | `(file_path) → None` |
-| `w.files.get_metadata()` | `(file_path) → GetMetadataResponse` |
-| `w.files.create_directory()` | `(directory_path) → None` |
-| `w.files.delete_directory()` | `(directory_path) → None` |
-| `w.files.get_directory_metadata()` | `(directory_path) → None` |
-| `w.files.list_directory_contents()` | `(directory_path, [page_size, page_token]) → Iterator[DirectoryEntry]` |
 
----
 
-## Serving Endpoints API
-**Doc:** /workspace/serving/serving_endpoints.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.serving_endpoints.list()` | `() → Iterator[ServingEndpoint]` |
-| `w.serving_endpoints.get()` | `(name) → ServingEndpointDetailed` |
-| `w.serving_endpoints.create()` | `(name, [config, ...]) → Wait[ServingEndpointDetailed]` |
-| `w.serving_endpoints.create_and_wait()` | `(name, [...], timeout) → ServingEndpointDetailed` |
-| `w.serving_endpoints.update_config()` | `(name, [...]) → Wait[ServingEndpointDetailed]` |
-| `w.serving_endpoints.delete()` | `(name) → None` |
-| `w.serving_endpoints.query()` | `(name, [inputs, messages, ...]) → QueryEndpointResponse` |
-| `w.serving_endpoints.logs()` | `(name, served_model_name) → ServerLogsResponse` |
-| `w.serving_endpoints.build_logs()` | `(name, served_model_name) → BuildLogsResponse` |
-| `w.serving_endpoints.export_metrics()` | `(name) → ExportMetricsResponse` |
-| `w.serving_endpoints.get_open_ai_client()` | `() → OpenAI` |
-| `w.serving_endpoints.put_ai_gateway()` | `(name, [...]) → PutAiGatewayResponse` |
-| `w.serving_endpoints.get_permissions()` | `(serving_endpoint_id) → ServingEndpointPermissions` |
-| `w.serving_endpoints.set_permissions()` | `(serving_endpoint_id, [...]) → ServingEndpointPermissions` |
 
----
 
-## Vector Search Indexes API
-**Doc:** /workspace/vectorsearch/vector_search_indexes.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.vector_search_indexes.list_indexes()` | `(endpoint_name, [page_token]) → Iterator[MiniVectorIndex]` |
-| `w.vector_search_indexes.get_index()` | `(index_name, [include_reranker]) → VectorIndex` |
-| `w.vector_search_indexes.create_index()` | `(name, endpoint_name, primary_key, index_type, [...]) → CreateVectorIndexResponse` |
-| `w.vector_search_indexes.delete_index()` | `(index_name) → None` |
-| `w.vector_search_indexes.sync_index()` | `(index_name) → None` |
-| `w.vector_search_indexes.query_index()` | `(index_name, columns, [query_text, query_vector, filters, num_results, ...]) → QueryVectorIndexResponse` |
-| `w.vector_search_indexes.query_next_page()` | `(index_name, page_token) → QueryVectorIndexResponse` |
-| `w.vector_search_indexes.scan_index()` | `(index_name, [last_primary_key, num_results]) → ScanVectorIndexResponse` |
-| `w.vector_search_indexes.upsert_data_vector_index()` | `(index_name, inputs_json) → UpsertDataVectorIndexResponse` |
-| `w.vector_search_indexes.delete_data_vector_index()` | `(index_name, primary_keys) → DeleteDataVectorIndexResponse` |
 
----
 
-## Pipelines API (Delta Live Tables)
-**Doc:** /workspace/pipelines/pipelines.html
+`https://databricks-sdk-py.readthedocs.io/en/latest`
 
-| Method | Signature |
-|--------|-----------|
-| `w.pipelines.list_pipelines()` | `([filter, max_results, ...]) → Iterator[PipelineStateInfo]` |
-| `w.pipelines.get()` | `(pipeline_id) → GetPipelineResponse` |
-| `w.pipelines.create()` | `([name, clusters, libraries, ...]) → CreatePipelineResponse` |
-| `w.pipelines.update()` | `(pipeline_id, [...]) → None` |
-| `w.pipelines.delete()` | `(pipeline_id) → None` |
-| `w.pipelines.start_update()` | `(pipeline_id, [full_refresh, ...]) → StartUpdateResponse` |
-| `w.pipelines.stop()` | `(pipeline_id) → Wait[GetPipelineResponse]` |
-| `w.pipelines.stop_and_wait()` | `(pipeline_id, timeout) → GetPipelineResponse` |
-| `w.pipelines.list_updates()` | `(pipeline_id, [...]) → ListUpdatesResponse` |
-| `w.pipelines.get_update()` | `(pipeline_id, update_id) → GetUpdateResponse` |
-| `w.pipelines.list_pipeline_events()` | `(pipeline_id, [...]) → Iterator[PipelineEvent]` |
-| `w.pipelines.get_permissions()` | `(pipeline_id) → PipelinePermissions` |
-| `w.pipelines.set_permissions()` | `(pipeline_id, [...]) → PipelinePermissions` |
+`asyncio.to_thread()`
 
----
 
-## Secrets API
-**Doc:** /workspace/workspace/secrets.html
 
-| Method | Signature |
-|--------|-----------|
-| `w.secrets.list_scopes()` | `() → Iterator[SecretScope]` |
-| `w.secrets.create_scope()` | `(scope, [backend_azure_keyvault, scope_backend_type]) → None` |
-| `w.secrets.delete_scope()` | `(scope) → None` |
-| `w.secrets.list_secrets()` | `(scope) → Iterator[SecretMetadata]` |
-| `w.secrets.get_secret()` | `(scope, key) → GetSecretResponse` |
-| `w.secrets.put_secret()` | `(scope, key, [string_value, bytes_value]) → None` |
-| `w.secrets.delete_secret()` | `(scope, key) → None` |
-| `w.secrets.list_acls()` | `(scope) → Iterator[AclItem]` |
-| `w.secrets.get_acl()` | `(scope, principal) → AclItem` |
-| `w.secrets.put_acl()` | `(scope, principal, permission) → None` |
-| `w.secrets.delete_acl()` | `(scope, principal) → None` |
 
----
 
-## DBUtils
-**Doc:** /dbutils.html
+
+
+
+`w.clusters.list()``([filter_by, page_size, page_token, sort_by]) → Iterator[ClusterDetails]`
+`w.clusters.get()``(cluster_id: str) → ClusterDetails`
+`w.clusters.create()``(spark_version, [cluster_name, num_workers, ...]) → Wait[ClusterDetails]`
+`w.clusters.create_and_wait()``(..., timeout) → ClusterDetails`
+`w.clusters.edit()``(cluster_id, spark_version, [...]) → Wait[ClusterDetails]`
+`w.clusters.delete()``(cluster_id) → Wait[ClusterDetails]`
+`w.clusters.permanent_delete()``(cluster_id) → None`
+`w.clusters.start()``(cluster_id) → Wait[ClusterDetails]`
+`w.clusters.start_and_wait()``(cluster_id, timeout) → ClusterDetails`
+`w.clusters.restart()``(cluster_id, [restart_user]) → Wait[ClusterDetails]`
+`w.clusters.resize()``(cluster_id, [autoscale, num_workers]) → Wait[ClusterDetails]`
+`w.clusters.events()``(cluster_id, [...]) → Iterator[ClusterEvent]`
+`w.clusters.pin()``(cluster_id) → None`
+`w.clusters.unpin()``(cluster_id) → None`
+`w.clusters.select_spark_version()``([latest, long_term_support, ml, gpu, ...]) → str`
+`w.clusters.select_node_type()``([min_memory_gb, min_cores, local_disk, ...]) → str`
+`w.clusters.list_node_types()``() → ListNodeTypesResponse`
+`w.clusters.spark_versions()``() → GetSparkVersionsResponse`
+`w.clusters.list_zones()``() → ListAvailableZonesResponse`
+`w.clusters.ensure_cluster_is_running()``(cluster_id) → None`
+`w.clusters.change_owner()``(cluster_id, owner_username) → None`
+`w.clusters.get_permissions()``(cluster_id) → ClusterPermissions`
+`w.clusters.set_permissions()``(cluster_id, [access_control_list]) → ClusterPermissions`
+`w.clusters.update_permissions()``(cluster_id, [access_control_list]) → ClusterPermissions`
+
+
+
+
+
+
+
+
+`w.jobs.list()``([expand_tasks, limit, name, offset]) → Iterator[BaseJob]`
+`w.jobs.get()``(job_id, [page_token]) → Job`
+`w.jobs.create()``([name, tasks, schedule, ...]) → CreateResponse`
+`w.jobs.update()``(job_id, [new_settings, fields_to_remove]) → None`
+`w.jobs.reset()``(job_id, new_settings: JobSettings) → None`
+`w.jobs.delete()``(job_id) → None`
+`w.jobs.run_now()``(job_id, [notebook_params, job_parameters, ...]) → Wait[Run]`
+`w.jobs.run_now_and_wait()``(job_id, [...], timeout) → Run`
+`w.jobs.submit()``([tasks, run_name, ...]) → Wait[Run]`
+`w.jobs.submit_and_wait()``([...], timeout) → Run`
+`w.jobs.cancel_run()``(run_id) → Wait[Run]`
+`w.jobs.cancel_all_runs()``([all_queued_runs, job_id]) → None`
+`w.jobs.list_runs()``([job_id, active_only, completed_only, ...]) → Iterator[BaseRun]`
+`w.jobs.get_run()``(run_id, [include_history, include_resolved_values]) → Run`
+`w.jobs.get_run_output()``(run_id) → RunOutput`
+`w.jobs.export_run()``(run_id, [views_to_export]) → ExportRunOutput`
+`w.jobs.delete_run()``(run_id) → None`
+`w.jobs.repair_run()``(run_id, [rerun_tasks, rerun_all_failed_tasks, ...]) → Wait[Run]`
+`w.jobs.get_permissions()``(job_id) → JobPermissions`
+`w.jobs.set_permissions()``(job_id, [access_control_list]) → JobPermissions`
+
+
+
+
+
+
+
+
+`w.warehouses.list()``([page_size, page_token, run_as_user_id]) → Iterator[EndpointInfo]`
+`w.warehouses.get()``(id: str) → GetWarehouseResponse`
+`w.warehouses.create()``([name, cluster_size, max_num_clusters, auto_stop_mins, ...]) → Wait[...]`
+`w.warehouses.create_and_wait()``([...], timeout) → GetWarehouseResponse`
+`w.warehouses.edit()``(id, [...]) → Wait[GetWarehouseResponse]`
+`w.warehouses.delete()``(id) → None`
+`w.warehouses.start()``(id) → Wait[GetWarehouseResponse]`
+`w.warehouses.start_and_wait()``(id, timeout) → GetWarehouseResponse`
+`w.warehouses.stop()``(id) → Wait[GetWarehouseResponse]`
+`w.warehouses.stop_and_wait()``(id, timeout) → GetWarehouseResponse`
+`w.warehouses.get_workspace_warehouse_config()``() → GetWorkspaceWarehouseConfigResponse`
+`w.warehouses.set_workspace_warehouse_config()``([...]) → None`
+`w.warehouses.get_permissions()``(warehouse_id) → WarehousePermissions`
+`w.warehouses.set_permissions()``(warehouse_id, [access_control_list]) → WarehousePermissions`
+
+
+
+
+
+
+
+
+`w.statement_execution.execute_statement()``(statement, warehouse_id, [catalog, schema, wait_timeout, ...]) → StatementResponse`
+`w.statement_execution.get_statement()``(statement_id) → StatementResponse`
+`w.statement_execution.get_statement_result_chunk_n()``(statement_id, chunk_index) → ResultData`
+`w.statement_execution.cancel_execution()``(statement_id) → None`
+
+
+
+
+
+
+
+
+`w.tables.list()``(catalog_name, schema_name, [max_results, omit_columns, ...]) → Iterator[TableInfo]`
+`w.tables.list_summaries()``(catalog_name, [schema_name_pattern, table_name_pattern, ...]) → Iterator[TableSummary]`
+`w.tables.get()``(full_name, [include_delta_metadata, ...]) → TableInfo`
+`w.tables.exists()``(full_name) → TableExistsResponse`
+`w.tables.create()``(name, catalog_name, schema_name, table_type, data_source_format, storage_location, [columns, ...]) → TableInfo`
+`w.tables.update()``(full_name, [owner]) → None`
+`w.tables.delete()``(full_name) → None`
+
+
+
+
+
+
+
+
+`w.catalogs.list()``([include_browse, max_results, page_token]) → Iterator[CatalogInfo]`
+`w.catalogs.get()``(name, [include_browse]) → CatalogInfo`
+`w.catalogs.create()``(name, [comment, storage_root, ...]) → CatalogInfo`
+`w.catalogs.update()``(name, [new_name, owner, comment, ...]) → CatalogInfo`
+`w.catalogs.delete()``(name, [force]) → None`
+
+
+
+
+
+
+
+
+`w.schemas.list()``(catalog_name, [max_results, page_token]) → Iterator[SchemaInfo]`
+`w.schemas.get()``(full_name) → SchemaInfo`
+`w.schemas.create()``(name, catalog_name, [comment, storage_root, ...]) → SchemaInfo`
+`w.schemas.update()``(full_name, [new_name, owner, comment, ...]) → SchemaInfo`
+`w.schemas.delete()``(full_name, [force]) → None`
+
+
+
+
+
+
+
+
+`w.volumes.list()``(catalog_name, schema_name, [max_results, page_token]) → Iterator[VolumeInfo]`
+`w.volumes.read()``(name, [include_browse]) → VolumeInfo`
+`w.volumes.create()``(catalog_name, schema_name, name, volume_type, [comment, storage_location]) → VolumeInfo`
+`w.volumes.update()``(name, [new_name, owner, comment]) → VolumeInfo`
+`w.volumes.delete()``(name) → None`
+
+
+
+
+
+
+
+
+`w.files.upload()``(file_path, contents: BinaryIO, [overwrite, use_parallel]) → UploadStreamResult`
+`w.files.upload_from()``(file_path, source_path, [overwrite, use_parallel]) → UploadFileResult`
+`w.files.download()``(file_path) → DownloadResponse`
+`w.files.download_to()``(file_path, destination, [overwrite, use_parallel]) → DownloadFileResult`
+`w.files.delete()``(file_path) → None`
+`w.files.get_metadata()``(file_path) → GetMetadataResponse`
+`w.files.create_directory()``(directory_path) → None`
+`w.files.delete_directory()``(directory_path) → None`
+`w.files.get_directory_metadata()``(directory_path) → None`
+`w.files.list_directory_contents()``(directory_path, [page_size, page_token]) → Iterator[DirectoryEntry]`
+
+
+
+
+
+
+
+
+`w.serving_endpoints.list()``() → Iterator[ServingEndpoint]`
+`w.serving_endpoints.get()``(name) → ServingEndpointDetailed`
+`w.serving_endpoints.create()``(name, [config, ...]) → Wait[ServingEndpointDetailed]`
+`w.serving_endpoints.create_and_wait()``(name, [...], timeout) → ServingEndpointDetailed`
+`w.serving_endpoints.update_config()``(name, [...]) → Wait[ServingEndpointDetailed]`
+`w.serving_endpoints.delete()``(name) → None`
+`w.serving_endpoints.query()``(name, [inputs, messages, ...]) → QueryEndpointResponse`
+`w.serving_endpoints.logs()``(name, served_model_name) → ServerLogsResponse`
+`w.serving_endpoints.build_logs()``(name, served_model_name) → BuildLogsResponse`
+`w.serving_endpoints.export_metrics()``(name) → ExportMetricsResponse`
+`w.serving_endpoints.get_open_ai_client()``() → OpenAI`
+`w.serving_endpoints.put_ai_gateway()``(name, [...]) → PutAiGatewayResponse`
+`w.serving_endpoints.get_permissions()``(serving_endpoint_id) → ServingEndpointPermissions`
+`w.serving_endpoints.set_permissions()``(serving_endpoint_id, [...]) → ServingEndpointPermissions`
+
+
+
+
+
+
+
+
+`w.vector_search_indexes.list_indexes()``(endpoint_name, [page_token]) → Iterator[MiniVectorIndex]`
+`w.vector_search_indexes.get_index()``(index_name, [include_reranker]) → VectorIndex`
+`w.vector_search_indexes.create_index()``(name, endpoint_name, primary_key, index_type, [...]) → CreateVectorIndexResponse`
+`w.vector_search_indexes.delete_index()``(index_name) → None`
+`w.vector_search_indexes.sync_index()``(index_name) → None`
+`w.vector_search_indexes.query_index()``(index_name, columns, [query_text, query_vector, filters, num_results, ...]) → QueryVectorIndexResponse`
+`w.vector_search_indexes.query_next_page()``(index_name, page_token) → QueryVectorIndexResponse`
+`w.vector_search_indexes.scan_index()``(index_name, [last_primary_key, num_results]) → ScanVectorIndexResponse`
+`w.vector_search_indexes.upsert_data_vector_index()``(index_name, inputs_json) → UpsertDataVectorIndexResponse`
+`w.vector_search_indexes.delete_data_vector_index()``(index_name, primary_keys) → DeleteDataVectorIndexResponse`
+
+
+
+
+
+
+
+
+`w.pipelines.list_pipelines()``([filter, max_results, ...]) → Iterator[PipelineStateInfo]`
+`w.pipelines.get()``(pipeline_id) → GetPipelineResponse`
+`w.pipelines.create()``([name, clusters, libraries, ...]) → CreatePipelineResponse`
+`w.pipelines.update()``(pipeline_id, [...]) → None`
+`w.pipelines.delete()``(pipeline_id) → None`
+`w.pipelines.start_update()``(pipeline_id, [full_refresh, ...]) → StartUpdateResponse`
+`w.pipelines.stop()``(pipeline_id) → Wait[GetPipelineResponse]`
+`w.pipelines.stop_and_wait()``(pipeline_id, timeout) → GetPipelineResponse`
+`w.pipelines.list_updates()``(pipeline_id, [...]) → ListUpdatesResponse`
+`w.pipelines.get_update()``(pipeline_id, update_id) → GetUpdateResponse`
+`w.pipelines.list_pipeline_events()``(pipeline_id, [...]) → Iterator[PipelineEvent]`
+`w.pipelines.get_permissions()``(pipeline_id) → PipelinePermissions`
+`w.pipelines.set_permissions()``(pipeline_id, [...]) → PipelinePermissions`
+
+
+
+
+
+
+
+
+`w.secrets.list_scopes()``() → Iterator[SecretScope]`
+`w.secrets.create_scope()``(scope, [backend_azure_keyvault, scope_backend_type]) → None`
+`w.secrets.delete_scope()``(scope) → None`
+`w.secrets.list_secrets()``(scope) → Iterator[SecretMetadata]`
+`w.secrets.get_secret()``(scope, key) → GetSecretResponse`
+`w.secrets.put_secret()``(scope, key, [string_value, bytes_value]) → None`
+`w.secrets.delete_secret()``(scope, key) → None`
+`w.secrets.list_acls()``(scope) → Iterator[AclItem]`
+`w.secrets.get_acl()``(scope, principal) → AclItem`
+`w.secrets.put_acl()``(scope, principal, permission) → None`
+`w.secrets.delete_acl()``(scope, principal) → None`
+
+
+
+
+
 
 ```python
 # Access via WorkspaceClient
@@ -905,13 +905,13 @@ dbutils.secrets.list(scope)
 dbutils.secrets.listScopes()
 ```
 
----
 
-## Account-Level APIs
 
-For account-level operations, use `AccountClient`:
 
-**Doc:** /account/index.html
+
+`AccountClient`
+
+
 
 ```python
 from databricks.sdk import AccountClient
@@ -934,11 +934,11 @@ a.groups.list()
 a.groups.create(...)
 ```
 
-| API | Documentation |
-|-----|---------------|
-| Users | /account/iam/users.html |
-| Groups | /account/iam/groups.html |
-| Service Principals | /account/iam/service_principals.html |
-| Workspaces | /account/provisioning/workspaces.html |
-| Budgets | /account/billing/budgets.html |
-| Usage | /account/billing/usage.html |
+
+
+
+
+
+
+
+

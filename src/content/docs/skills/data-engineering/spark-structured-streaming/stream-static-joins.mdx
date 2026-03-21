@@ -5,9 +5,9 @@ sidebar:
   order: 99
 ---
 
-Enrich streaming data with slowly-changing reference data stored in Delta tables. Stream-static joins are stateless and automatically refresh dimension data each microbatch.
 
-## Quick Start
+
+
 
 ```python
 from pyspark.sql.functions import col, from_json
@@ -50,11 +50,11 @@ query = (enriched
 )
 ```
 
-## Core Concepts
 
-### Why Delta Tables Matter
 
-Delta tables enable automatic version checking each microbatch:
+
+
+
 
 ```python
 # Delta table: Version checked every microbatch
@@ -64,24 +64,24 @@ device_dim = spark.table("device_dimensions")  # Reads latest version automatica
 device_dim = spark.read.parquet("/path/to/devices")  # No refresh
 ```
 
-**Key Insight**: Delta's versioning ensures each microbatch gets the latest dimension data without manual refresh.
 
-### Join Types and Production Use
 
-| Join Type | Behavior | Production Use |
-|-----------|----------|----------------|
-| **Left** | Preserves all stream events | ✅ Recommended - prevents data loss |
-| **Inner** | Drops unmatched events | ⚠️ Risk of data loss - avoid in production |
-| **Right** | Preserves all dimension rows | Rarely used |
-| **Full** | Preserves both sides | Rarely used |
 
-**Production Rule**: Always use left join to prevent dropping valid streaming events.
 
-## Common Patterns
 
-### Pattern 1: Basic Device Enrichment
 
-Enrich IoT events with device metadata:
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 # Streaming IoT events
@@ -115,9 +115,9 @@ enriched.writeStream \
     .start("/delta/enriched_events")
 ```
 
-### Pattern 2: Multi-Table Enrichment
 
-Chain multiple dimension joins:
+
+
 
 ```python
 # Multiple dimension tables
@@ -143,9 +143,9 @@ enriched = (iot_stream
 # Each join refreshes independently each microbatch
 ```
 
-### Pattern 3: Broadcast Hash Join Optimization
 
-Optimize joins by ensuring broadcast:
+
+
 
 ```python
 from pyspark.sql.functions import broadcast
@@ -166,9 +166,9 @@ enriched = iot_stream.join(
 # Verify in Spark UI: Look for "BroadcastHashJoin" in query plan
 ```
 
-### Pattern 4: Audit Dimension Freshness
 
-Track how fresh dimension data is:
+
+
 
 ```python
 from pyspark.sql.functions import unix_timestamp, current_timestamp
@@ -190,9 +190,9 @@ enriched = (iot_stream
 # Use for data quality checks
 ```
 
-### Pattern 5: Time-Travel Dimension Lookup
 
-Join with dimension as-of event time:
+
+
 
 ```python
 from delta import DeltaTable
@@ -234,9 +234,9 @@ iot_stream.writeStream \
     .start()
 ```
 
-### Pattern 6: Backfill Missing Dimensions
 
-Daily job to fix null dimensions from left join:
+
+
 
 ```python
 # Daily batch job to backfill missing dimensions
@@ -257,9 +257,9 @@ spark.sql("""
 # Fixes events that arrived before dimension was available
 ```
 
-### Pattern 7: Dimension Change Detection
 
-Stream that reacts to dimension changes:
+
+
 
 ```python
 def update_reference_cache(batch_df, batch_id):
@@ -280,18 +280,18 @@ dim_changes = (spark
 )
 ```
 
-## Performance Optimization
 
-### Checklist
 
-- [ ] Dimension table < 100MB for broadcast (or increase threshold)
-- [ ] Select only needed columns before join
-- [ ] Filter dimension to active records only
-- [ ] Verify "BroadcastHashJoin" in query plan
-- [ ] Partition size 100-200MB in memory
-- [ ] Use same region for compute and storage
 
-### Configuration
+
+
+
+
+
+
+
+
+
 
 ```python
 # Increase broadcast threshold if dimension is larger
@@ -305,7 +305,7 @@ spark.conf.set("spark.databricks.delta.optimizeWrite.enabled", "true")
 spark.conf.set("spark.databricks.delta.autoCompact.enabled", "true")
 ```
 
-### Reduce Dimension Size
+
 
 ```python
 # Before join: Select only needed columns
@@ -323,9 +323,9 @@ active_dim = small_dim.filter(col("status") == "active")
 enriched = iot_stream.join(active_dim, "device_id", "left")
 ```
 
-## Monitoring
 
-### Key Metrics
+
+
 
 ```python
 # Null rate (left join quality)
@@ -355,7 +355,7 @@ spark.sql("""
 """)
 ```
 
-### Programmatic Monitoring
+
 
 ```python
 # Monitor stream health
@@ -370,27 +370,27 @@ for stream in spark.streams.active:
         print(f"Batch duration: {progress.get('durationMs', {}).get('triggerExecution', 0)} ms")
 ```
 
-### Spark UI Checks
 
-- **Streaming Tab**: Input rate vs processing rate (processing must exceed input)
-- **SQL Tab**: Look for "BroadcastHashJoin" (not "SortMergeJoin")
-- **Jobs Tab**: Check for shuffle operations (should be minimal)
-- **Stages Tab**: Verify partition sizes (100-200MB target)
 
-## Common Issues
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **Data loss** | Inner join dropping unmatched events | Switch to left join |
-| **Slow joins** | Shuffle join instead of broadcast | Reduce dimension size; force broadcast |
-| **Stale data** | Non-Delta format | Convert dimension table to Delta |
-| **Memory issues** | Large dimension table | Filter before join; increase broadcast threshold |
-| **Skewed joins** | Hot keys in dimension | Salt the join key or partition dimension table |
-| **High null rate** | Dimension updates lagging | Monitor dimension freshness; backfill job |
 
-## Production Best Practices
 
-### Always Use Left Join
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 # WRONG: Inner join loses data
@@ -403,7 +403,7 @@ enriched = iot_stream.join(device_dim, "device_id", "left")
 # Left join preserves events; backfill dimensions later
 ```
 
-### Handle Null Dimensions
+
 
 ```python
 # Add null handling in transformations
@@ -426,7 +426,7 @@ enriched = enriched.withColumn(
 )
 ```
 
-### Idempotent Writes
+
 
 ```python
 def idempotent_write(batch_df, batch_id):
@@ -446,24 +446,24 @@ enriched.writeStream \
     .start()
 ```
 
-## Production Checklist
 
-- [ ] Left join used (not inner join)
-- [ ] Dimension table is Delta format
-- [ ] Broadcast hash join verified in query plan
-- [ ] Dimension size optimized (< 100MB or threshold increased)
-- [ ] Null rate monitored and alerts configured
-- [ ] Dimension freshness tracked
-- [ ] Backfill job scheduled for missing dimensions
-- [ ] Checkpoint location is unique per query
-- [ ] Idempotent writes configured (txnVersion/txnAppId)
-- [ ] Performance metrics tracked (input rate, batch duration)
 
-## Expert Tips
 
-### Delta Version Checking
 
-Delta tables automatically refresh each microbatch by checking the latest version:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 # Each microbatch:
@@ -477,9 +477,9 @@ Delta tables automatically refresh each microbatch by checking the latest versio
 # Delta: Version checked each microbatch (semi-static)
 ```
 
-### Broadcast Join Verification
 
-Always verify broadcast joins in production:
+
+
 
 ```python
 # Check query plan
@@ -495,9 +495,9 @@ enriched.explain(extended=True)
 # 3. Force broadcast hint
 ```
 
-### Dimension Table Optimization
 
-Optimize dimension tables for streaming joins:
+
+
 
 ```python
 # 1. Use Z-order or liquid clustering on join key
@@ -511,9 +511,9 @@ spark.sql("""
 # 4. Partition by frequently filtered columns
 ```
 
-## Related Skills
 
-- `stream-stream-joins` - Join two streaming sources with state management
-- `kafka-to-delta` - Kafka ingestion patterns
-- `write-multiple-tables` - Fan-out patterns for multiple sinks
-- `checkpoint-best-practices` - Checkpoint configuration and management
+
+`stream-stream-joins`
+`kafka-to-delta`
+`write-multiple-tables`
+`checkpoint-best-practices`

@@ -6,31 +6,31 @@ sidebar:
   order: 0
 ---
 
-## Quick Reference
 
-| Feature | Key Syntax | Since | Reference |
-|---------|-----------|-------|-----------|
-| SQL Scripting | `BEGIN...END`, `DECLARE`, `IF/WHILE/FOR` | DBR 16.3+ | [sql-scripting.md](sql-scripting.md) |
-| Stored Procedures | `CREATE PROCEDURE`, `CALL` | DBR 17.0+ | [sql-scripting.md](sql-scripting.md) |
-| Recursive CTEs | `WITH RECURSIVE` | DBR 17.0+ | [sql-scripting.md](sql-scripting.md) |
-| Transactions | `BEGIN ATOMIC...END` | Preview | [sql-scripting.md](sql-scripting.md) |
-| Materialized Views | `CREATE MATERIALIZED VIEW` | Pro/Serverless | [materialized-views-pipes.md](materialized-views-pipes.md) |
-| Temp Tables | `CREATE TEMPORARY TABLE` | All | [materialized-views-pipes.md](materialized-views-pipes.md) |
-| Pipe Syntax | `\|>` operator | DBR 16.1+ | [materialized-views-pipes.md](materialized-views-pipes.md) |
-| Geospatial (H3) | `h3_longlatash3()`, `h3_polyfillash3()` | DBR 11.2+ | [geospatial-collations.md](geospatial-collations.md) |
-| Geospatial (ST) | `ST_Point()`, `ST_Contains()`, 80+ funcs | DBR 16.0+ | [geospatial-collations.md](geospatial-collations.md) |
-| Collations | `COLLATE`, `UTF8_LCASE`, locale-aware | DBR 16.1+ | [geospatial-collations.md](geospatial-collations.md) |
-| AI Functions | `ai_query()`, `ai_classify()`, 11+ funcs | DBR 15.1+ | [ai-functions.md](ai-functions.md) |
-| http_request | `http_request(conn, ...)` | Pro/Serverless | [ai-functions.md](ai-functions.md) |
-| remote_query | `SELECT * FROM remote_query(...)` | Pro/Serverless | [ai-functions.md](ai-functions.md) |
-| read_files | `SELECT * FROM read_files(...)` | All | [ai-functions.md](ai-functions.md) |
-| Data Modeling | Star schema, Liquid Clustering | All | [best-practices.md](best-practices.md) |
 
----
 
-## Common Patterns
 
-### SQL Scripting - Procedural ETL
+`BEGIN...END``DECLARE``IF/WHILE/FOR`
+`CREATE PROCEDURE``CALL`
+`WITH RECURSIVE`
+`BEGIN ATOMIC...END`
+`CREATE MATERIALIZED VIEW`
+`CREATE TEMPORARY TABLE`
+`\|>`
+`h3_longlatash3()``h3_polyfillash3()`
+`ST_Point()``ST_Contains()`
+`COLLATE``UTF8_LCASE`
+`ai_query()``ai_classify()`
+`http_request(conn, ...)`
+`SELECT * FROM remote_query(...)`
+`SELECT * FROM read_files(...)`
+
+
+
+
+
+
+
 
 ```sql
 BEGIN
@@ -54,7 +54,7 @@ BEGIN
 END
 ```
 
-### Stored Procedure with Error Handling
+
 
 ```sql
 CREATE OR REPLACE PROCEDURE catalog.schema.upsert_customers(
@@ -84,7 +84,7 @@ END;
 CALL catalog.schema.upsert_customers('catalog.schema.staging_customers', ?);
 ```
 
-### Materialized View with Scheduled Refresh
+
 
 ```sql
 CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.daily_revenue
@@ -101,7 +101,7 @@ JOIN catalog.schema.dim_store USING (store_id)
 GROUP BY order_date, region;
 ```
 
-### Pipe Syntax - Readable Transformations
+
 
 ```sql
 -- Traditional SQL rewritten with pipe syntax
@@ -113,7 +113,7 @@ FROM catalog.schema.fact_orders
   |> LIMIT 20;
 ```
 
-### AI Functions - Enrich Data with LLMs
+
 
 ```sql
 -- Classify support tickets
@@ -141,7 +141,7 @@ FROM catalog.schema.customer_feedback
 LIMIT 50;
 ```
 
-### Geospatial - Proximity Search with H3
+
 
 ```sql
 -- Find stores within 5km of each customer using H3 indexing
@@ -168,7 +168,7 @@ WHERE ST_Distance(
 ) < 5000;
 ```
 
-### Collation - Case-Insensitive Search
+
 
 ```sql
 -- Create table with case-insensitive collation
@@ -184,7 +184,7 @@ SELECT * FROM catalog.schema.products
 WHERE name = 'MacBook Pro';  -- matches 'macbook pro', 'MACBOOK PRO', etc.
 ```
 
-### http_request - Call External APIs
+
 
 ```sql
 -- Set up connection first (one-time)
@@ -205,7 +205,7 @@ FROM catalog.schema.orders
 WHERE needs_validation = true;
 ```
 
-### read_files - Ingest Raw Files
+
 
 ```sql
 -- Read JSON files from a Volume with schema hints
@@ -230,7 +230,7 @@ FROM read_files(
 );
 ```
 
-### Recursive CTE - Hierarchy Traversal
+
 
 ```sql
 WITH RECURSIVE org_chart AS (
@@ -250,7 +250,7 @@ WITH RECURSIVE org_chart AS (
 SELECT * FROM org_chart ORDER BY depth, name;
 ```
 
-### remote_query - Federated Queries
+
 
 ```sql
 -- Query PostgreSQL via Lakehouse Federation
@@ -262,29 +262,29 @@ FROM remote_query(
 );
 ```
 
----
 
-## Reference Files
 
-Load these for detailed syntax, full parameter lists, and advanced patterns:
 
-| File | Contents | When to Read |
-|------|----------|--------------|
-| [sql-scripting.md](sql-scripting.md) | SQL Scripting, Stored Procedures, Recursive CTEs, Transactions | User needs procedural SQL, error handling, loops, dynamic SQL |
-| [materialized-views-pipes.md](materialized-views-pipes.md) | Materialized Views, Temp Tables/Views, Pipe Syntax | User needs MVs, refresh scheduling, temp objects, pipe operator |
-| [geospatial-collations.md](geospatial-collations.md) | 39 H3 functions, 80+ ST functions, Collation types and hierarchy | User needs spatial analysis, H3 indexing, case/accent handling |
-| [ai-functions.md](ai-functions.md) | 13 AI functions, http_request, remote_query, read_files (all options) | User needs AI enrichment, API calls, federation, file ingestion |
-| [best-practices.md](best-practices.md) | Data modeling, performance, Liquid Clustering, anti-patterns | User needs architecture guidance, optimization, or modeling advice |
 
----
 
-## Key Guidelines
 
-- **Always use Serverless SQL warehouses** for AI functions, MVs, and http_request
-- **Use `LIMIT` during development** with AI functions to control costs
-- **Prefer Liquid Clustering over partitioning** for new tables (1-4 keys max)
-- **Use `CLUSTER BY AUTO`** when unsure about clustering keys
-- **Star schema in Gold layer** for BI; OBT acceptable in Silver
-- **Define PK/FK constraints** on dimensional models for query optimization
-- **Use `COLLATE UTF8_LCASE`** for user-facing string columns that need case-insensitive search
-- **Use MCP tools** (`execute_sql`, `execute_sql_multi`) to test and validate all SQL before deploying
+
+
+
+
+
+
+
+
+
+
+
+
+
+`LIMIT`
+
+`CLUSTER BY AUTO`
+
+
+`COLLATE UTF8_LCASE`
+`execute_sql``execute_sql_multi`

@@ -5,15 +5,15 @@ sidebar:
   order: 99
 ---
 
-## Overview
 
-This document covers different connection patterns for Lakebase Provisioned, from simple scripts to production applications with token refresh.
 
-## Connection Methods
 
-### 1. Direct psycopg Connection (Simple Scripts)
 
-For one-off scripts or notebooks:
+
+
+
+
+
 
 ```python
 import psycopg
@@ -51,9 +51,9 @@ with get_connection("my-instance") as conn:
         print(cur.fetchone())
 ```
 
-### 2. Connection Pool with Token Refresh (Production)
 
-For long-running applications that need connection pooling:
+
+
 
 ```python
 import asyncio
@@ -190,9 +190,9 @@ async def get_data():
         return result.fetchall()
 ```
 
-### 3. Static URL Mode (Local Development)
 
-For local development, use a static connection URL:
+
+
 
 ```python
 import os
@@ -216,9 +216,9 @@ engine = create_async_engine(
 )
 ```
 
-### 4. DNS Resolution Workaround (macOS)
 
-Python's `socket.getaddrinfo()` fails with long hostnames on macOS. Use `dig` as fallback:
+
+`socket.getaddrinfo()``dig`
 
 ```python
 import subprocess
@@ -261,24 +261,24 @@ conn_params = {
 conn = psycopg.connect(**conn_params)
 ```
 
-## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `LAKEBASE_PG_URL` | Static PostgreSQL URL (local dev) | Either this OR instance/database |
-| `LAKEBASE_INSTANCE_NAME` | Lakebase instance name | With DATABASE_NAME |
-| `LAKEBASE_DATABASE_NAME` | Database name | With INSTANCE_NAME |
-| `LAKEBASE_USERNAME` | Override username | No |
-| `LAKEBASE_HOST` | Override host | No |
-| `DB_POOL_SIZE` | Connection pool size | No (default: 5) |
-| `DB_MAX_OVERFLOW` | Max pool overflow | No (default: 10) |
-| `DB_POOL_RECYCLE_INTERVAL` | Pool recycle seconds | No (default: 3600) |
 
-## Best Practices
 
-1. **Always use SSL**: Set `sslmode=require` in all connections
-2. **Implement token refresh**: Tokens expire after 1 hour; refresh at 50 minutes
-3. **Use connection pooling**: Avoid creating new connections per request
-4. **Handle DNS issues on macOS**: Use the `hostaddr` workaround if needed
-5. **Close connections properly**: Use context managers or explicit cleanup
-6. **Log token refresh events**: Helps debug authentication issues
+
+`LAKEBASE_PG_URL`
+`LAKEBASE_INSTANCE_NAME`
+`LAKEBASE_DATABASE_NAME`
+`LAKEBASE_USERNAME`
+`LAKEBASE_HOST`
+`DB_POOL_SIZE`
+`DB_MAX_OVERFLOW`
+`DB_POOL_RECYCLE_INTERVAL`
+
+
+
+`sslmode=require`
+
+
+`hostaddr`
+
+

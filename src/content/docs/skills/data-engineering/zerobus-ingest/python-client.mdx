@@ -5,11 +5,11 @@ sidebar:
   order: 2
 ---
 
-Python SDK patterns for Zerobus Ingest: synchronous and asynchronous APIs, JSON and Protobuf flows, and a reusable client class.
 
----
 
-## SDK Imports
+
+
+
 
 ```python
 # Synchronous API
@@ -29,11 +29,11 @@ from zerobus.sdk.shared import (
 )
 ```
 
----
 
-<!-- ## JSON Ingestion (Quick Start)
 
-JSON is the simplest path. Pass Python dicts whose keys match the target table column names.
+
+
+
 
 ```python
 import os
@@ -103,11 +103,11 @@ finally:
     stream.close()
 ```
 
----
 
-## ACK Callback (Asynchronous Acknowledgment)
 
-Instead of blocking on each ACK, register an `AckCallback` subclass for background durability confirmation:
+
+
+`AckCallback`
 
 ```python
 from zerobus.sdk.shared import AckCallback, StreamConfigurationOptions, RecordType
@@ -136,11 +136,11 @@ finally:
     stream.close()
 ```
 
----
 
-## Reusable Client Class
 
-A production-ready wrapper with retry logic, reconnection, and both JSON and Protobuf support:
+
+
+
 
 ```python
 import os
@@ -246,7 +246,7 @@ class ZerobusClient:
         return False
 ```
 
-### Using the Client Class
+
 
 ```python
 # JSON flow with context manager
@@ -278,11 +278,11 @@ with ZerobusClient(
         client.ingest(record)
 ```
 
----
 
-## Async Python API
 
-The SDK provides an equivalent async API for use with `asyncio`:
+
+
+`asyncio`
 
 ```python
 import asyncio
@@ -309,13 +309,13 @@ async def ingest_async():
 asyncio.run(ingest_async())
 ```
 
-**Tip:** The sync and async APIs have equivalent capabilities. Choose based on your application architecture (FastAPI/aiohttp -> async; scripts/batch jobs -> sync).
 
----
 
-## Batch Pattern
 
-For higher throughput, use `ingest_record_nowait` (fire-and-forget) or batch methods, and flush at the end:
+
+
+
+`ingest_record_nowait`
 
 ```python
 with ZerobusClient(
@@ -332,7 +332,7 @@ with ZerobusClient(
     # flush() and close() called automatically by context manager
 ```
 
-For true batch ingestion, use the batch variants:
+
 
 ```python
 records = [
@@ -348,16 +348,16 @@ offset = stream.ingest_records_offset(records)
 stream.wait_for_offset(offset)
 ```
 
----
 
-## Ingestion Method Comparison
 
-| Method | Returns | Blocks? | Best For |
-|--------|---------|---------|----------|
-| `ingest_record_offset(record)` | offset | No (enqueues) | Single record with durability tracking |
-| `ingest_record_nowait(record)` | None | No | Max single-record throughput |
-| `ingest_records_offset(records)` | last offset | No (enqueues) | Batch with durability tracking |
-| `ingest_records_nowait(records)` | None | No | Max batch throughput |
-| `wait_for_offset(offset)` | None | Yes (until ACK) | Durability confirmation |
-| `flush()` | None | Yes (until sent) | Ensure all buffered records are sent |
-| `ingest_record(record)` | RecordAcknowledgment | No | Primary method in SDK v1.1.0+; pass `json.dumps(record)` for JSON |
+
+
+
+
+`ingest_record_offset(record)`
+`ingest_record_nowait(record)`
+`ingest_records_offset(records)`
+`ingest_records_nowait(records)`
+`wait_for_offset(offset)`
+`flush()`
+`ingest_record(record)``json.dumps(record)`

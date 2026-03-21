@@ -5,9 +5,9 @@ sidebar:
   order: 99
 ---
 
-Select and tune triggers to balance latency requirements with cost. Optimize streaming job costs through trigger tuning, cluster right-sizing, multi-stream clusters, storage optimization, and scheduled execution patterns.
 
-## Quick Start
+
+
 
 ```python
 # Cost-optimized: Scheduled streaming instead of continuous
@@ -21,11 +21,11 @@ df.writeStream \
 # Cost: ~$20/day for 100 tables on 8-core cluster
 ```
 
-## Trigger Types
 
-### ProcessingTime Trigger
 
-Process at fixed intervals:
+
+
+
 
 ```python
 # Process every 30 seconds
@@ -38,9 +38,9 @@ Process at fixed intervals:
 # Cost: Continuous cluster running
 ```
 
-### AvailableNow Trigger
 
-Process all available data, then stop:
+
+
 
 ```python
 # Process all available data, then stop
@@ -54,9 +54,9 @@ Process all available data, then stop:
 # Cost: Cluster runs only during processing
 ```
 
-### Real-Time Mode (RTM)
 
-Sub-second latency with Photon:
+
+
 
 ```python
 # Real-Time Mode (Databricks 13.3+)
@@ -70,18 +70,18 @@ Sub-second latency with Photon:
 # Cost: Continuous cluster with Photon
 ```
 
-## Trigger Selection Guide
 
-| Latency Requirement | Trigger | Cost | Use Case |
-|---------------------|---------|------|----------|
-| < 800ms | RTM | $$$ | Real-time analytics, alerts |
-| 1-30 seconds | processingTime | $$ | Near real-time dashboards |
-| 15-60 minutes | availableNow (scheduled) | $ | Batch-style SLA |
-| > 1 hour | availableNow (scheduled) | $ | ETL pipelines |
 
-## Trigger Interval Calculation
 
-### Rule of Thumb: SLA / 3
+
+
+
+
+
+
+
+
+
 
 ```python
 # Calculate trigger interval from SLA
@@ -96,7 +96,7 @@ trigger_interval_minutes = business_sla_minutes / 3  # 20 minutes
 # - Safety margin
 ```
 
-### Example Calculations
+
 
 ```python
 # Example 1: 1 hour SLA
@@ -113,11 +113,11 @@ trigger = sla / 3  # 5 minutes
 .trigger(realTime=True)  # < 800ms
 ```
 
-## Cost Optimization Strategies
 
-### Strategy 1: Trigger Interval Tuning
 
-Balance latency and cost:
+
+
+
 
 ```python
 # Shorter interval = higher cost
@@ -133,15 +133,15 @@ Balance latency and cost:
 # Example: 1 hour SLA → 20 minute trigger
 ```
 
-### Strategy 2: Scheduled vs Continuous
 
-Choose execution pattern based on SLA:
 
-| Pattern | Cost | Latency | Use Case |
-|---------|------|---------|----------|
-| Continuous | $$$ | < 1 minute | Real-time requirements |
-| 15-min schedule | $$ | 15-30 minutes | Near real-time |
-| 4-hour schedule | $ | 4-5 hours | Batch-style SLA |
+
+
+
+
+
+
+
 
 ```python
 # Continuous (expensive)
@@ -154,9 +154,9 @@ Choose execution pattern based on SLA:
 .trigger(availableNow=True)  # Schedule via Jobs: Every 4 hours
 ```
 
-### Strategy 3: Cluster Right-Sizing
 
-Right-size clusters based on workload:
+
+
 
 ```python
 # Don't oversize:
@@ -171,9 +171,9 @@ Right-size clusters based on workload:
 # 4. Right-size based on steady state
 ```
 
-### Strategy 4: Multi-Stream Clusters
 
-Run multiple streams on one cluster:
+
+
 
 ```python
 # Run multiple streams on one cluster
@@ -190,9 +190,9 @@ stream3.writeStream.option("checkpointLocation", "/checkpoints/stream3").start()
 # Scale cluster if aggregate utilization > 80%
 ```
 
-### Strategy 5: Storage Optimization
 
-Reduce storage costs:
+
+
 
 ```sql
 -- VACUUM old files
@@ -208,7 +208,7 @@ ALTER TABLE table SET TBLPROPERTIES (
 -- Use data retention policies
 ```
 
-## Cost Formula
+
 
 ```
 Daily Cost = 
@@ -223,11 +223,11 @@ Optimization levers:
 - Reduce network egress (co-locate compute and storage)
 ```
 
-## Common Patterns
 
-### Pattern 1: Cost-Optimized Scheduled Streaming
 
-Convert continuous to scheduled:
+
+
+
 
 ```python
 # Before: Continuous (expensive)
@@ -246,9 +246,9 @@ df.writeStream \
 # Same code, different schedule
 ```
 
-### Pattern 2: Multi-Stream Cluster
 
-Optimize cluster utilization:
+
+
 
 ```python
 # Run multiple streams on one cluster
@@ -274,9 +274,9 @@ def start_all_streams():
 # Scale cluster if needed
 ```
 
-### Pattern 3: RTM for Sub-Second Latency
 
-Use RTM for real-time requirements:
+
+
 
 ```python
 # Real-Time Mode for sub-second latency
@@ -295,9 +295,9 @@ spark.conf.set("spark.sql.streaming.stateStore.providerClass",
 # Cost: Continuous cluster with Photon
 ```
 
-## Real-Time Mode (RTM) Configuration
 
-### Enable RTM
+
+
 
 ```python
 # Enable Real-Time Mode
@@ -314,7 +314,7 @@ spark.conf.set("spark.sql.streaming.stateStore.providerClass",
 # - Driver: Minimum 4 cores
 ```
 
-### RTM Use Cases
+
 
 ```python
 # Good for RTM:
@@ -329,9 +329,9 @@ spark.conf.set("spark.sql.streaming.stateStore.providerClass",
 # - Large batch sizes
 ```
 
-## Performance Considerations
 
-### Batch Duration vs Trigger Interval
+
+
 
 ```python
 # Batch duration should be < trigger interval
@@ -348,7 +348,7 @@ batch_duration = 10  # seconds
 # - Alert if batch duration >= trigger interval
 ```
 
-### Trigger Interval Tuning
+
 
 ```python
 # Start conservative, optimize based on monitoring
@@ -364,9 +364,9 @@ trigger_interval = business_sla / 3
 # Decrease trigger interval to reduce latency
 ```
 
-## Cost Monitoring
 
-### Track Per-Stream Costs
+
+
 
 ```python
 # Tag jobs with stream name
@@ -381,7 +381,7 @@ job_tags = {
 # Track cost per stream over time
 ```
 
-### Monitor Cluster Utilization
+
 
 ```python
 # Check CPU utilization
@@ -394,9 +394,9 @@ job_tags = {
 # Adjust cluster size accordingly
 ```
 
-## Latency vs Cost Trade-offs
 
-### Continuous Processing
+
+
 
 ```python
 # High cost, low latency
@@ -407,7 +407,7 @@ job_tags = {
 # Use when: Real-time requirements
 ```
 
-### Scheduled Processing
+
 
 ```python
 # Lower cost, higher latency
@@ -418,7 +418,7 @@ job_tags = {
 # Use when: Batch-style SLA acceptable
 ```
 
-### Real-Time Mode
+
 
 ```python
 # Highest cost, lowest latency
@@ -429,36 +429,36 @@ job_tags = {
 # Use when: Sub-second latency required
 ```
 
-## Common Issues
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **High latency** | Trigger interval too long | Decrease trigger interval or use RTM |
-| **High cost** | Continuous processing | Use scheduled (availableNow) |
-| **Batch duration > trigger** | Processing too slow | Optimize processing or increase trigger |
-| **RTM not working** | Photon not enabled | Enable Photon and configure cluster |
 
-## Quick Wins
 
-1. **Change from continuous to 15-minute schedule** - Significant cost reduction
-2. **Run multiple streams per cluster** - Better cluster utilization
-3. **Enable auto-optimize** - Reduce storage costs
-4. **Use Spot instances** - For non-critical streams (with caution)
-5. **Archive old data** - Move to cheaper storage tiers
 
-## Trade-offs
 
-| Cost Reduction | Impact | Mitigation |
-|----------------|--------|------------|
-| Longer trigger | Higher latency | Acceptable if SLA allows |
-| Smaller cluster | May fall behind | Monitor lag; scale if needed |
-| Aggressive VACUUM | Less time travel | Balance retention vs cost |
-| Spot instances | Possible interruptions | Use for non-critical streams |
-| Scheduled vs continuous | Higher latency | Match to business SLA |
 
-## Production Best Practices
 
-### Match Trigger to SLA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 # Calculate trigger from business SLA
@@ -470,7 +470,7 @@ trigger_interval = calculate_trigger_interval(business_sla_minutes)
 .trigger(processingTime=f"{trigger_interval} seconds")
 ```
 
-### Cluster Configuration
+
 
 ```python
 # Fixed-size cluster (no autoscaling for streaming)
@@ -482,7 +482,7 @@ cluster_config = {
 }
 ```
 
-### Storage Management
+
 
 ```sql
 -- Enable auto-optimize
@@ -498,20 +498,20 @@ VACUUM table RETAIN 7 DAYS;  -- Balance retention vs cost
 -- Move to cheaper storage tier
 ```
 
-## Production Checklist
 
-- [ ] Trigger type selected based on latency requirements
-- [ ] Trigger interval calculated from SLA (SLA / 3)
-- [ ] Batch duration monitored (< trigger interval)
-- [ ] Cluster right-sized (60-80% utilization)
-- [ ] Multiple streams per cluster (if applicable)
-- [ ] Scheduled execution (if SLA allows)
-- [ ] RTM configured if sub-second latency required
-- [ ] Auto-optimize enabled
-- [ ] Storage costs monitored
-- [ ] Cost per stream tracked
 
-## Related Skills
 
-- `kafka-streaming` - RTM configuration for Kafka pipelines
-- `checkpoint-best-practices` - Checkpoint management
+
+
+
+
+
+
+
+
+
+
+
+
+`kafka-streaming`
+`checkpoint-best-practices`

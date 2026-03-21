@@ -5,17 +5,17 @@ sidebar:
   order: 4
 ---
 
-Three deployment options: Databricks CLI (simplest), Asset Bundles (multi-environment), or MCP tools (programmatic).
 
-**Cookbook deployment guide**: https://apps-cookbook.dev/docs/deploy
 
----
 
-## Option 1: Databricks CLI
 
-**Best for**: quick deployments, single environment.
 
-### Step 1: Create app.yaml
+
+
+
+
+
+
 
 ```yaml
 command:
@@ -29,18 +29,18 @@ env:
     value: "false"
 ```
 
-### app.yaml Commands Per Framework
 
-| Framework | Command |
-|-----------|---------|
-| Dash | `["python", "app.py"]` |
-| Streamlit | `["streamlit", "run", "app.py"]` |
-| Gradio | `["python", "app.py"]` |
-| Flask | `["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]` |
-| FastAPI | `["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]` |
-| Reflex | `["reflex", "run", "--env", "prod"]` |
 
-### Step 2: Create and Deploy
+
+
+`["python", "app.py"]`
+`["streamlit", "run", "app.py"]`
+`["python", "app.py"]`
+`["gunicorn", "app:app", "-w", "4", "-b", "0.0.0.0:8000"]`
+`["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]`
+`["reflex", "run", "--env", "prod"]`
+
+
 
 ```bash
 # Create the app
@@ -60,7 +60,7 @@ databricks apps deploy <app-name> \
 databricks apps get <app-name>
 ```
 
-### Redeployment
+
 
 ```bash
 databricks workspace delete /Workspace/Users/<user>/apps/<app-name> --recursive
@@ -69,15 +69,15 @@ databricks apps deploy <app-name> \
   --source-code-path /Workspace/Users/<user>/apps/<app-name>
 ```
 
----
 
-## Option 2: Databricks Asset Bundles (DABs)
 
-**Best for**: multi-environment deployments (dev/staging/prod), version-controlled infrastructure.
 
-**Recommended workflow**: deploy via CLI first to validate, then generate bundle config.
 
-### Generate Bundle from Existing App
+
+
+
+
+
 
 ```bash
 databricks bundle generate app \
@@ -85,11 +85,11 @@ databricks bundle generate app \
   --key <resource_key>
 ```
 
-This creates:
-- `resources/<key>.app.yml` — app resource definition
-- `src/app/` — app source files including `app.yaml`
 
-### Deploy with Bundles
+`resources/<key>.app.yml`
+`src/app/``app.yaml`
+
+
 
 ```bash
 # Validate
@@ -106,42 +106,42 @@ databricks bundle deploy -t prod
 databricks bundle run <resource_key> -t prod
 ```
 
-**Key difference from other resources**: environment variables go in `src/app/app.yaml`, not `databricks.yml`.
+`src/app/app.yaml``databricks.yml`
 
-For complete DABs guidance, use the **databricks-bundles** skill.
 
----
 
-## Option 3: MCP Tools
 
-For programmatic app lifecycle management, see [6-mcp-approach.md](6-mcp-approach.md).
 
----
 
-## Post-Deployment
 
-### Check Logs
+
+
+
+
+
+
+
 
 ```bash
 databricks apps logs <app-name>
 ```
 
-**Key patterns in logs**:
-- `[SYSTEM]` — deployment status, file updates, dependency installation
-- `[APP]` — application output, framework messages
-- `Deployment successful` — app deployed correctly
-- `App started successfully` — app is running
-- `Error:` — check stack traces
 
-### Verify
+`[SYSTEM]`
+`[APP]`
+`Deployment successful`
+`App started successfully`
+`Error:`
 
-1. Access app URL (from `databricks apps get <app-name>`)
-2. Check all pages load correctly
-3. Verify data connectivity (look for backend initialization messages in logs)
-4. Test user authorization flow if enabled
 
-### Configure Permissions
 
-- Set `CAN USE` for approved users/groups
-- Set `CAN MANAGE` only for trusted developers
-- Verify service principal has required resource permissions
+`databricks apps get <app-name>`
+
+
+
+
+
+
+`CAN USE`
+`CAN MANAGE`
+

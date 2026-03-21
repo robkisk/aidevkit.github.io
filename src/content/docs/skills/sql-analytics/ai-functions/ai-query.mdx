@@ -5,19 +5,19 @@ sidebar:
   order: 2
 ---
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_query
 
-> Use `ai_query` only when no task-specific function fits. See the function selection table in [SKILL.md](SKILL.md).
 
-## When to Use `ai_query`
+`ai_query`
 
-- Output schema has **nested arrays or deeply nested STRUCTs** (e.g., `itens: [{codigo, descricao, qtde}]`)
-- Calling a **custom Model Serving endpoint** (your own fine-tuned model)
-- **Multimodal input** — passing binary image files via `files =>`
-- **Cross-document reasoning** — prompt includes content from multiple sources
-- Need **sampling parameters** (`temperature`, `max_tokens`) control
+`ai_query`
 
-## Syntax
+`itens: [{codigo, descricao, qtde}]`
+
+`files =>`
+
+`temperature``max_tokens`
+
+
 
 ```sql
 ai_query(
@@ -31,31 +31,31 @@ ai_query(
 )
 ```
 
-## Parameters
 
-| Parameter | Type | Runtime | Description |
-|---|---|---|---|
-| `endpoint` | STRING literal | — | Foundation Model name or custom endpoint name. Never guess — use exact names from the [model serving docs](https://docs.databricks.com/aws/en/machine-learning/foundation-models/supported-models.html). |
-| `request` | STRING or STRUCT | — | Prompt string for chat models; STRUCT for custom ML endpoints |
-| `returnType` | DDL schema (optional) | 15.2+ | Structures the parsed response like `from_json` |
-| `failOnError` | BOOLEAN (optional, default `true`) | 15.3+ | If `false`, returns STRUCT `{response, error}` instead of raising on failure |
-| `modelParameters` | STRUCT (optional) | 15.3+ | Sampling params: `temperature`, `max_tokens`, `top_p`, etc. |
-| `responseFormat` | JSON string (optional) | 15.4+ | Forces structured JSON output: `'{"type":"json_object"}'` |
-| `files` | binary column (optional) | — | Pass binary images directly (JPEG/PNG) — no upload step needed |
 
-## Foundation Model Names (Do Not Guess)
 
-| Use case | Endpoint name |
-|---|---|
-| General reasoning / extraction | `databricks-claude-sonnet-4` |
-| Fast / cheap tasks | `databricks-meta-llama-3-1-8b-instruct` |
-| Large context / complex | `databricks-meta-llama-3-3-70b-instruct` |
-| Multimodal (vision + text) | `databricks-llama-4-maverick` |
-| Embeddings | `databricks-gte-large-en` |
 
-## Patterns
+`endpoint`
+`request`
+`returnType``from_json`
+`failOnError``true``false``{response, error}`
+`modelParameters``temperature``max_tokens``top_p`
+`responseFormat``'{"type":"json_object"}'`
+`files`
 
-### Basic — single prompt
+
+
+
+
+`databricks-claude-sonnet-4`
+`databricks-meta-llama-3-1-8b-instruct`
+`databricks-meta-llama-3-3-70b-instruct`
+`databricks-llama-4-maverick`
+`databricks-gte-large-en`
+
+
+
+
 
 ```sql
 SELECT ai_query(
@@ -64,7 +64,7 @@ SELECT ai_query(
 ) AS response;
 ```
 
-### Applied to a table column
+
 
 ```sql
 SELECT ticket_id,
@@ -75,9 +75,9 @@ SELECT ticket_id,
 FROM support_tickets;
 ```
 
-### Structured JSON output (`responseFormat`)
+`responseFormat`
 
-Preferred over `returnType` for chat models (requires Runtime 15.4+):
+`returnType`
 
 ```sql
 SELECT ai_query(
@@ -90,7 +90,7 @@ SELECT ai_query(
 FROM parsed_documents;
 ```
 
-Then parse with `from_json`:
+`from_json`
 
 ```python
 from pyspark.sql.functions import from_json, col
@@ -107,7 +107,7 @@ df = df.withColumn(
 df.select("invoice.numero", "invoice.total", "invoice.itens").display()
 ```
 
-### With `failOnError` (always use in batch pipelines)
+`failOnError`
 
 ```sql
 SELECT
@@ -126,7 +126,7 @@ FROM (
 -- Route errors to a separate table downstream
 ```
 
-### With `modelParameters` (control sampling)
+`modelParameters`
 
 ```sql
 SELECT ai_query(
@@ -138,9 +138,9 @@ SELECT ai_query(
 FROM documents;
 ```
 
-### Multimodal — image files (`files =>`)
+`files =>`
 
-No file upload step needed. Pass the binary column directly:
+
 
 ```sql
 SELECT
@@ -169,7 +169,7 @@ df = (
 )
 ```
 
-### As a reusable SQL UDF
+
 
 ```sql
 CREATE FUNCTION catalog.schema.extract_invoice(text STRING)
@@ -183,7 +183,7 @@ RETURN ai_query(
 SELECT extract_invoice(document_text) FROM raw_documents;
 ```
 
-### PySpark with `expr`
+`expr`
 
 ```python
 from pyspark.sql.functions import expr
@@ -199,9 +199,9 @@ df = df.withColumn("result", expr("""
 """))
 ```
 
-## Error Handling Pattern for Batch Pipelines
 
-Always use `failOnError => false` in batch jobs. Write errors to a sidecar table:
+
+`failOnError => false`
 
 ```python
 import dlt

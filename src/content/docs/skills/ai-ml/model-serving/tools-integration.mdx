@@ -5,13 +5,13 @@ sidebar:
   order: 4
 ---
 
-Add Unity Catalog Functions and Vector Search to your agents.
 
-## Unity Catalog Functions (UCFunctionToolkit)
 
-UC Functions are SQL/Python UDFs registered in Unity Catalog that agents can call as tools.
 
-### Setup
+
+
+
+
 
 ```python
 from databricks_langchain import UCFunctionToolkit
@@ -30,7 +30,7 @@ tools = []
 tools.extend(uc_toolkit.tools)
 ```
 
-### Wildcard Selection
+
 
 ```python
 # All functions in a schema
@@ -39,13 +39,13 @@ uc_toolkit = UCFunctionToolkit(
 )
 ```
 
-### Built-in UC Tools
 
-| Function | Purpose |
-|----------|---------|
-| `system.ai.python_exec` | Execute Python code |
 
-### Creating a UC Function
+
+
+`system.ai.python_exec`
+
+
 
 ```sql
 -- In a notebook or SQL editor
@@ -59,9 +59,9 @@ RETURN
   WHERE id = customer_id;
 ```
 
-### Register Resources for Auth Passthrough
 
-When logging the model, include UC functions as resources:
+
+
 
 ```python
 from mlflow.models.resources import DatabricksFunction
@@ -72,11 +72,11 @@ for tool in tools:
         resources.append(DatabricksFunction(function_name=tool.uc_function_name))
 ```
 
-## Vector Search (VectorSearchRetrieverTool)
 
-Add RAG capabilities with Databricks Vector Search indexes.
 
-### Setup
+
+
+
 
 ```python
 from databricks_langchain import VectorSearchRetrieverTool
@@ -92,7 +92,7 @@ vs_tool = VectorSearchRetrieverTool(
 tools = [vs_tool]
 ```
 
-### With Filters
+
 
 ```python
 vs_tool = VectorSearchRetrieverTool(
@@ -103,9 +103,9 @@ vs_tool = VectorSearchRetrieverTool(
 )
 ```
 
-### Register Resources
 
-Vector Search tools provide their resources automatically:
+
+
 
 ```python
 from mlflow.models.resources import DatabricksServingEndpoint
@@ -117,9 +117,9 @@ for tool in tools:
         resources.extend(tool.resources)  # Includes VS index and embedding endpoint
 ```
 
-## Custom Tools with @tool Decorator
 
-Create custom tools for your agent:
+
+
 
 ```python
 from langchain_core.tools import tool
@@ -159,9 +159,9 @@ def calculate(expression: str) -> str:
 tools = [get_current_time, calculate]
 ```
 
-### Tools with Config Access
 
-Access runtime config (user_id, etc.) in tools:
+
+
 
 ```python
 @tool
@@ -176,7 +176,7 @@ def get_user_preferences(config: RunnableConfig) -> str:
     return f"Preferences for {user_id}: ..."
 ```
 
-## Combining All Tool Types
+
 
 ```python
 from databricks_langchain import ChatDatabricks, UCFunctionToolkit, VectorSearchRetrieverTool
@@ -208,9 +208,9 @@ tools.append(my_custom_tool)
 llm_with_tools = llm.bind_tools(tools)
 ```
 
-## Resources for Model Logging
 
-Collect all resources for auto authentication:
+
+
 
 ```python
 from mlflow.models.resources import (
@@ -240,10 +240,10 @@ mlflow.pyfunc.log_model(
 )
 ```
 
-## Best Practices
 
-1. **Limit tool count** - Agents work best with 5-10 focused tools
-2. **Clear descriptions** - Tool docstrings are shown to the LLM
-3. **Type hints** - Always include type hints for parameters
-4. **Error handling** - Return error messages, don't raise exceptions
-5. **Test tools independently** - Verify each tool works before adding to agent
+
+
+
+
+
+

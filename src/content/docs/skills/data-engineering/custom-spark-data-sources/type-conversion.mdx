@@ -5,11 +5,11 @@ sidebar:
   order: 99
 ---
 
-Bidirectional mapping between Spark types and external system types.
 
-## Spark to External System
 
-Convert Spark/Python values to external system types:
+
+
+
 
 ```python
 def convert_spark_to_external(value, external_type):
@@ -79,9 +79,9 @@ def convert_spark_to_external(value, external_type):
     return value
 ```
 
-## External System to Spark
 
-Convert external values to Spark types:
+
+
 
 ```python
 def convert_external_to_spark(value, spark_type):
@@ -142,9 +142,9 @@ def convert_external_to_spark(value, spark_type):
         )
 ```
 
-## Cassandra-Specific Types
 
-Handle Cassandra complex types:
+
+
 
 ```python
 def convert_cassandra_to_spark(value):
@@ -193,9 +193,9 @@ def convert_cassandra_to_spark(value):
     return value
 ```
 
-## Schema Inference
 
-Infer Spark types from Python values:
+
+
 
 ```python
 def infer_spark_type(value):
@@ -229,9 +229,9 @@ def infer_spark_type(value):
     return StringType()
 ```
 
-## External Type to Spark Type Mapping
 
-Map external system types to Spark types:
+
+
 
 ```python
 def map_external_type_to_spark(external_type):
@@ -277,9 +277,9 @@ def map_external_type_to_spark(external_type):
     return StringType()
 ```
 
-## JSON Encoding
 
-Handle datetime serialization for JSON APIs:
+
+
 
 ```python
 import json
@@ -306,9 +306,9 @@ def send_as_json(data):
     requests.post(url, data=payload, headers={"Content-Type": "application/json"})
 ```
 
-## Complete Row Conversion
 
-Convert entire rows with schema:
+
+
 
 ```python
 def convert_row_to_external(row, column_types):
@@ -343,9 +343,9 @@ def convert_external_to_row(data, schema):
     return Row(**row_dict)
 ```
 
-## Validation
 
-Validate type conversions:
+
+
 
 ```python
 def validate_conversion(value, expected_type):

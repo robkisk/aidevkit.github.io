@@ -5,27 +5,27 @@ sidebar:
   order: 99
 ---
 
-Patterns for aligning LLM judges to domain expert preferences using MemAlign. An aligned judge is more accurate for evaluation runs, more meaningful for production monitoring, and a better guide for prompt optimization — but each of these uses is independent.
 
-**Read `GOTCHAS.md` before implementing — especially the MemAlign sections.**
 
----
+`GOTCHAS.md`
 
-## When to Use Judge Alignment
 
-Align a judge when:
-- Built-in scorers don't capture domain-specific quality (e.g., "good" means expert-level tactical analysis)
-- LLM judges disagree with human raters on the same examples
-- You have domain experts who can rate a sample of agent outputs
-- You want production monitoring that reflects actual expert standards
 
-You do NOT need prompt optimization to benefit from aligned judges — a more accurate judge improves every evaluation run and monitoring setup you do afterward.
 
----
 
-## Pattern 1: Design and Register the Base Judge
 
-MemAlign is scorer-agnostic and works with any `feedback_value_type` (float, boolean, categorical). This example uses a Likert scale (1-5 float), but you can use whatever scoring scheme fits your domain.
+
+
+
+
+
+
+
+
+
+
+
+`feedback_value_type`
 
 ```python
 import mlflow
@@ -59,11 +59,11 @@ registered_base_judge = domain_quality_judge.register(experiment_id=EXPERIMENT_I
 print(f"Registered base judge: {registered_base_judge.name}")
 ```
 
----
 
-## Pattern 2: Run Evaluation and Tag Traces
 
-Run evaluation to generate a set of traces that domain experts will review. Tag traces that were **successfully evaluated** in this `evaluate()` job (i.e., the agent produced a response and the judge scored it without errors).
+
+
+`evaluate()`
 
 ```python
 from mlflow.genai import evaluate
@@ -89,13 +89,13 @@ for trace_id in ok_trace_ids:
 print(f"Tagged {len(ok_trace_ids)} successfully evaluated traces for labeling")
 ```
 
----
 
-## Pattern 3: Build Eval Dataset and Create Labeling Session
 
-Persist traces to a UC dataset and assign them to domain experts for review.
 
-**CRITICAL: The label schema `name` MUST match the judge `name` used in the `evaluate()` job.** This is how `align()` pairs SME feedback with the corresponding LLM judge scores on the same traces. If these names do not match, alignment will fail or produce incorrect results.
+
+
+
+`name``name``evaluate()``align()`
 
 ```python
 from mlflow.genai.datasets import create_dataset, get_dataset
@@ -165,13 +165,13 @@ print(f"Share with domain experts: {labeling_session.url}")
 # Domain experts open this URL and rate each response using the 1-5 scale
 ```
 
----
 
-## Pattern 4: Align Judge with MemAlign (Recommended)
 
-After SMEs complete labeling, distill their feedback patterns into the judge's instructions.
 
-Judge alignment supports multiple optimizers (e.g., SIMBA, custom optimizers), but this example uses **MemAlign**, which is the recommended approach. MemAlign is the fastest alignment method (seconds vs. minutes for alternatives), the most cost-effective, and supports **memory scaling** where quality continues to improve as feedback accumulates without re-optimization.
+
+
+
+
 
 ```python
 from mlflow.genai.judges.optimizers import MemAlignOptimizer
@@ -210,11 +210,11 @@ for i, guideline in enumerate(aligned_judge._semantic_memory, 1):
         print(f"     Derived from {len(guideline.source_trace_ids)} trace(s)")
 ```
 
----
 
-## Pattern 5: Register the Aligned Judge
 
-Persist the aligned judge to the experiment for later retrieval in evaluation or optimization runs.
+
+
+
 
 ```python
 from mlflow.genai.scorers import ScorerSamplingConfig
@@ -245,13 +245,13 @@ retrieved_judge = get_scorer(name="domain_quality_base", experiment_id=EXPERIMEN
 print(retrieved_judge.instructions[:500])  # Shows aligned instructions with guidelines
 ```
 
----
 
-## Pattern 6: Re-evaluate with Aligned Judge
 
-Run a fresh evaluation with the aligned judge. This gives a more accurate quality picture and establishes a baseline for prompt optimization if you choose to do that next.
 
-**Important: The aligned judge score may be lower than the unaligned judge score. This is expected and correct.** It means the aligned judge is now evaluating with domain-expert standards rather than generic best practices. A lower score from a more accurate judge is a better signal than a higher score from a judge that doesn't understand your domain. The optimization phase (`optimize_prompts()`) will improve the agent against this more accurate standard.
+
+
+
+`optimize_prompts()`
 
 ```python
 from mlflow.genai import evaluate
@@ -284,13 +284,13 @@ print(f"Aligned judge baseline metrics: {baseline_results.metrics}")
 # The aligned judge is more accurate, not less generous.
 ```
 
----
 
-## Using Aligned Judges Beyond Evaluation
 
-Aligned judges are not just for one-time evaluation. They can be used for:
 
-**Production monitoring:**
+
+
+
+
 ```python
 from mlflow.genai.scorers import ScorerSamplingConfig
 
@@ -300,7 +300,7 @@ monitoring_judge = aligned_judge.start(
 )
 ```
 
-**Prompt optimization input (see `patterns-prompt-optimization.md`):**
+`patterns-prompt-optimization.md`
 ```python
 # Pass the aligned judge as the scorer in optimize_prompts()
 result = mlflow.genai.optimize_prompts(
@@ -312,7 +312,7 @@ result = mlflow.genai.optimize_prompts(
 )
 ```
 
-**Regression detection across agent versions:**
+
 ```python
 with mlflow.start_run(run_name="agent_v2"):
     v2_results = evaluate(data=eval_records, predict_fn=agent_v2, scorers=[aligned_judge])

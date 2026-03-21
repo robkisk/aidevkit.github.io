@@ -5,13 +5,13 @@ sidebar:
   order: 2
 ---
 
-Streaming-specific patterns including deduplication, windowed aggregations, late-arriving data handling, and stateful operations.
 
----
 
-## Deduplication Patterns
 
-### By Key
+
+
+
+
 
 ```sql
 -- Bronze: Ingest all (may contain duplicates)
@@ -32,9 +32,9 @@ FROM (
 WHERE rn = 1;
 ```
 
-### With Time Window
 
-Deduplicate within time window to handle late arrivals:
+
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE silver_events_dedup AS
@@ -48,7 +48,7 @@ GROUP BY
 HAVING COUNT(*) >= 1;
 ```
 
-### Composite Key
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE silver_transactions_dedup AS
@@ -59,11 +59,11 @@ FROM STREAM bronze_transactions
 GROUP BY transaction_id, customer_id, amount, transaction_timestamp;
 ```
 
----
 
-## Windowed Aggregations
 
-### Tumbling Windows
+
+
+
 
 ```sql
 -- 5-minute non-overlapping windows
@@ -79,7 +79,7 @@ FROM STREAM bronze_sensor_events
 GROUP BY sensor_id, window(event_timestamp, '5 minutes');
 ```
 
-### Multiple Window Sizes
+
 
 ```sql
 -- 1-minute for real-time monitoring
@@ -104,13 +104,13 @@ FROM STREAM silver_sensor_data
 GROUP BY sensor_id, window(event_timestamp, '1 hour');
 ```
 
----
 
-## Late-Arriving Data
 
-### Event-Time vs Processing-Time
 
-Always use event timestamp for business logic, not ingestion timestamp:
+
+
+
+
 
 ```sql
 -- ✅ Use event timestamp
@@ -131,9 +131,9 @@ FROM STREAM silver_orders
 GROUP BY CAST(order_timestamp AS DATE);
 ```
 
-### Handling Out-of-Order with SCD2
 
-Use SEQUENCE BY with event timestamp. **Clause order matters**: put `APPLY AS DELETE WHEN` before `SEQUENCE BY`. Only list columns in `COLUMNS * EXCEPT (...)` that actually exist in the source (omit `_rescued_data` unless the bronze table uses rescue data). Omit `TRACK HISTORY ON *` if it causes parse errors; the default is equivalent.
+
+`APPLY AS DELETE WHEN``SEQUENCE BY``COLUMNS * EXCEPT (...)``_rescued_data``TRACK HISTORY ON *`
 
 ```sql
 CREATE OR REFRESH STREAMING TABLE silver_customers_history;
@@ -148,11 +148,11 @@ COLUMNS * EXCEPT (operation, _ingested_at, _source_file)
 STORED AS SCD TYPE 2;
 ```
 
----
 
-## Stateful Operations
 
-### Stream-to-Stream Joins
+
+
+
 
 ```sql
 -- Join two streaming sources
@@ -166,9 +166,9 @@ INNER JOIN STREAM bronze_payments p
   AND p.payment_timestamp BETWEEN o.order_timestamp AND o.order_timestamp + INTERVAL 1 HOUR;
 ```
 
-### Stream-to-Static Joins
 
-Enrich streaming data with dimension tables:
+
+
 
 ```sql
 -- Static dimension (changes infrequently)
@@ -185,7 +185,7 @@ FROM STREAM bronze_sales s
 LEFT JOIN dim_products p ON s.product_id = p.product_id;
 ```
 
-### Incremental Aggregations
+
 
 ```sql
 -- Running totals by customer (stateful)
@@ -199,11 +199,11 @@ FROM STREAM bronze_transactions
 GROUP BY customer_id;
 ```
 
----
 
-## Session Windows
 
-Group events into sessions based on inactivity gaps:
+
+
+
 
 ```sql
 -- 30-minute inactivity timeout
@@ -219,11 +219,11 @@ FROM STREAM bronze_user_events
 GROUP BY user_id, session_window(event_timestamp, '30 minutes');
 ```
 
----
 
-## Anomaly Detection
 
-### Real-Time Outlier Detection
+
+
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE silver_sensor_with_anomalies AS
@@ -251,7 +251,7 @@ FROM STREAM silver_sensor_with_anomalies
 WHERE anomaly_flag IN ('HIGH_OUTLIER', 'LOW_OUTLIER');
 ```
 
-### Threshold-Based Filtering
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE silver_high_value_transactions AS
@@ -260,33 +260,33 @@ FROM STREAM bronze_transactions
 WHERE amount > 10000;
 ```
 
----
 
-## Execution Modes
 
-Configure at pipeline level (not in SQL):
 
-**Continuous** (real-time, sub-second latency):
+
+
+
+
 ```yaml
 execution_mode: continuous
 serverless: true
 ```
 
-**Triggered** (scheduled, cost-optimized):
+
 ```yaml
 execution_mode: triggered
 schedule: "0 * * * *"  # Hourly
 ```
 
-**When to use**:
-- **Continuous**: Real-time dashboards, alerting, sub-minute SLAs
-- **Triggered**: Daily/hourly reports, batch processing
 
----
 
-## Key Patterns
 
-### 1. Use Event Timestamps
+
+
+
+
+
+
 
 ```sql
 -- ✅ Event timestamp for logic
@@ -296,15 +296,15 @@ GROUP BY date_trunc('hour', event_timestamp)
 GROUP BY date_trunc('hour', _ingested_at)
 ```
 
-### 2. Window Size Selection
 
-- **1-5 minutes**: Real-time monitoring
-- **15-60 minutes**: Operational dashboards
-- **1-24 hours**: Analytical reports
 
-### 3. State Management
 
-Higher cardinality = more state:
+
+
+
+
+
+
 
 ```sql
 -- High state: 1M users × 10K products × 100M sessions
@@ -314,11 +314,11 @@ GROUP BY user_id, product_id, session_id
 GROUP BY user_id, product_category, DATE(event_time)
 ```
 
-Use time windows to bound state retention.
 
-### 4. Deduplicate Early
 
-Apply at bronze → silver transition:
+
+
+
 
 ```sql
 -- Bronze: Accept duplicates
@@ -335,7 +335,7 @@ CREATE OR REPLACE STREAMING TABLE gold_metrics AS
 SELECT ... FROM STREAM silver_events;
 ```
 
-### 5. Monitor Lag
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE monitoring_lag AS
@@ -348,14 +348,14 @@ FROM STREAM bronze_kafka_events
 GROUP BY window(kafka_timestamp, '1 minute');
 ```
 
----
 
-## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| High memory with windows | Use larger windows, reduce group-by cardinality |
-| Duplicate events in output | Add explicit deduplication by unique key |
-| Missing late-arriving events | Increase window size or use longer retention |
-| Stream-to-stream join empty | Verify join conditions and time bounds |
-| State growth over time | Add time windows, reduce cardinality, materialize intermediates |
+
+
+
+
+
+
+
+
+

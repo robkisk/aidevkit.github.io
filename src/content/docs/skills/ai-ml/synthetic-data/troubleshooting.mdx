@@ -5,22 +5,22 @@ sidebar:
   order: 6
 ---
 
-Common issues and solutions for synthetic data generation.
 
-## Environment Issues
 
-### ModuleNotFoundError: faker (or other library)
 
-**Problem:** Dependencies not available in execution environment.
 
-**Solutions by execution mode:**
 
-| Mode | Solution |
-|------|----------|
-| **DB Connect 16.4+** | Use `DatabricksEnv().withDependencies("faker", "pandas", ...)` |
-| **Older DB Connect with Serverless** | Create job with `environments` parameter |
-| **Databricks Runtime** | Use Databricks CLI to  install `faker holidays` |
-| **Classic cluster** | Use Databricks CLI to install libraries. `databricks libraries install --json '{"cluster_id": "<cluster_id>", "libraries": [{"pypi": {"package": "faker"}}, {"pypi": {"package": "holidays"}}]}'` |
+
+
+
+
+
+
+
+`DatabricksEnv().withDependencies("faker", "pandas", ...)`
+`environments`
+`faker holidays`
+`databricks libraries install --json '{"cluster_id": "<cluster_id>", "libraries": [{"pypi": {"package": "faker"}}, {"pypi": {"package": "holidays"}}]}'`
 
 ```python
 # For DB Connect 16.4+
@@ -30,11 +30,11 @@ env = DatabricksEnv().withDependencies("faker", "pandas", "numpy", "holidays")
 spark = DatabricksSession.builder.withEnvironment(env).serverless(True).getOrCreate()
 ```
 
-### DatabricksEnv not found
 
-**Problem:** Using older databricks-connect version.
 
-**Solution:** Upgrade to 16.4+ or use job-based approach:
+
+
+
 
 ```bash
 # Upgrade (prefer uv, fall back to pip)
@@ -44,11 +44,11 @@ uv pip install "databricks-connect>=16.4,<17.4"
 # Or use job with environments parameter instead
 ```
 
-### serverless_compute_id error
 
-**Problem:** Missing serverless configuration.
 
-**Solution:** Add to `~/.databrickscfg`:
+
+
+`~/.databrickscfg`
 
 ```ini
 [DEFAULT]
@@ -57,20 +57,20 @@ serverless_compute_id = auto
 auth_type = databricks-cli
 ```
 
----
 
-## Execution Issues
 
-### CRITICAL: cache() and persist() NOT supported on serverless
 
-**Problem:** Using `.cache()` or `.persist()` on serverless compute fails with:
+
+
+
+`.cache()``.persist()`
 ```
 AnalysisException: [NOT_SUPPORTED_WITH_SERVERLESS] PERSIST TABLE is not supported on serverless compute.
 ```
 
-**Why this happens:** Serverless compute does not support caching DataFrames in memory. This is a fundamental limitation of the serverless architecture.
 
-**Solution:** Write master tables to Delta first, then read them back for FK joins:
+
+
 
 ```python
 # BAD - will fail on serverless
@@ -83,23 +83,23 @@ customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers"
 customer_lookup = spark.table(f"{CATALOG}.{SCHEMA}.customers")  # ✓ Read from Delta
 ```
 
-**Best practice for referential integrity:**
-1. Generate master table (e.g., customers)
-2. Write to Delta table
-3. Read back for FK lookup joins
-4. Generate child tables (e.g., orders, tickets) with valid FKs
-5. Write child tables to Delta
 
----
 
-### Serverless job fails to start
 
-**Possible causes:**
-1. Workspace doesn't have serverless enabled
-2. Unity Catalog permissions missing
-3. Invalid environment configuration
 
-**Solutions:**
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```python
 # Verify serverless is available
 # Try creating a simple job first to test
@@ -108,11 +108,11 @@ customer_lookup = spark.table(f"{CATALOG}.{SCHEMA}.customers")  # ✓ Read from 
 spark.sql("SELECT current_catalog(), current_schema()")
 ```
 
-### Classic cluster startup slow (3-8 minutes)
 
-**Problem:** Clusters take time to start.
 
-**Solution:** Switch to serverless:
+
+
+
 
 ```python
 # Instead of:
@@ -122,11 +122,11 @@ spark.sql("SELECT current_catalog(), current_schema()")
 spark = DatabricksSession.builder.serverless(True).getOrCreate()
 ```
 
-### "Either base environment or version must be provided"
 
-**Problem:** Missing `client` in job environment spec.
 
-**Solution:** Add `"client": "4"` to the spec:
+`client`
+
+`"client": "4"`
 
 ```python
 {
@@ -140,13 +140,13 @@ spark = DatabricksSession.builder.serverless(True).getOrCreate()
 }
 ```
 
----
 
-## Data Generation Issues
 
-### AttributeError: 'function' object has no attribute 'partitionBy'
 
-**Problem:** Using `F.window` instead of `Window` for analytical window functions.
+
+
+
+`F.window``Window`
 
 ```python
 # WRONG - F.window is for time-based tumbling/sliding windows (streaming)
@@ -158,7 +158,7 @@ from pyspark.sql.window import Window
 window_spec = Window.partitionBy("account_id").orderBy("contact_id")
 ```
 
-**When to use Window:** For analytical functions like `row_number()`, `rank()`, `lead()`, `lag()`:
+`row_number()``rank()``lead()``lag()`
 
 ```python
 from pyspark.sql.window import Window
@@ -171,13 +171,13 @@ contacts_df = contacts_df.withColumn(
 )
 ```
 
----
 
-### Faker UDF is slow
 
-**Problem:** Single-row UDFs don't parallelize well.
 
-**Solution:** Use `pandas_udf` for batch processing:
+
+
+
+`pandas_udf`
 
 ```python
 # SLOW - scalar UDF
@@ -192,40 +192,40 @@ def fast_fake_name(ids: pd.Series) -> pd.Series:
     return pd.Series([fake.name() for _ in range(len(ids))])
 ```
 
-### Out of memory with large data
 
-**Problem:** Not enough partitions for data size.
 
-**Solution:** Increase partitions:
+
+
+
 
 ```python
 # For large datasets (1M+ rows)
 customers_df = spark.range(0, N_CUSTOMERS, numPartitions=64)  # Increase from default
 ```
 
-| Data Size | Recommended Partitions |
-|-----------|----------------------|
-| < 100K | 8 |
-| 100K - 500K | 16 |
-| 500K - 1M | 32 |
-| 1M+ | 64+ |
 
-### Context corrupted on classic cluster
 
-**Problem:** Stale execution context.
 
-**Solution:** Create fresh context (omit context_id), reinstall libraries:
+
+
+
+
+
+
+
+
+
 
 ```python
 # Don't reuse context_id if you see strange errors
 # Let it create a new context
 ```
 
-### Referential integrity violations
 
-**Problem:** Foreign keys reference non-existent parent records.
 
-**Solution:** Write master table to Delta first, then read back for FK joins:
+
+
+
 
 ```python
 # 1. Generate and WRITE master table (do NOT use cache with serverless!)
@@ -243,17 +243,17 @@ orders_df = spark.range(0, N_ORDERS).join(
 )
 ```
 
-> **WARNING:** Do NOT use `.cache()` or `.persist()` with serverless compute. See the dedicated section above.
+`.cache()``.persist()`
 
----
 
-## Data Quality Issues
 
-### Uniform distributions (unrealistic)
 
-**Problem:** All customers have similar order counts, amounts are evenly distributed.
 
-**Solution:** Use non-linear distributions:
+
+
+
+
+
 
 ```python
 # BAD - uniform
@@ -263,11 +263,11 @@ amounts = np.random.uniform(10, 1000, N)
 amounts = np.random.lognormal(mean=5, sigma=0.8, N)
 ```
 
-### Missing time-based patterns
 
-**Problem:** Data doesn't reflect weekday/weekend or seasonal patterns.
 
-**Solution:** Add multipliers:
+
+
+
 
 ```python
 import holidays
@@ -283,11 +283,11 @@ def get_multiplier(date):
     return mult
 ```
 
-### Incoherent row attributes
 
-**Problem:** Enterprise customer has low-value orders, critical ticket has slow resolution.
 
-**Solution:** Correlate attributes:
+
+
+
 
 ```python
 # Priority based on tier
@@ -301,11 +301,11 @@ resolution_scale = {'Critical': 4, 'High': 12, 'Medium': 36, 'Low': 72}
 resolution_hours = np.random.exponential(scale=resolution_scale[priority])
 ```
 
----
 
-## Validation Steps
 
-After generation, verify your data:
+
+
+
 
 ```python
 # 1. Check row counts

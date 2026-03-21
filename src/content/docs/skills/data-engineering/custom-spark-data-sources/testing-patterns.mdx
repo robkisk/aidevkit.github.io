@@ -5,11 +5,11 @@ sidebar:
   order: 99
 ---
 
-Unit and integration testing strategies for Spark data sources.
 
-## Basic Unit Tests
 
-Test data source registration and initialization:
+
+
+
 
 ```python
 import pytest
@@ -42,9 +42,9 @@ def test_missing_required_option():
         YourDataSource(options)
 ```
 
-## Mocking HTTP Requests
 
-Test writers without external dependencies:
+
+
 
 ```python
 from unittest.mock import patch, Mock
@@ -101,9 +101,9 @@ def test_writer_respects_batch_size(spark, basic_options, sample_schema):
         assert mock_post.call_count == 3
 ```
 
-## Testing Readers
 
-Mock external API responses:
+
+
 
 ```python
 def test_reader_fetches_data(spark, basic_options):
@@ -138,9 +138,9 @@ def test_reader_handles_empty_response(spark, basic_options):
         assert df.count() == 0
 ```
 
-## Testing Partitioning
 
-Test partition creation logic:
+
+
 
 ```python
 def test_partitions_created(basic_options, sample_schema):
@@ -168,9 +168,9 @@ def test_partition_ranges_non_overlapping():
         assert next_start >= current_end
 ```
 
-## Testing Streaming
 
-Test offset management and streaming logic:
+
+
 
 ```python
 def test_initial_offset():
@@ -212,9 +212,9 @@ def test_partitions_non_overlapping(basic_options, sample_schema):
         assert partitions[i].end_time < partitions[i + 1].start_time
 ```
 
-## Testing Type Conversion
 
-Test type mapping and conversion:
+
+
 
 ```python
 def test_convert_timestamp():
@@ -243,9 +243,9 @@ def test_convert_invalid_type():
         convert_external_to_spark("not_a_number", IntegerType())
 ```
 
-## Integration Tests with Testcontainers
 
-Run end-to-end tests against real systems:
+
+
 
 ```python
 import pytest
@@ -321,9 +321,9 @@ def test_read_integration(spark, postgres_container, postgres_connection):
     assert "Bob" in names
 ```
 
-## Performance Tests
 
-Test performance characteristics:
+
+
 
 ```python
 import time
@@ -355,9 +355,9 @@ def test_partition_read_parallelism(spark, basic_options):
     assert df.rdd.getNumPartitions() == 4
 ```
 
-## Test Fixtures and Utilities
 
-Reusable test fixtures:
+
+
 
 ```python
 import pytest
@@ -397,9 +397,9 @@ def assert_dataframes_equal(df1, df2):
     assert rows1 == rows2
 ```
 
-## Test Organization
 
-Structure tests by functionality:
+
+
 
 ```
 tests/
@@ -418,9 +418,9 @@ tests/
 └── conftest.py                   # Shared fixtures
 ```
 
-## Running Tests
 
-Run tests through your packaging tool (e.g., `uv run`, `poetry run`, `hatch run`). Examples use `uv`:
+
+`uv run``poetry run``hatch run``uv`
 
 ```bash
 # Run all tests

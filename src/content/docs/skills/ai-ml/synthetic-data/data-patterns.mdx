@@ -5,23 +5,23 @@ sidebar:
   order: 3
 ---
 
-Creating realistic, coherent synthetic data with Spark + Pandas UDFs.
 
-## 5 Key Principles
 
-1. **Use Spark + Faker + Pandas UDFs** for all generation
-2. **Referential Integrity** - master tables first, weighted sampling
-3. **Non-Linear Distributions** - log-normal, Pareto, exponential
-4. **Time-Based Patterns** - weekday/weekend, holidays, seasonality
-5. **Row Coherence** - correlated attributes within each row
 
----
 
-## Principle 1: Use Spark + Faker + Pandas UDFs
 
-Generate data with Spark + Faker for all use cases. Pandas UDFs provide efficient, distributed Faker calls that scale seamlessly from thousands to millions of rows.
 
-### Define Pandas UDFs
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 from pyspark.sql import functions as F
@@ -53,7 +53,7 @@ def generate_lognormal_amount(tiers: pd.Series) -> pd.Series:
     return pd.Series(amounts)
 ```
 
-### Generate with Spark
+
 
 ```python
 # Adjust numPartitions based on scale: 8 for <100K, 32 for 1M+
@@ -70,15 +70,15 @@ customers_df = (
 customers_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/customers")
 ```
 
----
 
-## Principle 2: Referential Integrity
 
-Generate master tables first, then iterate on them to create related tables with matching IDs.
 
-> **CRITICAL:** Do NOT use `.cache()` or `.persist()` with serverless compute - these operations are not supported and will fail. Instead, write master tables to Delta first, then read them back for FK joins.
 
-### Pattern: Weighted Sampling by Tier
+
+
+`.cache()``.persist()`
+
+
 
 ```python
 from pyspark.sql.window import Window
@@ -116,7 +116,7 @@ orders_df = orders_df.select(
 orders_with_fk = orders_df.join(customer_lookup, on="customer_idx", how="left")
 ```
 
-### Anti-Pattern: Random FK Generation
+
 
 ```python
 # BAD - May generate non-existent customer IDs
@@ -125,22 +125,22 @@ orders_df = spark.range(0, N_ORDERS).select(
 )
 ```
 
----
 
-## Principle 3: Non-Linear Distributions
 
-**Never use uniform distributions** - real data is rarely uniform.
 
-### Distribution Types
 
-| Distribution | Use Case | Example |
-|--------------|----------|---------|
-| **Log-normal** | Prices, salaries, order amounts | `np.random.lognormal(mean=4.5, sigma=0.8)` |
-| **Pareto/Power law** | Popularity, wealth, page views | `(np.random.pareto(a=2.5) + 1) * 10` |
-| **Exponential** | Time between events, resolution time | `np.random.exponential(scale=24)` |
-| **Weighted categorical** | Status, region, tier | `np.random.choice(vals, p=[0.4, 0.3, 0.2, 0.1])` |
 
-### Pandas UDF for Log-Normal Amounts
+
+
+
+
+
+`np.random.lognormal(mean=4.5, sigma=0.8)`
+`(np.random.pareto(a=2.5) + 1) * 10`
+`np.random.exponential(scale=24)`
+`np.random.choice(vals, p=[0.4, 0.3, 0.2, 0.1])`
+
+
 
 ```python
 @F.pandas_udf(DoubleType())
@@ -157,7 +157,7 @@ def generate_lognormal_amount(tiers: pd.Series) -> pd.Series:
     return pd.Series(amounts)
 ```
 
-### Anti-Pattern: Uniform Distribution
+
 
 ```python
 # BAD - Uniform (unrealistic)
@@ -167,13 +167,13 @@ prices = np.random.uniform(10, 1000, size=N_ORDERS)
 prices = np.random.lognormal(mean=4.5, sigma=0.8, size=N_ORDERS)
 ```
 
----
 
-## Principle 4: Time-Based Patterns
 
-Add weekday/weekend effects, holidays, seasonality, and event spikes.
 
-### Holiday and Weekday Multipliers
+
+
+
+
 
 ```python
 import holidays
@@ -207,9 +207,9 @@ def get_daily_multiplier(date):
     return max(0.1, multiplier)
 ```
 
-### Date Range: Last 6 Months
 
-Always generate data for the last ~6 months ending at the current date:
+
+
 
 ```python
 from datetime import datetime, timedelta
@@ -218,13 +218,13 @@ END_DATE = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 START_DATE = END_DATE - timedelta(days=180)
 ```
 
----
 
-## Principle 5: Row Coherence
 
-Attributes within a row should correlate logically.
 
-### Coherent Ticket Generation
+
+
+
+
 
 ```python
 @F.pandas_udf("struct<priority:string,resolution_hours:double,csat_score:int>")
@@ -259,28 +259,28 @@ def generate_coherent_ticket(tiers: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(results)
 ```
 
-### Correlation Examples
 
-| Attribute A | Attribute B | Correlation |
-|------------|-------------|-------------|
-| Customer tier | Order amount | Enterprise = higher amounts |
-| Ticket priority | Resolution time | Critical = faster resolution |
-| Resolution time | CSAT score | Faster = higher satisfaction |
-| Region | Product preference | Regional variations |
-| Time of day | Transaction type | Business hours = B2B |
 
----
 
-## Data Volume for Aggregation
 
-Generate enough data so patterns remain visible after downstream aggregation:
 
-| Grain | Minimum Records | Rationale |
-|-------|-----------------|-----------|
-| Daily time series | 50-100/day | See trends after weekly rollup |
-| Per category | 500+ per category | Statistical significance |
-| Per customer | 5-20 events/customer | Customer-level analysis |
-| Total rows | 10K-50K minimum | Patterns survive GROUP BY |
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 # Example: 8000 tickets over 180 days = ~44/day average

@@ -5,12 +5,12 @@ sidebar:
   order: 99
 ---
 
-## Key Decisions (prompt if unclear)
-1. Streaming or batch oriented?
-2. Continuous or triggered execution?
-3. Serverless (default) or classic compute?
 
-## Pipeline Resource Pattern
+
+
+
+
+
 
 ```yaml
 resources:
@@ -47,11 +47,11 @@ resources:
           group_name: "users"
 ```
 
-**Permission levels**: `CAN_VIEW`, `CAN_RUN`, `CAN_MANAGE`
+`CAN_VIEW``CAN_RUN``CAN_MANAGE`
 
-## Best Practices
 
-1. **Use `root_path` and `libraries.glob`** for newer organization structure
-2. **Default to serverless** unless user specifies otherwise
-3. **Use variables** for catalog/schema parameterization
-4. **Set `development: true`** for dev/staging targets
+
+`root_path``libraries.glob`
+
+
+`development: true`

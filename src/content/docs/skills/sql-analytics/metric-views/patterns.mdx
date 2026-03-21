@@ -5,13 +5,13 @@ sidebar:
   order: 99
 ---
 
-Common patterns for creating and querying metric views.
 
-## Pattern 1: Simple Metrics from a Single Table
 
-The most basic pattern with direct column dimensions and standard aggregations.
 
-### Create
+
+
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.product_metrics
@@ -36,7 +36,7 @@ AS $$
 $$
 ```
 
-### Query
+
 
 ```sql
 -- Revenue by product
@@ -58,9 +58,9 @@ GROUP BY ALL
 ORDER BY month
 ```
 
-## Pattern 2: Derived Dimensions with CASE
 
-Transform raw values into business-friendly categories.
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.order_kpis
@@ -93,9 +93,9 @@ AS $$
 $$
 ```
 
-## Pattern 3: Ratio Measures
 
-Ratios and per-unit metrics that safely handle re-aggregation.
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.efficiency_metrics
@@ -125,9 +125,9 @@ AS $$
 $$
 ```
 
-## Pattern 4: Filtered Measures (FILTER clause)
 
-Create measures that only count a subset of rows.
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.order_status_metrics
@@ -157,7 +157,7 @@ AS $$
 $$
 ```
 
-### Query filtered measures
+
 
 ```sql
 SELECT
@@ -171,9 +171,9 @@ GROUP BY ALL
 ORDER BY ALL
 ```
 
-## Pattern 5: Star Schema with Joins
 
-Join a fact table to dimension tables.
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.sales_analytics
@@ -215,9 +215,9 @@ AS $$
 $$
 ```
 
-## Pattern 6: Snowflake Schema (Nested Joins)
 
-Multi-level dimension hierarchies. Requires DBR 17.1+.
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.geo_sales
@@ -258,7 +258,7 @@ AS $$
 $$
 ```
 
-### Query across hierarchy levels
+
 
 ```sql
 -- Revenue by region (rolls up across nations and customers)
@@ -279,9 +279,9 @@ GROUP BY ALL
 ORDER BY revenue DESC
 ```
 
-## Pattern 7: Materialized Metric View
 
-Pre-compute common aggregations for faster queries.
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.ecommerce_metrics
@@ -324,9 +324,9 @@ AS $$
 $$
 ```
 
-## Pattern 8: Using samples.tpch for Quick Demos
 
-The TPC-H sample dataset is available on all Databricks workspaces.
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.tpch_orders_metrics
@@ -368,7 +368,7 @@ AS $$
 $$
 ```
 
-### Demo queries
+
 
 ```sql
 -- Monthly revenue trend
@@ -400,21 +400,21 @@ GROUP BY ALL
 ORDER BY ALL
 ```
 
-## Pattern 9: Window Measures (Experimental)
 
-Window measures enable moving averages, running totals, period-over-period changes, and semiadditive measures. Add a `window` block to any measure definition. See [Window Measures Documentation](https://docs.databricks.com/aws/en/metric-views/data-modeling/window-measures).
 
-### Window Range Values
+`window`
 
-| Range | Description |
-|-------|-------------|
-| `current` | Only rows where the window ordering value equals the current row |
-| `cumulative` | All rows up to and including the current row |
-| `trailing <N> <unit>` | N units before the current row (**excludes** current) |
-| `leading <N> <unit>` | N units after the current row |
-| `all` | All rows regardless of ordering |
 
-### Trailing Window: 7-Day Distinct Customers
+
+
+
+`current`
+`cumulative`
+`trailing <N> <unit>`
+`leading <N> <unit>`
+`all`
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.customer_activity
@@ -439,9 +439,9 @@ AS $$
 $$
 ```
 
-**Key:** `trailing 7 day` includes the 7 days **before** each date, **excluding** the current date. `semiadditive: last` returns the last value when the `date` dimension is not in the GROUP BY.
+`trailing 7 day``semiadditive: last``date`
 
-### Running Total (Cumulative)
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.cumulative_sales
@@ -466,9 +466,9 @@ AS $$
 $$
 ```
 
-### Period-Over-Period: Day-Over-Day Growth
 
-Compose window measures using `MEASURE()` references in derived measures.
+
+`MEASURE()`
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.daily_growth
@@ -503,11 +503,11 @@ AS $$
 $$
 ```
 
-**Key:** The derived `day_over_day_growth` measure uses `MEASURE()` to reference other window measures. It does NOT need its own `window` block.
+`day_over_day_growth``MEASURE()``window`
 
-### Year-to-Date (Composing Multiple Windows)
 
-A single measure can have multiple window specs to create period-to-date calculations.
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.ytd_metrics
@@ -537,11 +537,11 @@ AS $$
 $$
 ```
 
-**Key:** The first window does a cumulative sum over `date`. The second window restricts scope to the `current` year. Together they produce year-to-date.
+`date``current`
 
-### Semiadditive Measure: Bank Balance
 
-For measures like balances that should not be summed across time.
+
+
 
 ```sql
 CREATE OR REPLACE VIEW catalog.schema.account_balances
@@ -567,11 +567,11 @@ AS $$
 $$
 ```
 
-**Key:** `semiadditive: last` prevents summing across dates (returns the last date's value instead), but the measure **still aggregates across other dimensions** like `customer`. When grouped by date, you get total balance across all customers for that day. When not grouped by date, you get the balance from the most recent date.
+`semiadditive: last``customer`
 
-### Query window measures
 
-Window measures are queried with the same `MEASURE()` syntax:
+
+`MEASURE()`
 
 ```sql
 SELECT
@@ -584,9 +584,9 @@ GROUP BY ALL
 ORDER BY ALL
 ```
 
-## MCP Tool Examples
 
-### Create with joins
+
+
 
 ```python
 manage_metric_views(
@@ -619,7 +619,7 @@ manage_metric_views(
 )
 ```
 
-### Alter to add a new measure
+
 
 ```python
 manage_metric_views(
@@ -641,7 +641,7 @@ manage_metric_views(
 )
 ```
 
-### Query with filters
+
 
 ```python
 manage_metric_views(

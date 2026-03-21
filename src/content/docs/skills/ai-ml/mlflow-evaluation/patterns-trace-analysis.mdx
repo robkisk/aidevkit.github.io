@@ -5,62 +5,62 @@ sidebar:
   order: 99
 ---
 
-Working code patterns for analyzing MLflow traces across agent architectures.
 
-## When to Use MCP vs Python SDK
 
-| Use Case | Recommended Approach |
-|----------|---------------------|
-| Interactive trace exploration | **MLflow MCP Server** - Quick searches, field extraction |
-| Agent-based analysis | **MLflow MCP Server** - Sub-agents search and tag traces |
-| Evaluation script generation | **MLflow Python SDK** - Generate runnable Python code |
-| Custom analysis pipelines | **MLflow Python SDK** - Full control, complex aggregation |
-| Dataset building from traces | **MLflow Python SDK** - Convert traces to eval format |
-| CI/CD integration | **MLflow Python SDK** - Standalone scripts |
 
-### MLflow MCP Server (for Agent Use)
 
-Best for interactive exploration and agent-based trace analysis:
-- `search_traces` - Filter and search with `extract_fields`
-- `get_trace` - Deep dive with selective field extraction
-- `set_trace_tag` - Tag traces for later dataset building
-- `log_feedback` - Store analysis findings persistently
-- `log_expectation` - Store ground truth for evaluation
 
-### MLflow Python SDK (for Code Generation)
 
-Best for generating runnable evaluation scripts:
-- `mlflow.search_traces()` - Programmatic trace access
-- `mlflow.genai.evaluate()` - Run evaluations
-- `MlflowClient()` - Full API access
-- DataFrame operations - Complex aggregation and analysis
 
----
 
-## Table of Contents
 
-| # | Pattern | Description |
-|---|---------|-------------|
-| 1 | [Fetching Traces](#pattern-1-fetching-traces-from-mlflow) | Get traces from experiment |
-| 2 | [Get Single Trace](#pattern-2-get-single-trace-by-id) | Fetch specific trace by ID |
-| 3 | [Span Hierarchy](#pattern-3-span-hierarchy-analysis) | Analyze parent-child structure |
-| 4 | [Latency by Span Type](#pattern-4-latency-breakdown-by-span-type) | LLM, TOOL, RETRIEVER breakdown |
-| 5 | [Latency by Component](#pattern-5-latency-breakdown-by-component-name) | Stage/component timing |
-| 6 | [Bottleneck Detection](#pattern-6-bottleneck-detection) | Find slowest components |
-| 7 | [Error Detection](#pattern-7-error-pattern-detection) | Find and categorize errors |
-| 8 | [Tool Call Analysis](#pattern-8-tool-call-analysis) | Analyze tool/function calls |
-| 9 | [LLM Call Analysis](#pattern-9-llm-call-analysis) | Token usage and latency |
-| 10 | [Trace Comparison](#pattern-10-trace-comparison) | Compare multiple traces |
-| 11 | [Trace Report](#pattern-11-generate-trace-analysis-report) | Comprehensive report generation |
-| 12 | [MCP Server Usage](#pattern-12-using-mlflow-mcp-server-for-trace-analysis) | Quick trace lookups via MCP |
-| 13 | [Architecture Detection](#pattern-13-architecture-detection) | Auto-detect agent type |
-| 14 | [Assessments via MCP](#pattern-14-using-assessments-for-persistent-analysis) | Store findings in MLflow |
 
----
 
-## Pattern 1: Fetching Traces from MLflow
 
-Get traces from an experiment for analysis.
+
+
+
+
+`search_traces``extract_fields`
+`get_trace`
+`set_trace_tag`
+`log_feedback`
+`log_expectation`
+
+
+
+
+`mlflow.search_traces()`
+`mlflow.genai.evaluate()`
+`MlflowClient()`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 import mlflow
@@ -90,11 +90,11 @@ traces = client.search_traces(
 )
 ```
 
----
 
-## Pattern 2: Get Single Trace by ID
 
-Fetch a specific trace for detailed analysis.
+
+
+
 
 ```python
 from mlflow import MlflowClient
@@ -114,11 +114,11 @@ spans = trace.data.spans
 print(f"Total spans: {len(spans)}")
 ```
 
----
 
-## Pattern 3: Span Hierarchy Analysis
 
-Analyze the hierarchical structure of spans in a trace.
+
+
+
 
 ```python
 from mlflow.entities import Trace
@@ -170,11 +170,11 @@ print(f"Root spans: {hierarchy['root_count']}")
 print(f"Total spans: {hierarchy['total_spans']}")
 ```
 
----
 
-## Pattern 4: Latency Breakdown by Span Type
 
-Analyze latency distribution across span types.
+
+
+
 
 ```python
 from mlflow.entities import Trace, SpanType
@@ -218,11 +218,11 @@ for span_type, stats in sorted(latency_stats.items(), key=lambda x: -x[1]["total
     print(f"{span_type}: {stats['total_ms']}ms total ({stats['count']} spans)")
 ```
 
----
 
-## Pattern 5: Latency Breakdown by Component Name
 
-Analyze latency by component/stage names (architecture-agnostic).
+
+
+
 
 ```python
 from mlflow.entities import Trace
@@ -289,11 +289,11 @@ stats = latency_by_component(trace, langgraph_components)
 stats = latency_by_component(trace)
 ```
 
----
 
-## Pattern 6: Bottleneck Detection
 
-Find the slowest components in a trace.
+
+
+
 
 ```python
 from mlflow.entities import Trace
@@ -344,11 +344,11 @@ for i, b in enumerate(bottlenecks, 1):
     print(f"  {i}. {b['name']} ({b['span_type']}): {b['duration_ms']}ms")
 ```
 
----
 
-## Pattern 7: Error Pattern Detection
 
-Find and analyze error patterns in traces.
+
+
+
 
 ```python
 from mlflow.entities import Trace, SpanStatusCode
@@ -404,11 +404,11 @@ if errors["failed_spans"]:
         print(f"  - {e['name']}: {e['error_message']}")
 ```
 
----
 
-## Pattern 8: Tool Call Analysis
 
-Analyze tool/function calls in a trace.
+
+
+
 
 ```python
 from mlflow.entities import Trace, SpanType
@@ -469,11 +469,11 @@ for tool, stats in tool_analysis['stats'].items():
     print(f"  {tool}: {stats['count']} calls, {stats['total_ms']}ms total")
 ```
 
----
 
-## Pattern 9: LLM Call Analysis
 
-Analyze LLM calls in a trace.
+
+
+
 
 ```python
 from mlflow.entities import Trace, SpanType
@@ -526,11 +526,11 @@ print(f"Total tokens: {llm_analysis['total_input_tokens']} in / {llm_analysis['t
 print(f"LLM latency: {llm_analysis['total_latency_ms']}ms")
 ```
 
----
 
-## Pattern 10: Trace Comparison
 
-Compare multiple traces to identify patterns.
+
+
+
 
 ```python
 from mlflow.entities import Trace
@@ -580,11 +580,11 @@ print(f"Avg latency: {comparison['avg_latency_ms']}ms")
 print(f"Success rate: {comparison['success_rate']:.1%}")
 ```
 
----
 
-## Pattern 11: Generate Trace Analysis Report
 
-Combine multiple analysis patterns into a comprehensive report.
+
+
+
 
 ```python
 from mlflow.entities import Trace
@@ -675,11 +675,11 @@ for rec in report['recommendations']:
     print(f"  - {rec}")
 ```
 
----
 
-## Pattern 12: Using MLflow MCP Server for Trace Analysis
 
-Use the MLflow MCP server for quick trace lookups.
+
+
+
 
 ```python
 # Via Claude Code, use MCP server tools:
@@ -705,11 +705,11 @@ mcp__mlflow-mcp__search_traces(
 )
 ```
 
----
 
-## Pattern 13: Architecture Detection
 
-Auto-detect agent architecture from trace structure.
+
+
+
 
 ```python
 from mlflow.entities import Trace, SpanType
@@ -768,31 +768,31 @@ print(f"Detected architecture: {arch['architecture']}")
 print(f"Span types: {arch['span_type_distribution']}")
 ```
 
----
 
-## Best Practices
 
-### 1. Always Handle Missing Data
+
+
+
 ```python
 # Traces may have incomplete data
 spans = trace.data.spans if hasattr(trace, 'data') else []
 duration = (span.end_time_ns - span.start_time_ns) / 1e6 if span.end_time_ns else 0
 ```
 
-### 2. Normalize Span Names
+
 ```python
 # Handle fully qualified names (UC functions, etc.)
 def normalize_name(name: str) -> str:
     return name.split(".")[-1] if "." in name else name
 ```
 
-### 3. Use Appropriate Filters
+
 ```python
 # Exclude wrapper spans for accurate bottleneck detection
 exclude = ["forward", "predict", "__init__", "root"]
 ```
 
-### 4. Cache Expensive Analysis
+
 ```python
 from functools import lru_cache
 
@@ -802,13 +802,13 @@ def get_trace_analysis(trace_id: str):
     return generate_trace_report(trace)
 ```
 
----
 
-## Pattern 14: Using Assessments for Persistent Analysis
 
-Store analysis findings directly in MLflow for later use. Use MCP tools during agent sessions.
 
-### Log Analysis Feedback (via MCP)
+
+
+
+
 
 ```
 # Store a finding during agent analysis
@@ -821,7 +821,7 @@ mcp__mlflow-mcp__log_feedback(
 )
 ```
 
-### Log Expected Behavior / Ground Truth (via MCP)
+
 
 ```
 # When you know what the correct output should be
@@ -832,7 +832,7 @@ mcp__mlflow-mcp__log_expectation(
 )
 ```
 
-### Retrieve Assessments (via MCP)
+
 
 ```
 mcp__mlflow-mcp__get_assessment(
@@ -841,9 +841,9 @@ mcp__mlflow-mcp__get_assessment(
 )
 ```
 
-### Search Tagged Traces for Dataset Building (via MCP)
 
-After tagging traces during analysis, search for them later:
+
+
 
 ```
 # Find all traces tagged as evaluation candidates
@@ -854,9 +854,9 @@ mcp__mlflow-mcp__search_traces(
 )
 ```
 
-### Convert Tagged Traces to Dataset (Python SDK)
 
-When generating evaluation code, use Python SDK to build datasets:
+
+
 
 ```python
 import mlflow

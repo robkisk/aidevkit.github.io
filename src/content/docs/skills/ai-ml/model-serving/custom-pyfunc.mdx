@@ -5,17 +5,17 @@ sidebar:
   order: 2
 ---
 
-Deploy custom Python models with preprocessing, postprocessing, or complex logic.
 
-## When to Use Custom PyFunc
 
-- Custom preprocessing not captured in sklearn pipeline
-- Multiple models in one endpoint
-- Custom output formatting
-- External API calls during inference
-- Complex business logic
 
-## Basic Pattern
+
+
+
+
+
+
+
+
 
 ```python
 import mlflow
@@ -53,7 +53,7 @@ with mlflow.start_run():
     )
 ```
 
-## With Model Signature
+
 
 ```python
 from mlflow.models import infer_signature, ModelSignature
@@ -86,9 +86,9 @@ mlflow.pyfunc.log_model(
 )
 ```
 
-## File-Based Logging (Models from Code)
 
-For complex models, log from a Python file instead of a class instance:
+
+
 
 ```python
 # my_model.py
@@ -119,7 +119,7 @@ with mlflow.start_run():
     )
 ```
 
-## With External Dependencies
+
 
 ```python
 mlflow.pyfunc.log_model(
@@ -137,7 +137,7 @@ mlflow.pyfunc.log_model(
 )
 ```
 
-## With Code Dependencies
+
 
 ```python
 mlflow.pyfunc.log_model(
@@ -149,7 +149,7 @@ mlflow.pyfunc.log_model(
 )
 ```
 
-## Testing Before Deployment
+
 
 ```python
 # Load and test locally
@@ -168,9 +168,9 @@ mlflow.models.predict(
 )
 ```
 
-## Deploy Custom Model
 
-Same as classical ML - use UI, MLflow SDK, or Databricks SDK:
+
+
 
 ```python
 from mlflow.deployments import get_deploy_client
@@ -191,7 +191,7 @@ endpoint = client.create_endpoint(
 )
 ```
 
-## Query Custom Model
+
 
 ```
 query_serving_endpoint(
@@ -202,7 +202,7 @@ query_serving_endpoint(
 )
 ```
 
-Or with inputs format:
+
 
 ```
 query_serving_endpoint(

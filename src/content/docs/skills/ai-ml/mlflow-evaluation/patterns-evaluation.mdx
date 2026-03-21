@@ -5,15 +5,15 @@ sidebar:
   order: 99
 ---
 
-Working patterns for running evaluations, comparing results, and iterating on quality.
 
----
 
-## Pattern 0: Local Agent Testing First (CRITICAL)
 
-**Always test agents locally by importing them directly, NOT via model serving endpoints.**
 
-This enables faster iteration, easier debugging, and no deployment overhead.
+
+
+
+
+
 
 ```python
 import mlflow
@@ -59,27 +59,27 @@ print(f"Run ID: {results.run_id}")
 print(f"Metrics: {results.metrics}")
 ```
 
-### Why Local Testing First?
 
-| Aspect | Local Agent | Model Serving Endpoint |
-|--------|-------------|------------------------|
-| Iteration speed | Fast (no deploy) | Slow (deploy each change) |
-| Debugging | Full stack traces | Limited visibility |
-| Cost | No serving costs | Endpoint compute costs |
-| Dependencies | Direct access | Network latency |
-| Use case | Development, testing | Production monitoring |
 
-### When to Use Model Serving Endpoints
 
-Only use deployed endpoints for:
-- Production monitoring and quality tracking
-- Load testing deployed models
-- A/B testing between deployed versions
-- External integration testing
 
----
 
-## Pattern 1: Basic Evaluation Run
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 import mlflow
@@ -124,11 +124,11 @@ print(f"Run ID: {results.run_id}")
 print(f"Metrics: {results.metrics}")
 ```
 
----
 
-## Pattern 2: Evaluation with Pre-computed Outputs
 
-Use when you already have outputs (e.g., from production logs).
+
+
+
 
 ```python
 # Data with pre-computed outputs - no predict_fn needed
@@ -150,9 +150,9 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 3: Evaluation with Ground Truth
+
+
 
 ```python
 from mlflow.genai.scorers import Correctness, Guidelines
@@ -188,9 +188,9 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 4: Named Evaluation Run for Comparison
+
+
 
 ```python
 import mlflow
@@ -216,9 +216,9 @@ print("V1 Metrics:", results_v1.metrics)
 print("V2 Metrics:", results_v2.metrics)
 ```
 
----
 
-## Pattern 5: Analyze Evaluation Results
+
+
 
 ```python
 import mlflow
@@ -254,9 +254,9 @@ failures = traces_df[traces_df['assessments'].apply(has_failures)]
 print(f"\nFound {len(failures)} rows with failures")
 ```
 
----
 
-## Pattern 6: Compare Two Evaluation Runs
+
+
 
 ```python
 import mlflow
@@ -290,9 +290,9 @@ comparison_df = pd.DataFrame(comparison)
 print(comparison_df.to_string(index=False))
 ```
 
----
 
-## Pattern 7: Find Regressions Between Versions
+
+
 
 ```python
 import mlflow
@@ -336,9 +336,9 @@ for r in regressions[:5]:  # Show first 5
     print(f"  V2 Rationale: {r['v2_rationale']}")
 ```
 
----
 
-## Pattern 8: Iterative Improvement Loop
+
+
 
 ```python
 import mlflow
@@ -409,9 +409,9 @@ def analyze_failures(traces, metric_name):
     return failures
 ```
 
----
 
-## Pattern 9: Evaluation from Production Traces
+
+
 
 ```python
 import mlflow
@@ -450,9 +450,9 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 10: A/B Testing Two Prompts
+
+
 
 ```python
 import mlflow
@@ -501,11 +501,11 @@ print("Prompt A (Concise):", results_a.metrics)
 print("Prompt B (Detailed):", results_b.metrics)
 ```
 
----
 
-## Pattern 11: Evaluation with Parallelization
 
-For large datasets or complex apps.
+
+
+
 
 ```python
 import mlflow
@@ -522,9 +522,9 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 12: Continuous Evaluation in CI/CD
+
+
 
 ```python
 import mlflow
@@ -574,14 +574,14 @@ if __name__ == "__main__":
     run_ci_evaluation()
 ```
 
----
 
-## Evaluation Best Practices
 
-1. **Start Small**: Begin with 20-50 diverse test cases
-2. **Cover Edge Cases**: Include adversarial, ambiguous, and out-of-scope inputs
-3. **Use Multiple Scorers**: Combine safety, quality, and domain-specific checks
-4. **Track Over Time**: Name runs for easy comparison
-5. **Analyze Failures**: Don't just look at aggregate metrics
-6. **Iterate**: Use failures to improve prompts/logic, then re-evaluate
-7. **Version Your Data**: Use MLflow-managed datasets for reproducibility
+
+
+
+
+
+
+
+
+

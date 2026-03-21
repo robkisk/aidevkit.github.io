@@ -5,27 +5,27 @@ sidebar:
   order: 4
 ---
 
-Realistic patterns for common data domains. All examples use Spark + Faker + Pandas UDFs.
 
----
 
-## Retail/E-commerce
 
-### Tables
+
+
+
+
 ```
 customers → orders → order_items → products
 ```
 
-### Key Patterns
 
-| Pattern | Implementation |
-|---------|----------------|
-| Seasonal spikes | Q4 holiday shopping (1.5-2x volume in Nov-Dec) |
-| Cart abandonment | ~70% of carts never complete |
-| Loyalty tier progression | Free → Pro → Enterprise over time |
-| Regional pricing | 5-15% price variation by region |
 
-### Realistic Distributions
+
+
+
+
+
+
+
+
 
 ```python
 @F.pandas_udf(DoubleType())
@@ -45,7 +45,7 @@ def generate_order_amount(tiers: pd.Series) -> pd.Series:
 status_weights = [0.70, 0.08, 0.07, 0.10, 0.05]  # abandoned, pending, processing, shipped, delivered
 ```
 
-### Schema Example
+
 
 ```python
 # Products
@@ -59,25 +59,25 @@ products_df = spark.range(0, N_PRODUCTS).select(
 )
 ```
 
----
 
-## Support/CRM
 
-### Tables
+
+
+
 ```
 accounts → contacts → tickets → interactions
 ```
 
-### Key Patterns
 
-| Pattern | Implementation |
-|---------|----------------|
-| Incident spikes | 3-5x volume during outages |
-| Resolution by priority | Critical: 4h avg, Low: 72h avg |
-| Enterprise contacts | 5-10 contacts per account vs 1-2 for SMB |
-| CSAT correlation | Faster resolution = higher satisfaction |
 
-### Realistic Distributions
+
+
+
+
+
+
+
+
 
 ```python
 @F.pandas_udf("struct<priority:string,resolution_hours:double,csat:int>")
@@ -107,7 +107,7 @@ def generate_ticket_metrics(tiers: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(results)
 ```
 
-### Schema Example
+
 
 ```python
 # Tickets with coherent attributes
@@ -124,25 +124,25 @@ tickets_df = (
 )
 ```
 
----
 
-## Manufacturing/IoT
 
-### Tables
+
+
+
 ```
 equipment → sensors → readings → maintenance_orders
 ```
 
-### Key Patterns
 
-| Pattern | Implementation |
-|---------|----------------|
-| Sensor lifecycle | Normal → degraded → failure progression |
-| Anomaly precursors | Anomalies precede maintenance by 2-7 days |
-| Seasonal production | Summer/winter production variations |
-| Equipment age | Failure rate increases with age |
 
-### Realistic Distributions
+
+
+
+
+
+
+
+
 
 ```python
 @F.pandas_udf(DoubleType())
@@ -164,7 +164,7 @@ def generate_sensor_reading(equipment_ages: pd.Series) -> pd.Series:
     return pd.Series(readings)
 ```
 
-### Schema Example
+
 
 ```python
 # Sensor readings time series
@@ -180,25 +180,25 @@ readings_df = (
 )
 ```
 
----
 
-## Financial Services
 
-### Tables
+
+
+
 ```
 accounts → transactions → payments → fraud_flags
 ```
 
-### Key Patterns
 
-| Pattern | Implementation |
-|---------|----------------|
-| Transaction power law | 80% of volume from 20% of accounts |
-| Fraud patterns | Unusual times, amounts, locations |
-| Balance consistency | Transactions maintain positive balance |
-| Regulatory compliance | No negative balances, valid amounts |
 
-### Realistic Distributions
+
+
+
+
+
+
+
+
 
 ```python
 @F.pandas_udf(DoubleType())
@@ -231,7 +231,7 @@ def generate_fraud_flag(amounts: pd.Series, hours: pd.Series) -> pd.Series:
     return pd.Series(flags)
 ```
 
-### Schema Example
+
 
 ```python
 # Transactions with fraud indicators
@@ -248,14 +248,14 @@ transactions_df = (
 )
 ```
 
----
 
-## General Best Practices
 
-1. **Start with domain tables**: Define the core entities and relationships first
-2. **Add domain-specific distributions**: Use realistic statistical patterns for your domain
-3. **Include edge cases**: Every domain has edge cases (returns, cancellations, failures)
-4. **Time-based patterns matter**: Most domains have daily/weekly/seasonal patterns
-5. **Correlate attributes**: Attributes within a row should make business sense together
 
-**Note:** These are guidance patterns, not rigid schemas. Adapt to user's specific requirements.
+
+
+
+
+
+
+
+

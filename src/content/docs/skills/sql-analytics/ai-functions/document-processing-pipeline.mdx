@@ -5,30 +5,30 @@ sidebar:
   order: 4
 ---
 
-End-to-end patterns for building batch document processing pipelines using AI Functions in a Lakeflow Declarative Pipeline (DLT). Covers function selection, `config.yml` centralization, error handling, and guidance on near-real-time variants with DSPy or LangChain.
+`config.yml`
 
-> For workflow migration context (e.g., migrating from n8n, LangChain, or other orchestration tools), see the companion skill `n8n-to-databricks`.
+`n8n-to-databricks`
 
----
 
-## Function Selection for Document Pipelines
 
-When processing documents with AI Functions, apply this order of preference for each stage:
 
-| Stage | Preferred function | Use `ai_query` when... |
-|---|---|---|
-| Parse binary docs (PDF, DOCX, images) | `ai_parse_document` | Need image-level reasoning |
-| Extract flat fields from text | `ai_extract` | Schema has nested arrays |
-| Classify document type or status | `ai_classify` | More than 20 categories |
-| Score item similarity / matching | `ai_similarity` | Need cross-document reasoning |
-| Summarize long sections | `ai_summarize` | — |
-| Extract nested JSON (e.g. line items) | `ai_query` with `responseFormat` | (This is the intended use case) |
 
----
 
-## Centralized Configuration (`config.yml`)
 
-**Always centralize model names, volume paths, and prompts in a `config.yml`.** This makes model swaps a one-line change and keeps pipeline code free of hardcoded strings.
+`ai_query`
+
+`ai_parse_document`
+`ai_extract`
+`ai_classify`
+`ai_similarity`
+`ai_summarize`
+`ai_query``responseFormat`
+
+
+
+`config.yml`
+
+`config.yml`
 
 ```yaml
 # config.yml
@@ -76,11 +76,11 @@ VOLUME_INPUT  = CFG["volumes"]["input"]
 PROMPT_INV    = CFG["prompts"]["extract_invoice"]
 ```
 
----
 
-## Batch Pipeline — Lakeflow Declarative Pipeline
 
-Each logical step in your document workflow maps to a `@dlt.table` stage. Data flows through Delta tables between stages.
+
+
+`@dlt.table`
 
 ```
 [Landing Volume]  →  Stage 1: ai_parse_document
@@ -90,7 +90,7 @@ Each logical step in your document workflow maps to a `@dlt.table` stage. Data f
                   →  Stage 5: Final Delta output table
 ```
 
-### `pipeline.py`
+`pipeline.py`
 
 ```python
 import dlt
@@ -231,15 +231,15 @@ def processing_errors():
     )
 ```
 
----
 
-## Custom RAG Pipeline — Parse → Chunk → Index → Query
 
-When the goal is retrieval-augmented generation rather than field extraction, use this pipeline to parse documents, chunk them into a Delta table, and index with Vector Search.
 
-### Step 1 — Parse and Chunk into a Delta Table
 
-`ai_parse_document` returns a VARIANT. Use `variant_get` with an explicit `ARRAY<VARIANT>` cast before calling `explode`, since `explode()` does not accept raw VARIANT values.
+
+
+
+
+`ai_parse_document``variant_get``ARRAY<VARIANT>``explode``explode()`
 
 ```sql
 CREATE OR REPLACE TABLE catalog.schema.parsed_chunks AS
@@ -266,14 +266,14 @@ WHERE variant_get(element, '$.content', 'STRING') IS NOT NULL
   AND length(trim(variant_get(element, '$.content', 'STRING'))) > 10;
 ```
 
-### Step 1a (Production) — Incremental Parsing with Structured Streaming
 
-For production pipelines where new documents arrive over time, use Structured Streaming with checkpoints for exactly-once processing. Each run processes only new files, then stops with `trigger(availableNow=True)`.
 
-See the official bundle example:
-[databricks/bundle-examples/contrib/job_with_ai_parse_document](https://github.com/databricks/bundle-examples/tree/main/contrib/job_with_ai_parse_document)
+`trigger(availableNow=True)`
 
-**Stage 1 — Parse raw documents (streaming):**
+
+
+
+
 
 ```python
 from pyspark.sql.functions import col, current_timestamp, expr
@@ -308,9 +308,9 @@ parsed_df = (
 )
 ```
 
-**Stage 2 — Extract text from parsed VARIANT (streaming):**
 
-Uses `transform()` to extract element content from the VARIANT array, and `try_cast` for safe access. Error rows are preserved but flagged.
+
+`transform()``try_cast`
 
 ```python
 from pyspark.sql.functions import col, concat_ws, expr, lit, when
@@ -345,50 +345,50 @@ text_df = (
 )
 ```
 
-Key techniques:
-- **`repartition` by file hash** — parallelizes `ai_parse_document` across workers
-- **`trigger(availableNow=True)`** — processes all pending files then stops (batch-like)
-- **Checkpoints** — exactly-once guarantee; no re-parsing on re-runs
-- **`transform()` + `try_cast`** — safer than `explode` + `variant_get` for text extraction
-- **Separate stages with independent checkpoints** — parse and text extraction can fail/retry independently
 
-### Step 1b — Enable Change Data Feed
+`repartition``ai_parse_document`
+`trigger(availableNow=True)`
 
-Required for Vector Search Delta Sync:
+`transform()``try_cast``explode``variant_get`
+
+
+
+
+
 
 ```sql
 ALTER TABLE catalog.schema.parsed_chunks
 SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
 ```
 
-### Step 2 — Create a Vector Search Index and Query It
 
-Use the **[databricks-vector-search](../databricks-vector-search/SKILL.md)** skill to create a Delta Sync index on the chunked table and query it. Ensure CDF is enabled first (Step 1b above).
 
-### RAG-Specific Issues
 
-| Issue | Solution |
-|-------|----------|
-| `explode()` fails with VARIANT | `explode()` requires ARRAY, not VARIANT. Use `variant_get(doc, '$.document.elements', 'ARRAY<VARIANT>')` to cast before exploding |
-| Short/noisy chunks | Filter with `length(trim(...)) > 10` — parsing produces tiny fragments (page numbers, headers) that pollute the index |
-| Re-parsing unchanged documents | Use Structured Streaming with checkpoints — see Step 1a above |
-| Region not supported | US/EU regions only, or enable cross-geography routing |
 
----
 
-## Near-Real-Time Variant — DSPy + MLflow Agent
 
-When the pipeline must respond in seconds (triggered by a user action, API call, or form submission), use DSPy with an MLflow ChatAgent instead of a DLT pipeline.
 
-**When to use DSPy vs LangChain:**
 
-| Scenario | Stack |
-|---|---|
-| Fixed pipeline steps, well-defined I/O, want prompt optimization | **DSPy** |
-| Needs tool-calling, memory, or multi-agent coordination | **LangChain LCEL** + MLflow ChatAgent |
-| Single LLM call, simple task | Direct AI Function or `ai_query` in a notebook |
+`explode()``explode()``variant_get(doc, '$.document.elements', 'ARRAY<VARIANT>')`
+`length(trim(...)) > 10`
 
-### DSPy Signatures (replace LangChain agent system prompts)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`ai_query`
+
+
 
 ```python
 # pip install dspy-ai mlflow databricks-sdk
@@ -436,7 +436,7 @@ class DocumentPipeline(dspy.Module):
 pipeline = DocumentPipeline()
 ```
 
-### Wrap and Register with MLflow
+
 
 ```python
 import mlflow, json
@@ -463,13 +463,13 @@ with mlflow.start_run():
     )
 ```
 
----
 
-## Tips
 
-1. **Parse first, enrich second** — always run `ai_parse_document` as the first stage. Feed its text output to task-specific functions; never pass raw binary to `ai_query`.
-2. **Flat fields → `ai_extract`; nested arrays → `ai_query`** — this is the clearest decision boundary.
-3. **`failOnError => false` is mandatory in batch** — write errors to a sidecar `_errors` table rather than crashing the pipeline.
-4. **Truncate before sending to `ai_query`** — use `LEFT(text, 6000)` or chunk long documents to stay within context window limits.
-5. **Prompts belong in `config.yml`** — never hardcode prompt strings in pipeline code. A prompt change should be a config change, not a code change.
-6. **DSPy for agents** — when migrating from LangChain agent-based tools, DSPy typed `Signature` classes give you structured I/O contracts, testability, and optional prompt compilation/optimization.
+
+
+`ai_parse_document``ai_query`
+`ai_extract``ai_query`
+`failOnError => false``_errors`
+`ai_query``LEFT(text, 6000)`
+`config.yml`
+`Signature`

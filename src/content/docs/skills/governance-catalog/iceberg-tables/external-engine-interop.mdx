@@ -5,40 +5,40 @@ sidebar:
   order: 5
 ---
 
-This file covers connecting external engines to Databricks via the Iceberg REST Catalog (IRC). Each engine section includes the minimum configuration needed to read (and where supported, write) Databricks-managed Iceberg tables.
 
-**Prerequisites for all engines**:
-- Databricks workspace with external data access enabled
-- `EXTERNAL USE SCHEMA` granted on target schemas
-- PAT or OAuth (service principal) credentials for authentication with the required permissions.
-- **Network access**: The client must reach the Databricks workspace on HTTPS (port 443). If workspace **IP access lists** are enabled, add the client's egress CIDR to the allowlist — this is a common setup issue that blocks connectivity even when credentials and grants are correct.
 
-See [3-iceberg-rest-catalog.md](3-iceberg-rest-catalog.md) for IRC endpoint details.
 
----
 
-## PyIceberg
+`EXTERNAL USE SCHEMA`
 
-PyIceberg is a Python library for reading and writing Iceberg tables without Spark.
 
-### Installation
 
-Upgrade both packages explicitly — if `pyarrow` (v15) is too old, it causes write errors. Also install `adlfs` for Azure storage access:
+
+
+
+
+
+
+
+
+
+
+`pyarrow``adlfs`
 
 ```bash
 pip install --upgrade "pyiceberg>=0.9,<0.10" "pyarrow>=17,<20"
 pip install adlfs
 ```
 
-For non-Databricks environments:
+
 
 ```bash
 pip install "pyiceberg[pyarrow]>=0.9"
 ```
 
-### Connect to Catalog
 
-The `warehouse` parameter pins the catalog, so all subsequent table identifiers use `<schema>.<table>` (not `<catalog>.<schema>.<table>`):
+
+`warehouse``<schema>.<table>``<catalog>.<schema>.<table>`
 
 ```python
 from pyiceberg.catalog import load_catalog
@@ -51,7 +51,7 @@ catalog = load_catalog(
 )
 ```
 
-### Read Table
+
 
 ```python
 # Load table — identifier is <schema>.<table> because 'warehouse' pins the UC catalog
@@ -75,7 +75,7 @@ df = tbl.scan(
 arrow_table = tbl.scan().to_arrow()
 ```
 
-### Append Data
+
 
 ```python
 import pyarrow as pa
@@ -110,25 +110,25 @@ tbl.append(arrow_tbl)
 print("Current snapshot:", tbl.current_snapshot())
 ```
 
----
 
-## OSS Apache Spark
 
-> **CRITICAL**: Only configure this **outside** Databricks Runtime. Inside DBR, use the built-in Iceberg support — do NOT install the Iceberg library.
 
-### Dependencies
 
-Two JARs are required: the Spark runtime and a cloud-specific bundle for object storage access. Choose the bundle matching your Databricks metastore's cloud:
 
-| Cloud | Bundle |
-|-------|--------|
-| AWS | `org.apache.iceberg:iceberg-aws-bundle:<version>` |
-| Azure | `org.apache.iceberg:iceberg-azure-bundle:<version>` |
-| GCP | `org.apache.iceberg:iceberg-gcp-bundle:<version>` |
 
-### Spark Session Configuration
 
-The Databricks docs recommend OAuth2 (service principal) for external Spark connections. Set `rest.auth.type=oauth2` and provide the OAuth2 server URI, credential, and scope:
+
+
+
+
+
+`org.apache.iceberg:iceberg-aws-bundle:<version>`
+`org.apache.iceberg:iceberg-azure-bundle:<version>`
+`org.apache.iceberg:iceberg-gcp-bundle:<version>`
+
+
+
+`rest.auth.type=oauth2`
 
 ```python
 from pyspark.sql import SparkSession
@@ -174,7 +174,7 @@ spark.sql(f"SELECT * FROM {CATALOG_ALIAS}.<schema>.<table>").show()
 df.writeTo(f"{CATALOG_ALIAS}.<schema>.<table>").append()
 ```
 
-### Spark SQL
+
 
 ```sql
 -- List schemas
@@ -187,25 +187,25 @@ SELECT * FROM uc.<schema>.<table>;
 INSERT INTO uc.<schema>.<table> VALUES (1, 'foo', 10);
 ```
 
----
 
-## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| **Connection timeout or `403 Forbidden` with valid credentials** | Workspace IP access list is blocking the client — add the client's egress CIDR to the allowlist (admin console: **Settings → Security → IP access list**) |
-| **`403 Forbidden`** | Check `EXTERNAL USE SCHEMA` grant and token validity |
-| **`Table not found`** | Verify the `warehouse` config matches the UC catalog name; check schema and table names |
-| **Class conflict in DBR** | You installed an Iceberg library in Databricks Runtime — remove it; DBR has built-in support |
-| **Credential vending failure** | Ensure external data access is enabled on the workspace |
-| **Slow reads** | Check if table needs compaction (`OPTIMIZE`); large numbers of small files degrade performance |
-| **v3 table incompatibility** | Upgrade to Iceberg library 1.9.0+ for v3 support; older versions cannot read v3 tables |
-| **PyArrow schema mismatch** | Cast to explicit types (e.g., `pa.int32()`) when the Iceberg table schema uses 32-bit integers |
-| **PyIceberg write error on serverless** | Upgrade pyarrow (`>=17`) and install `adlfs` — the bundled pyarrow v15 is incompatible |
 
----
 
-## Related
 
-- [3-iceberg-rest-catalog.md](3-iceberg-rest-catalog.md) — IRC endpoint details, auth, credential vending
-- [4-snowflake-interop.md](4-snowflake-interop.md) — Snowflake-specific integration
+
+`403 Forbidden`
+`403 Forbidden``EXTERNAL USE SCHEMA`
+`Table not found``warehouse`
+
+
+`OPTIMIZE`
+
+`pa.int32()`
+`>=17``adlfs`
+
+
+
+
+
+
+

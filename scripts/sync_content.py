@@ -226,6 +226,55 @@ def first_sentence(text: str) -> str:
     return ""
 
 
+def escape_mdx_angles(body: str) -> str:
+    """Escape all < in prose to prevent MDX JSX parse errors.
+
+    Leaves code fences and inline code untouched. MDX treats any < in
+    prose as a JSX tag start, so we must escape them to &lt;.
+
+    Properly tracks fenced code blocks per CommonMark: an opening fence
+    (``` or ~~~, optionally with info string) is closed only by a line
+    with at least as many backticks/tildes and NO info string.
+    """
+    result: list[str] = []
+    in_fence = False
+    fence_char = ""
+    fence_len = 0
+
+    for line in body.split("\n"):
+        stripped = line.strip()
+
+        if in_fence:
+            # Check for closing fence: same char, >= length, no info string
+            m = re.match(r"^(`{3,}|~{3,})\s*$", stripped)
+            if m and m.group(1)[0] == fence_char and len(m.group(1)) >= fence_len:
+                in_fence = False
+            result.append(line)
+            continue
+
+        # Check for opening fence
+        m = re.match(r"^(`{3,}|~{3,})", stripped)
+        if m:
+            in_fence = True
+            fence_char = m.group(1)[0]
+            fence_len = len(m.group(1))
+            result.append(line)
+            continue
+
+        # Outside code fence: escape MDX-sensitive chars in prose, not inline code
+        parts = re.split(r"(`[^`]*`)", line)
+        escaped: list[str] = []
+        for part in parts:
+            if part.startswith("`") and part.endswith("`") and len(part) > 1:
+                escaped.append(part)
+            else:
+                part = part.replace("<", "&lt;").replace(">", "&gt;")
+                part = part.replace("{", "\\{").replace("}", "\\}")
+        result.append("".join(escaped))
+
+    return "\n".join(result)
+
+
 def sanitize_yaml(value: str) -> str:
     """Make a string safe for unquoted YAML frontmatter values.
 
@@ -442,7 +491,7 @@ def gen_skill_index(skill: Skill, slug: str) -> str:
     """Generate index.mdx content from a skill's SKILL.md."""
     title = title_from_slug(slug)
     desc = sanitize_yaml(skill.description)
-    body = strip_heading(skill.body)
+    body = escape_mdx_angles(strip_heading(skill.body))
 
     return (
         f"---\n"
@@ -463,7 +512,7 @@ def gen_skill_single(skill: Skill, slug: str) -> str:
     parts = [strip_heading(skill.body)]
     for child in skill.children:
         parts.append(f"\n---\n\n{child.body.strip()}")
-    body = "\n".join(parts)
+    body = escape_mdx_angles("\n".join(parts))
 
     return (
         f"---\n"
@@ -478,7 +527,7 @@ def gen_skill_single(skill: Skill, slug: str) -> str:
 
 def gen_child_page(child: ChildPage) -> str:
     """Generate a child .mdx page from source content."""
-    body = strip_heading(child.body)
+    body = escape_mdx_angles(strip_heading(child.body))
     desc = sanitize_yaml(first_sentence(child.body) or child.title)
     title = sanitize_yaml(child.title)
 

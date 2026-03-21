@@ -5,24 +5,24 @@ sidebar:
   order: 99
 ---
 
-Build a complete Retrieval-Augmented Generation pipeline: prepare documents, create a vector index, query it, and wire it into an agent.
 
-## MCP Tools Used
 
-| Tool | Step |
-|------|------|
-| `execute_sql` | Create source table, insert documents |
-| `create_vs_endpoint` | Create compute endpoint |
-| `create_vs_index` | Create Delta Sync index with managed embeddings |
-| `sync_vs_index` | Trigger index sync |
-| `get_vs_index` | Check index status |
-| `query_vs_index` | Test similarity search |
 
----
 
-## Step 1: Prepare Source Table
 
-The source Delta table needs a primary key column and a text column to embed.
+
+`execute_sql`
+`create_vs_endpoint`
+`create_vs_index`
+`sync_vs_index`
+`get_vs_index`
+`query_vs_index`
+
+
+
+
+
+
 
 ```sql
 CREATE TABLE IF NOT EXISTS catalog.schema.knowledge_base (
@@ -39,7 +39,7 @@ INSERT INTO catalog.schema.knowledge_base VALUES
 ('doc-003', 'Delta Lake', 'Delta Lake is an open-source storage layer...', 'storage', current_timestamp());
 ```
 
-Or via MCP:
+
 
 ```python
 execute_sql(sql_query="""
@@ -53,7 +53,7 @@ execute_sql(sql_query="""
 """)
 ```
 
-## Step 2: Create Vector Search Endpoint
+
 
 ```python
 create_vs_endpoint(
@@ -62,14 +62,14 @@ create_vs_endpoint(
 )
 ```
 
-Endpoint creation is asynchronous. Check status:
+
 
 ```python
 get_vs_endpoint(name="my-rag-endpoint")
 # Wait for state: "ONLINE"
 ```
 
-## Step 3: Create Delta Sync Index
+
 
 ```python
 create_vs_index(
@@ -91,12 +91,12 @@ create_vs_index(
 )
 ```
 
-Key decisions:
-- **`embedding_source_columns`**: Databricks computes embeddings automatically from the `content` column
-- **`pipeline_type`**: `TRIGGERED` for manual sync (cheaper), `CONTINUOUS` for auto-sync on table changes
-- **`columns_to_sync`**: Only sync columns you need in query results (reduces storage and improves performance)
 
-## Step 4: Sync and Verify
+`embedding_source_columns``content`
+`pipeline_type``TRIGGERED``CONTINUOUS`
+`columns_to_sync`
+
+
 
 ```python
 # Trigger initial sync
@@ -107,7 +107,7 @@ get_vs_index(index_name="catalog.schema.knowledge_base_index")
 # Wait for state: "ONLINE"
 ```
 
-## Step 5: Query the Index
+
 
 ```python
 # Semantic search
@@ -119,9 +119,9 @@ query_vs_index(
 )
 ```
 
-### With Filters
 
-The filter syntax depends on the endpoint type used when creating the index.
+
+
 
 ```python
 # Storage-Optimized endpoint (used in this walkthrough): SQL-like filter_string
@@ -143,7 +143,7 @@ query_vs_index(
 )
 ```
 
-### Hybrid Search (Vector + Keyword)
+
 
 ```python
 query_vs_index(
@@ -155,13 +155,13 @@ query_vs_index(
 )
 ```
 
----
 
-## Step 6: Use in an Agent
 
-### As a Tool in a ChatAgent
 
-Use `VectorSearchRetrieverTool` to wire the index into an agent deployed on Model Serving:
+
+
+
+`VectorSearchRetrieverTool`
 
 ```python
 from databricks.agents import ChatAgent
@@ -205,40 +205,40 @@ class RAGAgent(ChatAgent):
         return {"content": response.choices[0].message.content}
 ```
 
----
 
-## Updating the Index
 
-### Add New Documents
+
+
+
 
 ```sql
 INSERT INTO catalog.schema.knowledge_base VALUES
 ('doc-004', 'MLflow', 'MLflow is an open-source platform for ML lifecycle...', 'ml', current_timestamp());
 ```
 
-Then sync:
+
 
 ```python
 sync_vs_index(index_name="catalog.schema.knowledge_base_index")
 ```
 
-### Delete Documents
+
 
 ```sql
 DELETE FROM catalog.schema.knowledge_base WHERE doc_id = 'doc-001';
 ```
 
-Then sync — the index automatically handles deletions via Delta change data feed.
 
----
 
-## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| **Index stuck in PROVISIONING** | Endpoint may still be creating. Check `get_vs_endpoint` first |
-| **Query returns no results** | Index may not be synced yet. Run `sync_vs_index` and wait for ONLINE state |
-| **"Column not found in index"** | Column must be in `columns_to_sync`. Recreate index with the column included |
-| **Embeddings not computed** | Ensure `embedding_model_endpoint_name` is a valid serving endpoint |
-| **Stale results after table update** | For TRIGGERED pipelines, you must call `sync_vs_index` manually |
-| **Filter not working** | Standard endpoints use `filters_json` (dict), Storage-Optimized use `filter_string` (SQL) |
+
+
+
+
+
+`get_vs_endpoint`
+`sync_vs_index`
+`columns_to_sync`
+`embedding_model_endpoint_name`
+`sync_vs_index`
+`filters_json``filter_string`

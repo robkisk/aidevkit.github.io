@@ -5,11 +5,11 @@ sidebar:
   order: 5
 ---
 
-Where and how to save generated synthetic data.
 
-## Create Infrastructure in Script
 
-Always create the schema and volume **inside the Python script** using `spark.sql()`. Do NOT make separate MCP SQL calls - it's much slower.
+
+
+`spark.sql()`
 
 ```python
 CATALOG = "<user-provided-catalog>"  # MUST ask user - never default
@@ -21,24 +21,24 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA} COMMENT 'Synthetic da
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.raw_data")
 ```
 
-**Important:** Do NOT create catalogs - assume they already exist. Only create schema and volume. Always add a `COMMENT` to schemas describing the dataset purpose.
+`COMMENT`
 
----
 
-## Format Comparison
 
-| Format | Use Case | Extension | Best For |
-|--------|----------|-----------|----------|
-| **Parquet** | SDP pipeline input | `.parquet` or none | Best compression, query performance |
-| **JSON** | Log-style ingestion | `.json` | Simulating external data feeds |
-| **CSV** | Legacy systems | `.csv` | Human-readable, spreadsheet import |
-| **Delta Table** | Default - Direct analytics | N/A | Treat as bronze tables for ETL or skip ETL and query immediately |
 
----
 
-## Parquet to Volumes (Default)
 
-Standard format for SDP pipeline input. Best compression and query performance.
+
+`.parquet`
+`.json`
+`.csv`
+
+
+
+
+
+
+
 
 ```python
 VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
@@ -49,17 +49,17 @@ orders_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/orders")
 tickets_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/tickets")
 ```
 
-**Notes:**
-- Files may not use a file extension or might end with `.parquet`
-- Spark writes as a directory with part files
-- Use `mode("overwrite")` for one-time generation
-- Use `mode("append")` for incremental/scheduled jobs
 
----
+`.parquet`
 
-## JSON to Volumes
+`mode("overwrite")`
+`mode("append")`
 
-Common pattern for simulating SDP ingestion from external data feeds (logs, webhooks).
+
+
+
+
+
 
 ```python
 VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
@@ -69,16 +69,16 @@ customers_df.write.mode("overwrite").json(f"{VOLUME_PATH}/customers_json")
 orders_df.write.mode("overwrite").json(f"{VOLUME_PATH}/orders_json")
 ```
 
-**When to use:**
-- Simulating log ingestion
-- External API data feeds
-- User explicitly requests JSON format
 
----
 
-## CSV to Volumes
 
-Common pattern for simulating data from legacy systems or spreadsheet exports.
+
+
+
+
+
+
+
 
 ```python
 VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
@@ -88,7 +88,7 @@ customers_df.write.mode("overwrite").option("header", "true").csv(f"{VOLUME_PATH
 orders_df.write.mode("overwrite").option("header", "true").csv(f"{VOLUME_PATH}/orders_csv")
 ```
 
-**Options:**
+
 ```python
 # Full options for CSV
 df.write \
@@ -100,16 +100,16 @@ df.write \
     .csv(f"{VOLUME_PATH}/data_csv")
 ```
 
-**When to use:**
-- Legacy system integration
-- Human-readable data
-- Spreadsheet import testing
 
----
 
-## Delta Table (Unity Catalog)
 
-Write directly to managed Delta tables when data is ready for analytics consumption (skip SDP pipeline).
+
+
+
+
+
+
+
 
 ```python
 # Ensure schema exists
@@ -126,16 +126,16 @@ customers_df.write \
     .saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
 ```
 
-**When to use:**
-- User wants data ready to query immediately
-- Skip the SDP bronze/silver/gold pipeline
-- Direct SQL analytics
 
-### Adding Table and Column Comments
 
-Always add comments to Delta tables for discoverability in Unity Catalog. Prefer DDL-first approach — define the table with comments, then insert data.
 
-**DDL-first (preferred):**
+
+
+
+
+
+
+
 ```python
 # Create table with inline column comments and table comment
 spark.sql(f"""
@@ -154,7 +154,7 @@ spark.sql(f"""
 customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
 ```
 
-**PySpark schema with comments:**
+
 ```python
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 
@@ -172,7 +172,7 @@ customers_df = spark.createDataFrame(data, schema)
 customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
 ```
 
-**Post-write (alternative):**
+
 ```python
 # Write first, then add comments
 customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
@@ -185,20 +185,20 @@ spark.sql(f"ALTER TABLE {CATALOG}.{SCHEMA}.customers ALTER COLUMN customer_id CO
 spark.sql(f"ALTER TABLE {CATALOG}.{SCHEMA}.customers ALTER COLUMN tier COMMENT 'Customer tier: Free, Pro, Enterprise'")
 ```
 
-**Note:** Column/table comments only apply to Delta tables in Unity Catalog. Parquet/JSON/CSV files written to volumes do not support metadata comments.
 
----
 
-## Write Modes
 
-| Mode | Behavior | Use Case |
-|------|----------|----------|
-| `overwrite` | Replace existing data | One-time generation, regeneration |
-| `append` | Add to existing data | Incremental/scheduled jobs |
-| `ignore` | Skip if exists | Idempotent generation |
-| `error` | Fail if exists | Safety check |
 
-### Incremental Generation Pattern
+
+
+
+
+`overwrite`
+`append`
+`ignore`
+`error`
+
+
 
 ```python
 WRITE_MODE = "append"  # For scheduled jobs
@@ -214,11 +214,11 @@ new_orders_df = generate_orders(start_date=LAST_RUN, end_date=END_DATE)
 new_orders_df.write.mode(WRITE_MODE).parquet(f"{VOLUME_PATH}/orders")
 ```
 
----
 
-## Validation After Write
 
-After successful execution, validate the generated data:
+
+
+
 
 ```python
 # Read back and verify
@@ -233,7 +233,7 @@ customers_check.groupBy("tier").count().show()
 orders_check.describe("amount").show()
 ```
 
-Or use `get_volume_folder_details` MCP tool:
-- `volume_path`: "my_catalog/my_schema/raw_data/customers"
-- `format`: "parquet"
-- `table_stat_level`: "SIMPLE"
+`get_volume_folder_details`
+`volume_path`
+`format`
+`table_stat_level`

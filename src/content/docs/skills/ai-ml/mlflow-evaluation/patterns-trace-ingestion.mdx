@@ -5,39 +5,39 @@ sidebar:
   order: 99
 ---
 
-Working code patterns for setting up trace storage in Unity Catalog, logging traces from applications, and enabling production monitoring.
 
-**Version**: MLflow 3.9.0+ (`mlflow[databricks]>=3.9.0`)
-**Preview**: Requires "OpenTelemetry on Databricks" preview enabled
-**Regions**: Currently available in `us-east-1` and `us-west-2` only
 
----
+`mlflow[databricks]>=3.9.0`
 
-## Table of Contents
+`us-east-1``us-west-2`
 
-| # | Pattern | Description |
-|---|---------|-------------|
-| 1 | [Initial Setup](#pattern-1-initial-setup---link-uc-schema-to-experiment) | Link UC schema to experiment, create tables |
-| 2 | [Access Control](#pattern-2-access-control---grant-permissions) | Grant required permissions on UC tables |
-| 3 | [Set Trace Destination (Python API)](#pattern-3-set-trace-destination-via-python-api) | Configure where traces are sent |
-| 4 | [Set Trace Destination (Env Var)](#pattern-4-set-trace-destination-via-environment-variable) | Configure destination via env var |
-| 5 | [Log Traces with @mlflow.trace](#pattern-5-log-traces-with-mlflow-decorator) | Instrument functions with decorator |
-| 6 | [Log Traces with start_span](#pattern-6-log-traces-with-context-manager) | Fine-grained span control |
-| 7 | [Auto-Instrumentation](#pattern-7-automatic-tracing-with-autolog) | Framework auto-tracing (OpenAI, LangChain, etc.) |
-| 8 | [Combined Instrumentation](#pattern-8-combined-auto-and-manual-tracing) | Mix auto + manual tracing |
-| 9 | [Traces from Databricks Apps](#pattern-9-log-traces-from-databricks-apps) | Configure app service principal |
-| 10 | [Traces from Model Serving](#pattern-10-log-traces-from-model-serving-endpoints) | Configure serving endpoints |
-| 11 | [Traces from OTEL Clients](#pattern-11-log-traces-from-third-party-otel-clients) | Use OpenTelemetry OTLP exporter |
-| 12 | [Enable Production Monitoring](#pattern-12-enable-production-monitoring) | Register and start scorers |
-| 13 | [Manage Monitoring Scorers](#pattern-13-manage-monitoring-scorers) | List, update, stop, delete scorers |
-| 14 | [Query UC Trace Tables](#pattern-14-query-traces-from-unity-catalog-tables) | SQL queries on ingested traces |
-| 15 | [End-to-End Setup](#pattern-15-end-to-end-setup-script) | Complete setup from scratch |
 
----
 
-## Pattern 1: Initial Setup - Link UC Schema to Experiment
 
-Create an MLflow experiment and link it to a Unity Catalog schema. This automatically creates three tables for storing trace data.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 import os
@@ -70,18 +70,18 @@ result = set_experiment_trace_location(
 )
 ```
 
-**Tables created automatically:**
-- `{catalog}.{schema}.mlflow_experiment_trace_otel_logs`
-- `{catalog}.{schema}.mlflow_experiment_trace_otel_metrics`
-- `{catalog}.{schema}.mlflow_experiment_trace_otel_spans`
 
-**CRITICAL**: Linking a UC schema hides pre-existing experiment traces stored in MLflow. Unlinking restores access to those traces.
+`{catalog}.{schema}.mlflow_experiment_trace_otel_logs`
+`{catalog}.{schema}.mlflow_experiment_trace_otel_metrics`
+`{catalog}.{schema}.mlflow_experiment_trace_otel_spans`
 
----
 
-## Pattern 2: Access Control - Grant Permissions
 
-Users and service principals need explicit permissions on the UC trace tables. `ALL_PRIVILEGES` is **not sufficient**.
+
+
+
+
+`ALL_PRIVILEGES`
 
 ```sql
 -- Required: USE_CATALOG on the catalog
@@ -99,7 +99,7 @@ GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_
   TO `user@company.com`;
 ```
 
-**For service principals (Databricks Apps, Model Serving):**
+
 ```sql
 -- Replace with the service principal's application ID
 GRANT USE_CATALOG ON CATALOG my_catalog TO `<service-principal-app-id>`;
@@ -112,11 +112,11 @@ GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_
   TO `<service-principal-app-id>`;
 ```
 
----
 
-## Pattern 3: Set Trace Destination via Python API
 
-Configure where traces are sent using the Python API. Use this after the initial setup (Pattern 1) in your application code.
+
+
+
 
 ```python
 import mlflow
@@ -137,11 +137,11 @@ def my_agent(query: str) -> str:
     return process(query)
 ```
 
----
 
-## Pattern 4: Set Trace Destination via Environment Variable
 
-Alternative to Pattern 3 — configure destination via environment variable. Useful for deployment configurations.
+
+
+
 
 ```python
 import os
@@ -150,16 +150,16 @@ import os
 os.environ["MLFLOW_TRACING_DESTINATION"] = "my_catalog.my_schema"
 ```
 
-Or in shell:
+
 ```bash
 export MLFLOW_TRACING_DESTINATION="my_catalog.my_schema"
 ```
 
----
 
-## Pattern 5: Log Traces with MLflow Decorator
 
-Use `@mlflow.trace` to instrument functions. Automatically captures inputs, outputs, latency, and exceptions.
+
+
+`@mlflow.trace`
 
 ```python
 import mlflow
@@ -188,20 +188,20 @@ def check_safety(text: str) -> bool:
     return safety_classifier.predict(text)
 ```
 
-**Available SpanType values:**
-- `SpanType.CHAIN` — Orchestration / pipeline steps
-- `SpanType.CHAT_MODEL` — LLM chat completions
-- `SpanType.LLM` — LLM calls (non-chat)
-- `SpanType.RETRIEVER` — Document/data retrieval (special output schema)
-- `SpanType.TOOL` — Tool/function execution
-- `SpanType.AGENT` — Agent execution
-- `SpanType.EMBEDDING` — Embedding generation
 
----
+`SpanType.CHAIN`
+`SpanType.CHAT_MODEL`
+`SpanType.LLM`
+`SpanType.RETRIEVER`
+`SpanType.TOOL`
+`SpanType.AGENT`
+`SpanType.EMBEDDING`
 
-## Pattern 6: Log Traces with Context Manager
 
-Use `mlflow.start_span()` for fine-grained control over spans. Manually set inputs, outputs, and attributes.
+
+
+
+`mlflow.start_span()`
 
 ```python
 import mlflow
@@ -231,11 +231,11 @@ def process_query(query: str) -> str:
     return response
 ```
 
----
 
-## Pattern 7: Automatic Tracing with Autolog
 
-Enable automatic tracing for supported frameworks. MLflow captures LLM calls, tool executions, and chain operations without code changes.
+
+
+
 
 ```python
 import mlflow
@@ -263,17 +263,17 @@ response = client.chat.completions.create(
 # ^ This call is automatically traced
 ```
 
-**20+ supported frameworks** including:
-- OpenAI, Anthropic, Google GenAI
-- LangChain, LlamaIndex, DSPy
-- LiteLLM, Ollama, Bedrock
-- CrewAI, AutoGen, Haystack
 
----
 
-## Pattern 8: Combined Auto and Manual Tracing
 
-Combine automatic framework tracing with manual decorators for complete coverage.
+
+
+
+
+
+
+
+
 
 ```python
 import mlflow
@@ -309,17 +309,17 @@ def retrieve_documents(query: str) -> list[dict]:
     return vector_store.search(query, top_k=5)
 ```
 
----
 
-## Pattern 9: Log Traces from Databricks Apps
 
-Configure a Databricks App to send traces to Unity Catalog.
 
-**Prerequisites:**
-- App uses `mlflow[databricks]>=3.5.0`
-- App's service principal has MODIFY and SELECT on the trace tables (see Pattern 2)
 
-**In your app code:**
+
+
+
+`mlflow[databricks]>=3.5.0`
+
+
+
 ```python
 import os
 import mlflow
@@ -342,19 +342,19 @@ def handle_request(query: str) -> str:
     return my_agent.invoke(query)
 ```
 
-**Deployment steps:**
-1. Locate the app's service principal under the **Authorization** tab
-2. Grant MODIFY and SELECT on the three `mlflow_experiment_trace_*` tables
-3. Configure the trace destination in your app code
-4. Deploy the app
 
----
 
-## Pattern 10: Log Traces from Model Serving Endpoints
+`mlflow_experiment_trace_*`
 
-Configure a model serving endpoint to send traces to Unity Catalog.
 
-**Step 1: Grant permissions to user/service principal**
+
+
+
+
+
+
+
+
 ```sql
 GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_logs
   TO `serving-principal-id`;
@@ -362,19 +362,19 @@ GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_
   TO `serving-principal-id`;
 ```
 
-**Step 2: Generate a Personal Access Token (PAT)**
 
-Create a PAT for the identity that has the permissions above.
 
-**Step 3: Add environment variables to the endpoint**
 
-Add these to the serving endpoint configuration:
+
+
+
+
 ```
 DATABRICKS_TOKEN=<your-personal-access-token>
 MLFLOW_TRACING_DESTINATION=my_catalog.my_schema
 ```
 
-**Step 4: In your served model code, configure the destination**
+
 ```python
 import os
 import mlflow
@@ -393,11 +393,11 @@ def predict(model_input):
     return my_model.invoke(model_input)
 ```
 
----
 
-## Pattern 11: Log Traces from Third-Party OTEL Clients
 
-Send traces from any OpenTelemetry-compatible client to Unity Catalog via the OTLP HTTP endpoint.
+
+
+
 
 ```python
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -426,16 +426,16 @@ with tracer.start_as_current_span("my-operation") as span:
     span.set_attribute("result_length", len(result))
 ```
 
-**Notes:**
-- Traces ingested via OTEL appear in linked experiments if they contain a root span
-- Use the `X-Databricks-UC-Table-Name` header to specify the target spans table
-- Standard OTEL instrumentation libraries work with this endpoint
 
----
 
-## Pattern 12: Enable Production Monitoring
+`X-Databricks-UC-Table-Name`
 
-Register scorers to continuously evaluate traces in production. Scorers run asynchronously on sampled traces.
+
+
+
+
+
+
 
 ```python
 import mlflow
@@ -469,18 +469,18 @@ tone_check = tone_check.start(
 )
 ```
 
-**CRITICAL**: You must both `.register()` AND `.start()` — registering alone does not activate monitoring.
+`.register()``.start()`
 
-**SQL Warehouse requirements:**
-- User must have `CAN USE` on the SQL warehouse
-- User must have `CAN EDIT` on the experiment
-- Monitoring job permissions are auto-granted on first scorer registration
 
----
+`CAN USE`
+`CAN EDIT`
 
-## Pattern 13: Manage Monitoring Scorers
 
-List, update, stop, and delete production monitoring scorers.
+
+
+
+
+
 
 ```python
 from mlflow.genai.scorers import list_scorers, get_scorer, delete_scorer, ScorerSamplingConfig
@@ -510,11 +510,11 @@ safety_scorer = safety_scorer.start(
 delete_scorer(name="production_safety")
 ```
 
----
 
-## Pattern 14: Query Traces from Unity Catalog Tables
 
-Query ingested traces directly using SQL for custom analysis and dashboards.
+
+
+
 
 ```sql
 -- Count traces per day
@@ -549,7 +549,7 @@ HAVING COUNT(*) > 10
 ORDER BY error_pct DESC;
 ```
 
-**From Python (via Spark):**
+
 ```python
 from databricks.connect import DatabricksSession
 
@@ -567,11 +567,11 @@ spans_df = spark.sql("""
 spans_df.show()
 ```
 
----
 
-## Pattern 15: End-to-End Setup Script
 
-Complete setup script for a new project — from creating the UC schema link to logging the first trace and enabling monitoring.
+
+
+
 
 ```python
 import os
@@ -658,28 +658,28 @@ result = test_agent("Hello, is tracing working?")
 print(f"Test trace logged. Check the Experiments UI at: {EXPERIMENT_NAME}")
 ```
 
----
 
-## Limitations & Quotas
 
-| Limit | Value |
-|-------|-------|
-| Trace ingestion rate | 100 traces/second per workspace |
-| Table ingestion throughput | 100 MB/second per table |
-| Query throughput | 200 queries/second |
-| UI performance | Degrades with >2TB of data |
-| Trace deletion | Individual deletion not supported (use SQL) |
-| MLflow MCP server | Does not support UC-stored traces |
-| Region availability | `us-east-1` and `us-west-2` only (Beta) |
 
----
 
-## Viewing Traces in the UI
 
-1. Navigate to the **Experiments** page in your Databricks workspace
-2. Select your experiment
-3. Click the **Traces** tab
-4. Select a **SQL warehouse** from the dropdown to query UC-stored traces
-5. Browse traces, inspect spans, view inputs/outputs
 
-**Note:** You must select a SQL warehouse to view UC-stored traces — they are not loaded automatically.
+
+
+
+
+
+
+`us-east-1``us-west-2`
+
+
+
+
+
+
+
+
+
+
+
+

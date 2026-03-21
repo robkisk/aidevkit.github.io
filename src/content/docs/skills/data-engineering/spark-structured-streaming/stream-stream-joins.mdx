@@ -5,9 +5,9 @@ sidebar:
   order: 99
 ---
 
-Join two streaming sources in real-time to correlate events that arrive at different times and speeds. Stream-stream joins require watermarks to manage state and handle late-arriving data.
 
-## Quick Start
+
+
 
 ```python
 from pyspark.sql.functions import expr, from_json, col
@@ -60,11 +60,11 @@ query = (matched
 )
 ```
 
-## Core Concepts
 
-### Why Stream-Stream Joins Need Watermarks
 
-Stream-stream joins are stateful: both sides must buffer events until matches are found or state expires. Watermarks define when state can be safely cleaned up.
+
+
+
 
 ```python
 # Watermark = latest_event_time - delay_threshold
@@ -74,20 +74,20 @@ Stream-stream joins are stateful: both sides must buffer events until matches ar
 # State for late events is automatically cleaned up
 ```
 
-### Join Types and Behavior
 
-| Join Type | Matches | Late Events | Use Case |
-|-----------|---------|-------------|----------|
-| **Inner** | Both sides | May still match if other side hasn't expired | Correlation analysis |
-| **Left Outer** | All left + matched right | Dropped from left side after watermark | Enrichment with optional data |
-| **Right Outer** | All right + matched left | Dropped from right side after watermark | Rarely used |
-| **Full Outer** | All events from both | Dropped after watermark | Complete picture |
 
-## Common Patterns
 
-### Pattern 1: Order-Payment Matching
 
-Match orders with payments within a time window:
+
+
+
+
+
+
+
+
+
+
 
 ```python
 orders = (spark
@@ -130,9 +130,9 @@ matched.writeStream \
     .start("/delta/order_payments")
 ```
 
-### Pattern 2: Click-Conversion Attribution
 
-Attribute conversions to clicks within a time window:
+
+
 
 ```python
 impressions = (spark
@@ -177,9 +177,9 @@ attributed.writeStream \
     .start("/delta/attributed_conversions")
 ```
 
-### Pattern 3: Sessionization Across Streams
 
-Group events from multiple streams into sessions:
+
+
 
 ```python
 from pyspark.sql.functions import session_window
@@ -247,9 +247,9 @@ joined_sessions.writeStream \
     .start("/delta/user_sessions")
 ```
 
-### Pattern 4: Late Data Handling with Dead Letter Queue
 
-Route late-arriving events to a separate table:
+
+
 
 ```python
 def write_with_late_data_handling(batch_df, batch_id):
@@ -296,11 +296,11 @@ matched.writeStream \
     .start()
 ```
 
-## State Management
 
-### Configure RocksDB for Large State
 
-For state stores exceeding memory capacity, use RocksDB:
+
+
+
 
 ```python
 # Enable RocksDB state store provider
@@ -313,7 +313,7 @@ spark.conf.set(
 # Recommended for: High cardinality keys, long watermark durations
 ```
 
-### Monitor State Size
+
 
 ```python
 # Read state store directly
@@ -343,7 +343,7 @@ for stream in spark.streams.active:
             print(f"State memory: {op.get('memoryUsedBytes', 0)}")
 ```
 
-### Control State Growth
+
 
 ```python
 # 1. Use watermarks (automatic cleanup)
@@ -361,11 +361,11 @@ expr("s2.ts >= s1.ts")  # State grows forever!
 expr("s2.ts BETWEEN s1.ts AND s1.ts + interval 1 hour")
 ```
 
-## Watermark Configuration
 
-### Choosing Watermark Duration
 
-Balance between latency and completeness:
+
+
+
 
 ```python
 # Rule of thumb: 2-3x the expected delay
@@ -378,9 +378,9 @@ Balance between latency and completeness:
 .withWatermark("event_time", "10 minutes")
 ```
 
-### Multiple Watermarks
 
-When joining streams with different latencies:
+
+
 
 ```python
 # Stream 1: Fast, low latency
@@ -393,11 +393,11 @@ stream2 = stream2.withWatermark("ts", "15 minutes")
 joined = stream1.join(stream2, join_condition, "inner")
 ```
 
-## Production Best Practices
 
-### Idempotent Writes
 
-Ensure exactly-once semantics:
+
+
+
 
 ```python
 def idempotent_write(batch_df, batch_id):
@@ -417,9 +417,9 @@ matched.writeStream \
     .start()
 ```
 
-### Multi-Stream Joins (3+ Streams)
 
-Chain joins carefully - each adds state overhead:
+
+
 
 ```python
 # Step 1: Join streams A and B
@@ -442,7 +442,7 @@ abc = ab.join(
 # Note: Result watermark comes from left side (ab)
 ```
 
-### Performance Tuning
+
 
 ```python
 # State store batch retention
@@ -455,9 +455,9 @@ spark.conf.set("spark.sql.streaming.stateStore.maintenanceInterval", "5m")
 spark.conf.set("spark.sql.shuffle.partitions", "200")
 ```
 
-## Monitoring
 
-### Key Metrics
+
+
 
 ```python
 # Programmatic monitoring
@@ -481,42 +481,42 @@ for stream in spark.streams.active:
             print(f"Watermark: {progress['eventTime'].get('watermark', 'N/A')}")
 ```
 
-### Spark UI Checks
 
-- **Streaming Tab**: Input rate vs processing rate (processing must exceed input)
-- **State Operators**: State size and memory usage
-- **Watermark**: Current watermark timestamp
-- **Batch Duration**: Should be < trigger interval
 
-## Common Issues
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **State too large** | High cardinality keys or long watermark | Reduce key space; decrease watermark duration |
-| **Late events dropped** | Watermark too aggressive | Increase watermark delay |
-| **No matches** | Time condition wrong | Check time bounds and units (minutes vs hours) |
-| **OOM errors** | State explosion | Use RocksDB; increase memory; reduce watermark |
-| **Missing watermarks** | State grows forever | Always define watermarks on both sides |
-| **Unbounded state** | Open-ended time range | Use bounded time range in join condition |
 
-## Production Checklist
 
-- [ ] Watermark configured on both streaming sources
-- [ ] Join condition includes explicit time bounds
-- [ ] State store provider set (RocksDB for large state)
-- [ ] State size monitored and alerts configured
-- [ ] Late data handling strategy defined (DLQ or tolerance)
-- [ ] Output mode is "append" (required for streaming joins)
-- [ ] Checkpoint location is unique per query
-- [ ] Idempotent writes configured (txnVersion/txnAppId)
-- [ ] Time zones normalized across streams
-- [ ] Performance metrics tracked (input rate, state size, watermark lag)
 
-## Expert Tips
 
-### Event Time vs Processing Time
 
-Always use event time for stream-stream joins:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 # ✅ CORRECT: Event time (deterministic)
@@ -527,9 +527,9 @@ Always use event time for stream-stream joins:
 # Results are not reproducible
 ```
 
-### Watermark Semantics Deep Dive
 
-Understanding watermark behavior:
+
+
 
 ```python
 # Watermark = max_event_time - delay_threshold
@@ -543,9 +543,9 @@ Understanding watermark behavior:
 # Effective watermark = max(left_watermark, right_watermark)
 ```
 
-### State Store Backend Selection
 
-Choose the right state store backend:
+
+
 
 ```python
 # Default: In-memory (fast but limited)
@@ -561,9 +561,9 @@ spark.conf.set(
 # Monitor state size to decide when to switch
 ```
 
-### Join Condition Best Practices
 
-Always include explicit time bounds:
+
+
 
 ```python
 # ❌ BAD: Unbounded (state grows forever)
@@ -580,9 +580,9 @@ expr("""
 # Unbounded ranges cause state to grow indefinitely
 ```
 
-## Related Skills
 
-- `stream-static-joins` - Enrich streams with Delta dimension tables
-- `kafka-to-delta` - Kafka ingestion patterns
-- `watermark-configuration` - Deep dive on watermark semantics
-- `state-store-management` - State store optimization and monitoring
+
+`stream-static-joins`
+`kafka-to-delta`
+`watermark-configuration`
+`state-store-management`

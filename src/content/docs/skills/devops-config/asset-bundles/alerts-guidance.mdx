@@ -5,18 +5,18 @@ sidebar:
   order: 99
 ---
 
-## Critical: Schema Validation First
 
-**ALWAYS start by inspecting the schema:**
+
+
 ```bash
 databricks bundle schema | grep -A 100 'sql.AlertV2'
 ```
 
-The Alert v2 API schema differs significantly from other resources. Don't assume field names.
 
-## Common Schema Mistakes to Avoid
 
-### ❌ WRONG - These fields don't exist:
+
+
+
 ```yaml
 condition:                    # Should be "evaluation"
   op: LESS_THAN
@@ -32,7 +32,7 @@ subscriptions:                # Should be under evaluation.notification
   - destination_type: "EMAIL"
 ```
 
-### ✅ CORRECT - Alerts v2 API structure:
+
 ```yaml
 evaluation:                   # Not "condition"
   comparison_operator: 'LESS_THAN_OR_EQUAL'
@@ -53,14 +53,14 @@ schedule:                     # Fields directly under schedule
   timezone_id: 'America/Los_Angeles'     # REQUIRED
 ```
 
-## Alert Trigger Logic
 
-**Critical:** Alerts trigger when condition evaluates to **TRUE**, not FALSE.
 
-**Wrong approach:** Using `GREATER_THAN` and expecting alert when condition is false
-**Correct approach:** Use the operator that directly matches your intent
 
-### Example: Alert when count is NOT > 100 (i.e., ≤ 100)
+
+`GREATER_THAN`
+
+
+
 ```yaml
 # ❌ WRONG - This triggers when count IS > 100
 comparison_operator: 'GREATER_THAN'
@@ -69,7 +69,7 @@ comparison_operator: 'GREATER_THAN'
 comparison_operator: 'LESS_THAN_OR_EQUAL'
 ```
 
-## Email Notifications
+
 
 ```yaml
 evaluation:
@@ -78,13 +78,13 @@ evaluation:
       - user_email: "${workspace.current_user.userName}"
 ```
 
-## Quartz Cron
 
-Format: `second minute hour day-of-month month day-of-week` (use `?` for day-of-week with `*` day-of-month)
 
-Examples: `'0 0 9 * * ?'` (9 AM daily), `'0 */30 * * * ?'` (every 30 min)
+`second minute hour day-of-month month day-of-week``?``*`
 
-## Required Fields
+`'0 0 9 * * ?'``'0 */30 * * * ?'`
+
+
 
 ```yaml
 resources:
@@ -117,10 +117,10 @@ resources:
           group_name: "users"
 ```
 
-## Comparison Operators
 
-`EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`
 
-## Permission Levels
+`EQUAL``NOT_EQUAL``GREATER_THAN``GREATER_THAN_OR_EQUAL``LESS_THAN``LESS_THAN_OR_EQUAL`
 
-`CAN_READ`, `CAN_RUN` (recommended), `CAN_EDIT`, `CAN_MANAGE`
+
+
+`CAN_READ``CAN_RUN``CAN_EDIT``CAN_MANAGE`

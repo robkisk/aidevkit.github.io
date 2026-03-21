@@ -5,11 +5,11 @@ sidebar:
   order: 99
 ---
 
-Comprehensive guide to Kafka streaming with Spark Structured Streaming: ingestion to Delta, Kafka-to-Kafka pipelines, and Real-Time Mode for sub-second latency.
 
-## Quick Start
 
-### Kafka to Delta
+
+
+
 
 ```python
 from pyspark.sql.functions import col, from_json
@@ -42,7 +42,7 @@ df_parsed.writeStream \
     .start("/delta/bronze_events")
 ```
 
-### Kafka to Kafka
+
 
 ```python
 from pyspark.sql.functions import col, from_json, to_json, struct, current_timestamp
@@ -81,11 +81,11 @@ enriched_df.select("key", "value").writeStream \
     .start()
 ```
 
-## Common Patterns
 
-### Pattern 1: Bronze Layer Ingestion (Kafka to Delta)
 
-Minimal transformation, preserve original columns:
+
+
+
 
 ```python
 # Best practice: Minimal transformation, preserve original columns
@@ -117,9 +117,9 @@ df_bronze.writeStream \
     .start("/delta/bronze_events")
 ```
 
-### Pattern 2: Scheduled Streaming (Cost-Optimized)
 
-Run periodically instead of continuously:
+
+
 
 ```python
 # Run every 4 hours, not continuously
@@ -138,9 +138,9 @@ df_bronze.writeStream \
 # - Same streaming code, batch-style execution
 ```
 
-### Pattern 3: Real-Time Mode (Sub-Second Latency)
 
-Use RTM for sub-second (as low as 5ms) latency requirements. Requires DBR 16.4 LTS+:
+
+
 
 ```python
 # Real-time trigger (DBR 16.4 LTS+)
@@ -166,9 +166,9 @@ query = (enriched_df
 # - forEachBatch is NOT supported in RTM
 ```
 
-### Pattern 4: Event Enrichment (Kafka to Kafka with Delta)
 
-Enrich events with dimension data:
+
+
 
 ```python
 # Read reference data (Delta table - auto-refreshed each microbatch)
@@ -197,9 +197,9 @@ enriched.select(col("key"), col("enriched_value").alias("value")).writeStream \
     .start()
 ```
 
-### Pattern 5: Multi-Topic Routing
 
-Route events to different Kafka topics:
+
+
 
 ```python
 def route_events(batch_df, batch_id):
@@ -237,9 +237,9 @@ parsed_df.writeStream \
     .start()
 ```
 
-### Pattern 6: Schema Validation with DLQ
 
-Validate schema and route invalid records:
+
+
 
 ```python
 from pyspark.sql.functions import from_json, col, lit, to_json, struct, current_timestamp
@@ -287,9 +287,9 @@ source_df.writeStream \
     .start()
 ```
 
-## Configuration
 
-### Consumer Options (Reading from Kafka)
+
+
 
 ```python
 (spark
@@ -306,7 +306,7 @@ source_df.writeStream \
 )
 ```
 
-### Producer Options (Writing to Kafka)
+
 
 ```python
 (df
@@ -325,7 +325,7 @@ source_df.writeStream \
 )
 ```
 
-### Security (SASL/SSL)
+
 
 ```python
 # Using Databricks secrets
@@ -345,18 +345,18 @@ df.writeStream \
     .start()
 ```
 
-## Performance Tuning
 
-| Parameter | Recommendation | Why |
-|-----------|---------------|-----|
-| minPartitions | Match Kafka partitions | Optimal parallelism |
-| maxOffsetsPerTrigger | 10,000-100,000 | Balance latency vs throughput |
-| trigger interval | Business SLA / 3 | Recovery time buffer |
-| RTM | Only if < 800ms required | Microbatch more cost-effective |
 
-## Monitoring
 
-### Key Metrics
+
+
+
+
+
+
+
+
+
 
 ```python
 # Programmatic monitoring
@@ -380,38 +380,38 @@ for stream in spark.streams.active:
                     print(f"Topic {topic}, Partition {partition}: Lag = {lag}")
 ```
 
-### Spark UI Checks
 
-- **Input Rate vs Processing Rate**: Processing must be > Input
-- **Max Offsets Behind Latest**: Should be consistent or dropping
-- **Batch Duration**: Should be < trigger interval
 
-## Common Issues
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **No data being read** | `startingOffsets` default is "latest" | Use "earliest" for existing data |
-| **High latency** | Microbatch overhead | Use RTM (trigger(realTime=True)) |
-| **Consumer lag** | Processing < Input rate | Scale cluster; reduce maxOffsetsPerTrigger |
-| **Duplicate messages** | Exactly-once not configured | Enable idempotent producer (acks=all) |
-| **Falling behind** | Processing < Input rate | Increase cluster size |
-| **Can't use autoscaling** | Streaming requirement | Use fixed-size clusters |
 
-## Production Checklist
 
-- [ ] Checkpoint location is persistent (UC volumes, not DBFS)
-- [ ] Unique checkpoint per pipeline
-- [ ] Fixed-size cluster (no autoscaling for streaming/RTM)
-- [ ] RTM enabled only if latency < 800ms required
-- [ ] Consumer lag monitored and alerts configured
-- [ ] Producer acks=all for durability
-- [ ] Schema validation with DLQ configured
-- [ ] Security (SASL/SSL) configured for production
-- [ ] Exactly-once semantics verified
 
-## Related Skills
 
-- `stream-static-joins` - Enrichment patterns with Delta tables
-- `stream-stream-joins` - Event correlation across Kafka topics
-- `checkpoint-best-practices` - Checkpoint configuration
-- `trigger-tuning` - Trigger configuration and RTM setup
+
+
+
+`startingOffsets`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`stream-static-joins`
+`stream-stream-joins`
+`checkpoint-best-practices`
+`trigger-tuning`

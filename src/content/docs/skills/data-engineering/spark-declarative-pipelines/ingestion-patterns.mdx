@@ -5,17 +5,17 @@ sidebar:
   order: 1
 ---
 
-Covers data ingestion patterns for Spark Declarative Pipelines including Auto Loader for cloud storage and streaming sources like Kafka and Event Hub.
 
-**Language Support**: SQL (primary), Python via modern `pyspark.pipelines` API. See [5-python-api.md](5-python-api.md) for Python syntax.
 
----
+`pyspark.pipelines`
 
-## Auto Loader (Cloud Files)
 
-Auto Loader incrementally processes new data files as they arrive in cloud storage. In a streaming table query you **must use the `STREAM` keyword with `read_files`**; `read_files` then leverages Auto Loader. See [read_files — Usage in streaming tables](https://docs.databricks.com/aws/en/sql/language-manual/functions/read_files#usage-in-streaming-tables).
 
-### Basic Pattern
+
+
+`STREAM``read_files``read_files`
+
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE bronze_orders AS
@@ -31,9 +31,9 @@ FROM STREAM read_files(
 );
 ```
 
-### Bronze feeding AUTO CDC
 
-If the bronze table feeds a downstream **AUTO CDC** flow (e.g. `FROM stream(bronze_orders_cdc)`), use **`FROM STREAM read_files(...)`** so the source is streaming. Otherwise you may get: *"Cannot create a streaming table append once flow from a batch query."* Same requirement as above: in a streaming table query you must use the `STREAM` keyword with `read_files`.
+
+`FROM stream(bronze_orders_cdc)``FROM STREAM read_files(...)``STREAM``read_files`
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE bronze_orders_cdc AS
@@ -47,7 +47,7 @@ FROM STREAM read_files(
 );
 ```
 
-### Schema Evolution
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE bronze_customers AS
@@ -62,9 +62,9 @@ FROM STREAM read_files(
 );
 ```
 
-### File Formats
 
-**JSON**:
+
+
 ```sql
 FROM read_files(
   's3://bucket/data/',
@@ -73,7 +73,7 @@ FROM read_files(
 )
 ```
 
-**CSV**:
+
 ```sql
 FROM read_files(
   '/mnt/raw/data/',
@@ -84,7 +84,7 @@ FROM read_files(
 )
 ```
 
-**Parquet** (schema auto-inferred):
+
 ```sql
 FROM read_files(
   'abfss://container@storage.dfs.core.windows.net/data/',
@@ -92,7 +92,7 @@ FROM read_files(
 )
 ```
 
-**Avro**:
+
 ```sql
 FROM read_files(
   '/mnt/raw/events/',
@@ -101,9 +101,9 @@ FROM read_files(
 )
 ```
 
-### Schema Inference
 
-**Explicit hints** (recommended for production):
+
+
 ```sql
 FROM read_files(
   '/mnt/raw/sales/',
@@ -112,7 +112,7 @@ FROM read_files(
 )
 ```
 
-**Partial hints** (infer remaining columns):
+
 ```sql
 FROM read_files(
   '/mnt/raw/data/',
@@ -121,7 +121,7 @@ FROM read_files(
 )
 ```
 
-Add this to the pipeline configuration in `resources/*_etl.pipeline.yml`:
+`resources/*_etl.pipeline.yml`
 ```yaml
 configuration:
   bronze_schema: ${var.bronze_schema}
@@ -130,7 +130,7 @@ configuration:
   schema_location_base: ${var.schema_location_base}
 ```
 
-And define variables in `databricks.yml`:
+`databricks.yml`
 ```yaml
 variables:
   catalog:
@@ -162,7 +162,7 @@ targets:
       schema_location_base: /Volumes/my_catalog/pipeline_metadata/my_pipeline_metadata/schemas
 ```
 
-Then access these in Python code with:
+
 ```python
 bronze_schema = spark.conf.get("bronze_schema")
 silver_schema = spark.conf.get("silver_schema")
@@ -172,9 +172,9 @@ schema_location_base = spark.conf.get("schema_location_base")
 
 
 
-### Rescue Data and Quarantine
 
-Handle malformed records with `_rescued_data`:
+
+`_rescued_data`
 
 ```sql
 -- Flag records with parsing errors
@@ -198,11 +198,11 @@ CREATE OR REPLACE STREAMING TABLE silver_events_clean AS
 SELECT * FROM STREAM bronze_events WHERE _rescued_data IS NULL;
 ```
 
----
 
-## Streaming Sources (Kafka, Event Hub, Kinesis)
 
-### Kafka Source
+
+
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE bronze_kafka_events AS
@@ -225,7 +225,7 @@ FROM read_stream(
 );
 ```
 
-### Kafka with Multiple Topics
+
 
 ```sql
 FROM read_stream(
@@ -236,7 +236,7 @@ FROM read_stream(
 )
 ```
 
-### Azure Event Hub
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE bronze_eventhub_events AS
@@ -254,7 +254,7 @@ FROM read_stream(
 );
 ```
 
-### AWS Kinesis
+
 
 ```sql
 CREATE OR REPLACE STREAMING TABLE bronze_kinesis_events AS
@@ -272,7 +272,7 @@ FROM read_stream(
 );
 ```
 
-### Parse JSON from Streaming Sources
+
 
 ```sql
 -- Parse JSON from Kafka value
@@ -299,41 +299,41 @@ SELECT
 FROM STREAM silver_kafka_parsed;
 ```
 
----
 
-## Authentication
 
-### Using Databricks Secrets
 
-**Kafka**:
+
+
+
+
 ```sql
 kafka.sasl.jaas.config => 'kafkashaded.org.apache.kafka.common.security.plain.PlainLoginModule required username="{{secrets/kafka/username}}" password="{{secrets/kafka/password}}";'
 ```
 
-**Event Hub**:
+
 ```sql
 eventhubs.connectionString => '{{secrets/eventhub/connection-string}}'
 ```
 
-### Using Pipeline Variables
 
-Reference variables in SQL:
+
+
 ```sql
 kafka.bootstrap.servers => '${kafka_brokers}'
 ```
 
-Define in pipeline configuration:
+
 ```yaml
 variables:
   kafka_brokers:
     default: "broker1:9092,broker2:9092"
 ```
 
----
 
-## Key Patterns
 
-### 1. Always Add Ingestion Timestamp
+
+
+
 
 ```sql
 SELECT
@@ -342,7 +342,7 @@ SELECT
 FROM read_files(...)
 ```
 
-### 2. Include File Metadata for Debugging
+
 
 ```sql
 SELECT
@@ -353,7 +353,7 @@ SELECT
 FROM read_files(...)
 ```
 
-### 3. Use Schema Hints for Production
+
 
 ```sql
 -- ✅ Explicit schema prevents surprises
@@ -367,7 +367,7 @@ FROM read_files(
 FROM read_files('/mnt/data/', format => 'json')
 ```
 
-### 4. Handle Rescue Data for Quality
+
 
 ```sql
 -- Route errors to quarantine, clean to downstream
@@ -378,46 +378,46 @@ CREATE OR REPLACE STREAMING TABLE silver_data AS
 SELECT * FROM STREAM bronze_data WHERE NOT has_errors;
 ```
 
-### 5. Starting Positions
 
-**Development**: `startingOffsets => 'latest'` (new data only)
-**Backfill**: `startingOffsets => 'earliest'` (all available data)
-**Recovery**: Checkpoints handle automatically
 
----
+`startingOffsets => 'latest'`
+`startingOffsets => 'earliest'`
 
-## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| Files not picked up | Verify format matches files and path is correct |
-| Schema evolution breaking | Use `mode => 'PERMISSIVE'` and monitor `_rescued_data` |
-| Kafka lag increasing | Check downstream bottlenecks, increase parallelism |
-| Duplicate events | Implement deduplication in silver layer (see [2-streaming-patterns.md](2-streaming-patterns.md)) |
-| Parsing errors | Use rescue data pattern to quarantine malformed records |
 
----
 
-## Python API Examples
 
-For Python, use modern `pyspark.pipelines` API. See [5-python-api.md](5-python-api.md) for complete guidance.
 
-**IMPORTANT for Python**: When using `spark.readStream.format("cloudFiles")` for cloud storage ingestion, you **must specify a `cloudFiles.schemaLocation`** for Auto Loader schema metadata.
 
-### Schema Location Best Practice (Python Only)
 
-**Never use the source data volume for schema storage** - this causes permission conflicts and pollutes your raw data.
 
-#### Prompt User for Schema Location
+`mode => 'PERMISSIVE'``_rescued_data`
 
-When creating Python pipelines with Auto Loader, **always ask the user** where to store schema metadata:
 
-**Recommended pattern:**
+
+
+
+
+
+
+`pyspark.pipelines`
+
+`spark.readStream.format("cloudFiles")``cloudFiles.schemaLocation`
+
+
+
+
+
+
+
+
+
+
 ```
 /Volumes/{catalog}/{schema}/{pipeline_name}_metadata/schemas/{table_name}
 ```
 
-**Example prompt:**
+
 ```
 "Where would you like to store Auto Loader schema metadata?
 
@@ -435,7 +435,7 @@ You may need to create the volume 'pipeline_metadata' first if it doesn't exist.
 Would you like to use this path?"
 ```
 
-### Auto Loader (Python)
+
 
 ```python
 from pyspark import pipelines as dp
@@ -459,13 +459,13 @@ def bronze_orders():
     )
 ```
 
-**Pipeline Configuration** (in `pipeline.yml`):
+`pipeline.yml`
 ```yaml
 configuration:
   schema_location_base: /Volumes/my_catalog/pipeline_metadata/orders_pipeline_metadata/schemas
 ```
 
-### Kafka (Python)
+
 
 ```python
 @dp.table(name="bronze_kafka_events")
@@ -487,7 +487,7 @@ def bronze_kafka_events():
     )
 ```
 
-### Quarantine (Python)
+
 
 ```python
 # Get schema location from pipeline configuration

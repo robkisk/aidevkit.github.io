@@ -5,34 +5,34 @@ sidebar:
   order: 99
 ---
 
-Working code patterns for creating and using scorers in MLflow 3 GenAI.
 
-## Table of Contents
 
-| # | Pattern | Description |
-|---|---------|-------------|
-| 1 | [Built-in Guidelines Scorer](#pattern-1-built-in-guidelines-scorer) | Natural language criteria evaluation |
-| 2 | [Correctness with Ground Truth](#pattern-2-correctness-scorer-with-ground-truth) | Expected answers/facts validation |
-| 3 | [RAG with RetrievalGroundedness](#pattern-3-rag-evaluation-with-retrievalgroundedness) | Check responses grounded in context |
-| 4 | [Simple Custom Scorer (Boolean)](#pattern-4-simple-custom-scorer-boolean) | Pass/fail checks |
-| 5 | [Custom Scorer with Feedback](#pattern-5-custom-scorer-with-feedback-object) | Return rationale and custom names |
-| 6 | [Multiple Metrics Scorer](#pattern-6-custom-scorer-with-multiple-metrics) | One scorer, multiple metrics |
-| 7 | [Wrapping LLM Judge](#pattern-7-custom-scorer-wrapping-llm-judge) | Custom context for built-in judges |
-| 8 | [Trace-Based Scorer](#pattern-8-trace-based-scorer) | Analyze execution details |
-| 9 | [Class-Based Scorer](#pattern-9-class-based-scorer-with-configuration) | Configurable/stateful scorers |
-| 10 | [Conditional Scoring](#pattern-10-conditional-scoring-based-on-input) | Different rules per input type |
-| 11 | [Aggregations](#pattern-11-scorer-with-aggregations) | Numeric stats (mean, median, p90) |
-| 12 | [Custom Make Judge](#pattern-12-custom-make-judge) | Complex multi-level evaluation |
-| 13 | [Per-Stage Accuracy](#pattern-13-per-stagecomponent-accuracy-scorer) | Multi-agent component verification |
-| 14 | [Tool Selection Accuracy](#pattern-14-tool-selection-accuracy-scorer) | Verify correct tools called |
-| 15 | [Stage Latency Scorer](#pattern-15-stage-latency-scorer-multiple-metrics) | Per-stage latency metrics |
-| 16 | [Component Accuracy Factory](#pattern-16-component-accuracy-factory) | Reusable scorer factory |
 
----
 
-## Pattern 1: Built-in Guidelines Scorer
 
-Use for evaluating against natural language criteria.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 from mlflow.genai.scorers import Guidelines
@@ -69,11 +69,11 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 2: Correctness Scorer with Ground Truth
 
-Use when you have expected answers or facts.
+
+
+
 
 ```python
 from mlflow.genai.scorers import Correctness
@@ -105,11 +105,11 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 3: RAG Evaluation with RetrievalGroundedness
 
-Use for RAG applications to check if responses are grounded in retrieved context.
+
+
+
 
 ```python
 from mlflow.genai.scorers import RetrievalGroundedness, RelevanceToQuery
@@ -148,11 +148,11 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 4: Simple Custom Scorer (Boolean)
 
-Use for simple pass/fail checks.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -176,11 +176,11 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 5: Custom Scorer with Feedback Object
 
-Use when you need rationale or custom names.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -209,11 +209,11 @@ def response_length_check(outputs):
         )
 ```
 
----
 
-## Pattern 6: Custom Scorer with Multiple Metrics
 
-Use when one scorer should produce multiple metrics.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -255,11 +255,11 @@ def comprehensive_check(inputs, outputs):
     return feedbacks
 ```
 
----
 
-## Pattern 7: Custom Scorer Wrapping LLM Judge
 
-Use when you need custom context for built-in judges.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -291,11 +291,11 @@ def custom_grounding_check(inputs, outputs, trace=None):
     )
 ```
 
----
 
-## Pattern 8: Trace-Based Scorer
 
-Use when you need to analyze execution details.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -347,11 +347,11 @@ def tool_usage_check(trace: Trace) -> Feedback:
     )
 ```
 
----
 
-## Pattern 9: Class-Based Scorer with Configuration
 
-Use when scorer needs persistent state or configuration.
+
+
+
 
 ```python
 from mlflow.genai.scorers import Scorer
@@ -407,11 +407,11 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 10: Conditional Scoring Based on Input
 
-Use when different inputs need different evaluation.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer, Guidelines
@@ -453,11 +453,11 @@ def conditional_scorer(inputs, outputs):
     return judge(inputs=inputs, outputs=outputs)
 ```
 
----
 
-## Pattern 11: Scorer with Aggregations
 
-Use for numeric scorers that need aggregate statistics.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -478,11 +478,11 @@ def token_count(outputs) -> int:
 # NOTE: p50, p99, sum are NOT valid - use median instead of p50
 ```
 
----
 
-## Pattern 12: Custom Make Judge
 
-Use for complex multi-level evaluation with custom instructions.
+
+
+
 
 ```python
 from mlflow.genai.judges import make_judge
@@ -514,9 +514,9 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Combining Multiple Scorer Types
+
+
 
 ```python
 from mlflow.genai.scorers import (
@@ -555,11 +555,11 @@ results = mlflow.genai.evaluate(
 )
 ```
 
----
 
-## Pattern 13: Per-Stage/Component Accuracy Scorer
 
-Use for multi-agent or multi-stage pipelines to verify each component works correctly.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -617,11 +617,11 @@ def classifier_accuracy(
     )
 ```
 
----
 
-## Pattern 14: Tool Selection Accuracy Scorer
 
-Check if the correct tools were called during agent execution.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -674,11 +674,11 @@ def tool_selection_accuracy(
     )
 ```
 
----
 
-## Pattern 15: Stage Latency Scorer (Multiple Metrics)
 
-Measure latency per pipeline stage and identify bottlenecks.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -734,11 +734,11 @@ def stage_latency_scorer(trace: Trace) -> List[Feedback]:
     return feedbacks
 ```
 
----
 
-## Pattern 16: Component Accuracy Factory
 
-Create reusable scorers for any component/field combination.
+
+
+
 
 ```python
 from mlflow.genai.scorers import scorer

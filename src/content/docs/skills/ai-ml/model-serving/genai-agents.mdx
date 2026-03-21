@@ -5,17 +5,17 @@ sidebar:
   order: 3
 ---
 
-Build and deploy LLM-powered agents using MLflow 3's ResponsesAgent interface.
 
-## ResponsesAgent Overview
 
-`ResponsesAgent` is MLflow 3's recommended interface for building conversational agents. It provides:
 
-- Standardized input/output format (OpenAI-compatible)
-- Streaming support
-- Integration with Databricks features (tracing, evaluation)
 
-## Basic Agent Structure
+`ResponsesAgent`
+
+
+
+
+
+
 
 ```python
 # agent.py
@@ -59,9 +59,9 @@ AGENT = MyAgent()
 mlflow.models.set_model(AGENT)
 ```
 
-## LangGraph Agent Pattern
 
-For agents with tools and complex logic, use LangGraph:
+
+
 
 ```python
 # agent.py
@@ -158,9 +158,9 @@ AGENT = LangGraphAgent()
 mlflow.models.set_model(AGENT)
 ```
 
-## Using Databricks-Hosted Models
 
-Use exact endpoint names from the reference table in [SKILL.md](SKILL.md#foundation-model-api-endpoints).
+
+
 
 ```python
 from databricks_langchain import ChatDatabricks
@@ -182,7 +182,7 @@ llm = ChatDatabricks(
 )
 ```
 
-## ChatContext for User/Conversation Info
+
 
 ```python
 from mlflow.types.responses import ResponsesAgentRequest, ChatContext
@@ -204,7 +204,7 @@ class MyAgent(ResponsesAgent):
         # Use for personalization, memory, etc.
 ```
 
-## Testing the Agent Locally
+
 
 ```python
 # test_agent.py
@@ -226,15 +226,15 @@ for event in AGENT.predict_stream(request):
     print(event)
 ```
 
-Run via MCP:
+
 
 ```
 run_python_file_on_databricks(file_path="./my_agent/test_agent.py")
 ```
 
-## Logging the Agent
 
-See [6-logging-registration.md](6-logging-registration.md) for full details.
+
+
 
 ```python
 import mlflow
@@ -262,9 +262,9 @@ with mlflow.start_run():
     )
 ```
 
-## Deployment
 
-See [7-deployment.md](7-deployment.md) for async job-based deployment.
+
+
 
 ```python
 from databricks import agents
@@ -277,7 +277,7 @@ agents.deploy(
 # Takes ~15 minutes
 ```
 
-## Query Deployed Agent
+
 
 ```
 query_serving_endpoint(

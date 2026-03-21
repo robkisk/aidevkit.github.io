@@ -5,22 +5,22 @@ sidebar:
   order: 99
 ---
 
-## Contents
-- [ETL Pipeline with Multiple Tasks](#etl-pipeline-with-multiple-tasks)
-- [Scheduled Data Warehouse Refresh](#scheduled-data-warehouse-refresh)
-- [Event-Driven Pipeline](#event-driven-pipeline)
-- [ML Training Pipeline](#ml-training-pipeline)
-- [Multi-Environment Deployment](#multi-environment-deployment)
-- [Streaming Job](#streaming-job)
-- [Cross-Job Orchestration](#cross-job-orchestration)
 
----
 
-## ETL Pipeline with Multiple Tasks
 
-A classic extract-transform-load pipeline with task dependencies.
 
-### DABs YAML
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```yaml
 # resources/etl_job.yml
@@ -116,7 +116,7 @@ resources:
           group_name: "data-engineers"
 ```
 
-### Python SDK Equivalent
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -200,13 +200,13 @@ job = w.jobs.create(
 print(f"Created job: {job.job_id}")
 ```
 
----
 
-## Scheduled Data Warehouse Refresh
 
-SQL-based warehouse refresh with multiple queries.
 
-### DABs YAML
+
+
+
+
 
 ```yaml
 resources:
@@ -266,13 +266,13 @@ resources:
             warehouse_id: ${var.warehouse_id}
 ```
 
----
 
-## Event-Driven Pipeline
 
-Pipeline triggered by file arrival and table updates.
 
-### DABs YAML
+
+
+
+
 
 ```yaml
 resources:
@@ -313,7 +313,7 @@ resources:
               max_workers: 10
 ```
 
-### Table Update Trigger Example
+
 
 ```yaml
 resources:
@@ -337,13 +337,13 @@ resources:
             notebook_path: ../src/notebooks/process_table_updates.py
 ```
 
----
 
-## ML Training Pipeline
 
-Machine learning workflow with training, evaluation, and deployment.
 
-### DABs YAML
+
+
+
+
 
 ```yaml
 resources:
@@ -442,13 +442,13 @@ resources:
               model_name: "{{job.parameters.model_name}}"
 ```
 
----
 
-## Multi-Environment Deployment
 
-Job configuration with environment-specific settings.
 
-### databricks.yml
+
+
+
+
 
 ```yaml
 bundle:
@@ -486,7 +486,7 @@ targets:
       service_principal_name: "production-sp"
 ```
 
-### resources/jobs.yml
+
 
 ```yaml
 resources:
@@ -530,13 +530,13 @@ resources:
           service_principal_name: "deployment-sp"
 ```
 
----
 
-## Streaming Job
 
-Continuous streaming job with monitoring.
 
-### DABs YAML
+
+
+
+
 
 ```yaml
 resources:
@@ -585,13 +585,13 @@ resources:
               spark.sql.streaming.stateStore.providerClass: "com.databricks.sql.streaming.state.RocksDBStateStoreProvider"
 ```
 
----
 
-## Cross-Job Orchestration
 
-Multiple jobs with dependencies using run_job_task.
 
-### DABs YAML
+
+
+
+
 
 ```yaml
 resources:
@@ -642,13 +642,13 @@ resources:
             notebook_path: ../src/notebooks/validate_all.py
 ```
 
----
 
-## For Each Task - Parallel Processing
 
-Process multiple items in parallel using for_each_task.
 
-### DABs YAML
+
+
+
+
 
 ```yaml
 resources:
@@ -690,7 +690,7 @@ resources:
             notebook_path: ../src/notebooks/aggregate_results.py
 ```
 
-### Notebook: get_active_regions.py
+
 
 ```python
 # Get list of active regions to process
@@ -706,7 +706,7 @@ region_list = [row.region_code for row in regions]
 dbutils.jobs.taskValues.set(key="regions", value=region_list)
 ```
 
-### Notebook: process_region.py
+
 
 ```python
 # Get region from parameter

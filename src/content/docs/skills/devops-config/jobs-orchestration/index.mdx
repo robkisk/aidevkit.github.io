@@ -6,22 +6,22 @@ sidebar:
   order: 0
 ---
 
-## Overview
 
-Databricks Jobs orchestrate data workflows with multi-task DAGs, flexible triggers, and comprehensive monitoring. Jobs support diverse task types and can be managed via Python SDK, CLI, or Asset Bundles.
 
-## Reference Files
 
-| Use Case | Reference File |
-|----------|----------------|
-| Configure task types (notebook, Python, SQL, dbt, etc.) | [task-types.md](task-types.md) |
-| Set up triggers and schedules | [triggers-schedules.md](triggers-schedules.md) |
-| Configure notifications and health monitoring | [notifications-monitoring.md](notifications-monitoring.md) |
-| Complete working examples | [examples.md](examples.md) |
 
-## Quick Start
 
-### Python SDK
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -44,7 +44,7 @@ job = w.jobs.create(
 print(f"Created job: {job.job_id}")
 ```
 
-### CLI
+
 
 ```bash
 databricks jobs create --json '{
@@ -59,7 +59,7 @@ databricks jobs create --json '{
 }'
 ```
 
-### Asset Bundles (DABs)
+
 
 ```yaml
 # resources/jobs.yml
@@ -73,11 +73,11 @@ resources:
             notebook_path: ../src/notebooks/extract.py
 ```
 
-## Core Concepts
 
-### Multi-Task Workflows
 
-Jobs support DAG-based task dependencies:
+
+
+
 
 ```yaml
 tasks:
@@ -99,43 +99,43 @@ tasks:
       notebook_path: ../src/load.py
 ```
 
-**run_if conditions:**
-- `ALL_SUCCESS` (default) - Run when all dependencies succeed
-- `ALL_DONE` - Run when all dependencies complete (success or failure)
-- `AT_LEAST_ONE_SUCCESS` - Run when at least one dependency succeeds
-- `NONE_FAILED` - Run when no dependencies failed
-- `ALL_FAILED` - Run when all dependencies failed
-- `AT_LEAST_ONE_FAILED` - Run when at least one dependency failed
 
-### Task Types Summary
+`ALL_SUCCESS`
+`ALL_DONE`
+`AT_LEAST_ONE_SUCCESS`
+`NONE_FAILED`
+`ALL_FAILED`
+`AT_LEAST_ONE_FAILED`
 
-| Task Type | Use Case | Reference |
-|-----------|----------|-----------|
-| `notebook_task` | Run notebooks | [task-types.md#notebook-task](task-types.md#notebook-task) |
-| `spark_python_task` | Run Python scripts | [task-types.md#spark-python-task](task-types.md#spark-python-task) |
-| `python_wheel_task` | Run Python wheels | [task-types.md#python-wheel-task](task-types.md#python-wheel-task) |
-| `sql_task` | Run SQL queries/files | [task-types.md#sql-task](task-types.md#sql-task) |
-| `dbt_task` | Run dbt projects | [task-types.md#dbt-task](task-types.md#dbt-task) |
-| `pipeline_task` | Trigger DLT/SDP pipelines | [task-types.md#pipeline-task](task-types.md#pipeline-task) |
-| `spark_jar_task` | Run Spark JARs | [task-types.md#spark-jar-task](task-types.md#spark-jar-task) |
-| `run_job_task` | Trigger other jobs | [task-types.md#run-job-task](task-types.md#run-job-task) |
-| `for_each_task` | Loop over inputs | [task-types.md#for-each-task](task-types.md#for-each-task) |
 
-### Trigger Types Summary
 
-| Trigger Type | Use Case | Reference |
-|--------------|----------|-----------|
-| `schedule` | Cron-based scheduling | [triggers-schedules.md#cron-schedule](triggers-schedules.md#cron-schedule) |
-| `trigger.periodic` | Interval-based | [triggers-schedules.md#periodic-trigger](triggers-schedules.md#periodic-trigger) |
-| `trigger.file_arrival` | File arrival events | [triggers-schedules.md#file-arrival-trigger](triggers-schedules.md#file-arrival-trigger) |
-| `trigger.table_update` | Table change events | [triggers-schedules.md#table-update-trigger](triggers-schedules.md#table-update-trigger) |
-| `continuous` | Always-running jobs | [triggers-schedules.md#continuous-jobs](triggers-schedules.md#continuous-jobs) |
 
-## Compute Configuration
 
-### Job Clusters (Recommended)
+`notebook_task`
+`spark_python_task`
+`python_wheel_task`
+`sql_task`
+`dbt_task`
+`pipeline_task`
+`spark_jar_task`
+`run_job_task`
+`for_each_task`
 
-Define reusable cluster configurations:
+
+
+
+
+`schedule`
+`trigger.periodic`
+`trigger.file_arrival`
+`trigger.table_update`
+`continuous`
+
+
+
+
+
+
 
 ```yaml
 job_clusters:
@@ -154,7 +154,7 @@ tasks:
       notebook_path: ../src/notebook.py
 ```
 
-### Autoscaling Clusters
+
 
 ```yaml
 new_cluster:
@@ -165,7 +165,7 @@ new_cluster:
     max_workers: 8
 ```
 
-### Existing Cluster
+
 
 ```yaml
 tasks:
@@ -175,9 +175,9 @@ tasks:
       notebook_path: ../src/notebook.py
 ```
 
-### Serverless Compute
 
-For notebook and Python tasks, omit cluster configuration to use serverless:
+
+
 
 ```yaml
 tasks:
@@ -187,9 +187,9 @@ tasks:
     # No cluster config = serverless
 ```
 
-## Job Parameters
 
-### Define Parameters
+
+
 
 ```yaml
 parameters:
@@ -199,7 +199,7 @@ parameters:
     default: "{{start_date}}"  # Dynamic value reference
 ```
 
-### Access in Notebook
+
 
 ```python
 # In notebook
@@ -207,7 +207,7 @@ dbutils.widgets.get("env")
 dbutils.widgets.get("date")
 ```
 
-### Pass to Tasks
+
 
 ```yaml
 tasks:
@@ -219,9 +219,9 @@ tasks:
         custom_param: "value"
 ```
 
-## Common Operations
 
-### Python SDK Operations
+
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -250,7 +250,7 @@ w.jobs.cancel_run(run_id=run.run_id)
 w.jobs.delete(job_id=12345)
 ```
 
-### CLI Operations
+
 
 ```bash
 # List jobs
@@ -272,7 +272,7 @@ databricks jobs cancel-run 67890
 databricks jobs delete 12345
 ```
 
-### Asset Bundle Operations
+
 
 ```bash
 # Validate configuration
@@ -291,7 +291,7 @@ databricks bundle deploy -t prod
 databricks bundle destroy
 ```
 
-## Permissions (DABs)
+
 
 ```yaml
 resources:
@@ -307,32 +307,32 @@ resources:
           user_name: "admin@example.com"
 ```
 
-**Permission levels:**
-- `CAN_VIEW` - View job and run history
-- `CAN_MANAGE_RUN` - View, trigger, and cancel runs
-- `CAN_MANAGE` - Full control including edit and delete
 
-## Common Issues
+`CAN_VIEW`
+`CAN_MANAGE_RUN`
+`CAN_MANAGE`
 
-| Issue | Solution |
-|-------|----------|
-| Job cluster startup slow | Use job clusters with `job_cluster_key` for reuse across tasks |
-| Task dependencies not working | Verify `task_key` references match exactly in `depends_on` |
-| Schedule not triggering | Check `pause_status: UNPAUSED` and valid timezone |
-| File arrival not detecting | Ensure path has proper permissions and uses cloud storage URL |
-| Table update trigger missing events | Verify Unity Catalog table and proper grants |
-| Parameter not accessible | Use `dbutils.widgets.get()` in notebooks |
-| "admins" group error | Cannot modify admins permissions on jobs |
-| Serverless task fails | Ensure task type supports serverless (notebook, Python) |
 
-## Related Skills
 
-- **[databricks-bundles](../databricks-bundles/SKILL.md)** - Deploy jobs via Databricks Asset Bundles
-- **[databricks-spark-declarative-pipelines](../databricks-spark-declarative-pipelines/SKILL.md)** - Configure pipelines triggered by jobs
 
-## Resources
 
-- [Jobs API Reference](https://docs.databricks.com/api/workspace/jobs)
-- [Jobs Documentation](https://docs.databricks.com/en/jobs/index.html)
-- [DABs Job Task Types](https://docs.databricks.com/en/dev-tools/bundles/job-task-types.html)
-- [Bundle Examples Repository](https://github.com/databricks/bundle-examples)
+`job_cluster_key`
+`task_key``depends_on`
+`pause_status: UNPAUSED`
+
+
+`dbutils.widgets.get()`
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -5,9 +5,9 @@ sidebar:
   order: 99
 ---
 
-Write a single streaming source to multiple Delta tables or Kafka topics efficiently using ForEachBatch. Read once, write many - avoiding reprocessing the source multiple times.
 
-## Quick Start
+
+
 
 ```python
 from pyspark.sql.functions import col, current_timestamp
@@ -46,11 +46,11 @@ stream.writeStream \
     .start()
 ```
 
-## Core Concepts
 
-### One Source, One Checkpoint
 
-Use a single checkpoint for the entire multi-sink stream:
+
+
+
 
 ```python
 # CORRECT: One checkpoint for all sinks
@@ -63,18 +63,18 @@ stream.writeStream \
 # Each stream would reprocess the source independently
 ```
 
-### Transactional Guarantees
 
-Each ForEachBatch call represents one epoch. All writes within the batch:
-- See the same input data
-- Share the same batch_id
-- Are idempotent if using txnVersion
 
-## Common Patterns
 
-### Pattern 1: Bronze-Silver-Gold Medallion Architecture
 
-Single stream feeding all three medallion layers:
+
+
+
+
+
+
+
+
 
 ```python
 from pyspark.sql.functions import window, count, sum, current_timestamp
@@ -130,9 +130,9 @@ stream.writeStream \
     .start()
 ```
 
-### Pattern 2: Conditional Routing
 
-Route events to different tables based on criteria:
+
+
 
 ```python
 def route_by_type(batch_df, batch_id):
@@ -172,9 +172,9 @@ def route_by_type(batch_df, batch_id):
         )
 ```
 
-### Pattern 3: Parallel Fan-Out
 
-Write to multiple sinks in parallel for independent tables:
+
+
 
 ```python
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -226,9 +226,9 @@ def parallel_write(batch_df, batch_id):
         raise Exception(f"Write failures: {errors}")
 ```
 
-### Pattern 4: Materialized Views
 
-Create multiple derived views from the same stream:
+
+
 
 ```python
 from pyspark.sql.functions import window, count, sum
@@ -279,9 +279,9 @@ def create_materialized_views(batch_df, batch_id):
     )
 ```
 
-### Pattern 5: Error Handling with Dead Letter Queue
 
-Route invalid records to DLQ:
+
+
 
 ```python
 from pyspark.sql.functions import when, lit
@@ -326,11 +326,11 @@ def write_with_dlq(batch_df, batch_id):
         )
 ```
 
-## Performance Optimization
 
-### Minimize Recomputation
 
-Cache the batch DataFrame to avoid recomputation:
+
+
+
 
 ```python
 def optimized_multi_sink(batch_df, batch_id):
@@ -348,9 +348,9 @@ def optimized_multi_sink(batch_df, batch_id):
     batch_df.unpersist()
 ```
 
-### Parallel Writes
 
-Use ThreadPoolExecutor for independent writes:
+
+
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
@@ -372,21 +372,21 @@ def parallel_write(batch_df, batch_id):
     batch_df.unpersist()
 ```
 
-## Common Issues
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **Slow writes** | Sequential processing | Use parallel ThreadPoolExecutor |
-| **Recomputation** | Multiple actions on same DataFrame | Cache the batch DataFrame |
-| **Partial failures** | One sink fails | Use idempotent writes; Spark retries entire batch |
-| **Schema conflicts** | Tables have different schemas | Transform before each write |
-| **Resource contention** | Too many concurrent writes | Limit parallelism; batch writes |
 
-## Production Best Practices
 
-### Idempotent Writes
 
-Always use txnVersion with batch_id:
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 .write
@@ -396,7 +396,7 @@ Always use txnVersion with batch_id:
     .mode("append")
 ```
 
-### Keep Batch Processing Fast
+
 
 ```python
 # GOOD: Simple filters and writes
@@ -409,19 +409,19 @@ def inefficient_write(df, batch_id):
     df.groupBy(...).agg(...).write.save("/delta/table3")  # Move to stream!
 ```
 
-## Production Checklist
 
-- [ ] One checkpoint per multi-sink stream
-- [ ] Idempotent writes configured (txnVersion/txnAppId)
-- [ ] Cache used to avoid recomputation
-- [ ] Parallel writes for independent tables
-- [ ] Error handling and DLQ configured
-- [ ] Schema evolution handled
-- [ ] Performance monitoring per sink
 
-## Related Skills
 
-- `merge-operations` - Parallel MERGE operations
-- `kafka-streaming` - Kafka ingestion patterns
-- `stream-static-joins` - Enrichment before multi-sink writes
-- `checkpoint-best-practices` - Checkpoint configuration
+
+
+
+
+
+
+
+
+
+`merge-operations`
+`kafka-streaming`
+`stream-static-joins`
+`checkpoint-best-practices`

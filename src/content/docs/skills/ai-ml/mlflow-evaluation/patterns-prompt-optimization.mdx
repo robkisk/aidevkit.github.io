@@ -5,19 +5,19 @@ sidebar:
   order: 99
 ---
 
-Patterns for automated prompt improvement using `optimize_prompts()` with the GEPA (Genetic-Pareto) optimizer. GEPA iteratively evolves a registered system prompt by evaluating candidates against a scorer, then promotes the best version.
+`optimize_prompts()`
 
-**Using an aligned judge as the scorer is recommended.** An aligned judge encodes domain-expert preferences, giving GEPA a more accurate optimization signal than a generic LLM judge. See `patterns-judge-alignment.md` for the full alignment workflow.
+`patterns-judge-alignment.md`
 
-For the full end-to-end loop (evaluate, label, align, optimize, promote), see `user-journeys.md` Journey 10. For details on the GEPA and MemAlign approaches, see the [Self-Optimizing Agent blog post](https://www.databricks.com/blog/self-optimizing-football-chatbot-guided-domain-experts-databricks).
+`user-journeys.md`
 
-**Read `GOTCHAS.md` before implementing -- especially the GEPA sections.**
+`GOTCHAS.md`
 
----
 
-## Pattern 1: Build Optimization Dataset (inputs + expectations required)
 
-GEPA requires both `inputs` AND `expectations` in every record. This is different from the eval dataset which only needs `inputs`. The `expectations` field is what GEPA uses during reflection to reason about why the current prompt is underperforming.
+
+
+`inputs``expectations``inputs``expectations`
 
 ```python
 # optimization dataset must have both inputs AND expectations
@@ -57,11 +57,11 @@ optim_dataset = optim_dataset.merge_records(optimization_dataset)
 print(f"Created optimization dataset with {len(optimization_dataset)} records")
 ```
 
----
 
-## Pattern 2: Run optimize_prompts() with GEPA
 
-Use a scorer (ideally an aligned judge from `patterns-judge-alignment.md`) to drive GEPA prompt optimization of the registered system prompt.
+
+
+`patterns-judge-alignment.md`
 
 ```python
 import mlflow
@@ -120,11 +120,11 @@ print(f"Final score:   {result.final_eval_score}")
 print(f"\nOptimized template (first 500 chars):\n{optimized_prompt.template[:500]}...")
 ```
 
----
 
-## Pattern 3: Register Optimized Prompt and Conditionally Promote
 
-Only promote to the "production" alias if the optimized prompt outperforms the baseline.
+
+
+
 
 ```python
 # Register new prompt version with optimization metadata
@@ -158,11 +158,11 @@ def promote_if_improved(prompt_name, result, new_prompt_version):
 promote_if_improved(PROMPT_NAME, result, new_prompt_version)
 ```
 
----
 
-## Tips for Prompt Optimization
 
-- The optimization dataset should cover the diversity of queries your agent will handle. Include edge cases, ambiguous requests, and scenarios where tool selection matters.
-- Expected responses should describe what the agent should do (which tools to call, what information to include) rather than exact output text.
-- Start with `max_metric_calls` set to between 50 and 100. Higher values explore more candidates but increase cost and runtime.
-- The GEPA optimizer learns from failure modes. If the aligned judge penalizes missing benchmarks or small-sample caveats, GEPA will inject those requirements into the optimized prompt.
+
+
+
+
+`max_metric_calls`
+

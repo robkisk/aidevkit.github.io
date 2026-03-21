@@ -5,15 +5,15 @@ sidebar:
   order: 3
 ---
 
-Zerobus Ingest SDK examples for Java, Go, TypeScript/Node.js, and Rust. All languages follow the same core pattern: **SDK init -> create stream -> ingest records -> ACK -> flush -> close**.
 
----
 
-## Java (8+)
 
-### Installation
 
-Maven:
+
+
+
+
+
 ```xml
 <dependency>
     <groupId>com.databricks</groupId>
@@ -22,9 +22,9 @@ Maven:
 </dependency>
 ```
 
-### Protobuf Flow (Recommended)
 
-Java uses Protobuf by default. Generate and compile your `.proto` first (see [4-protobuf-schema.md](4-protobuf-schema.md)).
+
+`.proto`
 
 ```java
 import com.databricks.zerobus.*;
@@ -66,7 +66,7 @@ public class ZerobusProducer {
 }
 ```
 
-### Proto Generation for Java
+
 
 ```bash
 java -jar zerobus-ingest-sdk-0.1.0-jar-with-dependencies.jar \
@@ -80,17 +80,17 @@ java -jar zerobus-ingest-sdk-0.1.0-jar-with-dependencies.jar \
 protoc --java_out=src/main/java record.proto
 ```
 
----
 
-## Go (1.21+)
 
-### Installation
+
+
+
 
 ```bash
 go get github.com/databricks/zerobus-sdk-go
 ```
 
-### JSON Flow
+
 
 ```go
 package main
@@ -144,7 +144,7 @@ func main() {
 }
 ```
 
-### Protobuf Flow
+
 
 ```go
 options := zerobus.DefaultStreamConfigurationOptions()
@@ -160,17 +160,17 @@ stream, err := sdk.CreateStream(tableProps, clientID, clientSecret, options)
 // ... ingest protobuf-serialized bytes ...
 ```
 
----
 
-## TypeScript / Node.js (16+)
 
-### Installation
+
+
+
 
 ```bash
 npm install @databricks/zerobus-ingest-sdk
 ```
 
-### JSON Flow
+
 
 ```typescript
 import { ZerobusSdk, RecordType } from "@databricks/zerobus-ingest-sdk";
@@ -202,7 +202,7 @@ try {
 }
 ```
 
-### With Error Handling
+
 
 ```typescript
 import { ZerobusSdk, RecordType } from "@databricks/zerobus-ingest-sdk";
@@ -228,18 +228,18 @@ async function ingestWithRetry(
 }
 ```
 
----
 
-## Rust (1.70+)
 
-### Installation
+
+
+
 
 ```bash
 cargo add databricks-zerobus-ingest-sdk
 cargo add tokio --features macros,rt-multi-thread
 ```
 
-### JSON Flow
+
 
 ```rust
 use databricks_zerobus_ingest_sdk::{
@@ -285,7 +285,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-### Protobuf Flow
+
 
 ```rust
 let table_properties = TableProperties {
@@ -308,15 +308,15 @@ let offset = stream.ingest_record_offset(record_bytes).await?;
 stream.wait_for_offset(offset).await?;
 ```
 
----
 
-## Language Comparison
 
-| Feature | Python | Java | Go | TypeScript | Rust |
-|---------|--------|------|----|------------|------|
-| Min version | 3.9+ | 8+ | 1.21+ | Node 16+ | 1.70+ |
-| Package | `databricks-zerobus-ingest-sdk` | `com.databricks:zerobus-ingest-sdk` | `github.com/databricks/zerobus-sdk-go` | `@databricks/zerobus-ingest-sdk` | `databricks-zerobus-ingest-sdk` |
-| Default serialization | JSON | Protobuf | JSON | JSON | JSON |
-| Async API | Yes (separate module) | CompletableFuture | Goroutines | Native async/await | Tokio async/await |
-| ACK pattern | `wait_for_offset(offset)` or `AckCallback` | `waitForOffset(offset)` | `WaitForOffset(offset)` | `await waitForOffset(offset)` | `wait_for_offset(offset).await?` |
-| Proto generation | `python -m zerobus.tools.generate_proto` | JAR CLI tool | External `protoc` | External `protoc` | External `protoc` |
+
+
+
+
+
+`databricks-zerobus-ingest-sdk``com.databricks:zerobus-ingest-sdk``github.com/databricks/zerobus-sdk-go``@databricks/zerobus-ingest-sdk``databricks-zerobus-ingest-sdk`
+
+
+`wait_for_offset(offset)``AckCallback``waitForOffset(offset)``WaitForOffset(offset)``await waitForOffset(offset)``wait_for_offset(offset).await?`
+`python -m zerobus.tools.generate_proto``protoc``protoc``protoc`

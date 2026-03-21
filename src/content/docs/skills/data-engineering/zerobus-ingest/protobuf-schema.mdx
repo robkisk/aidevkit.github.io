@@ -5,26 +5,26 @@ sidebar:
   order: 4
 ---
 
-Generate `.proto` schemas from Unity Catalog table definitions, compile language bindings, and understand Delta-to-Protobuf type mappings.
+`.proto`
 
----
 
-## Why Protobuf?
 
-| Aspect | JSON | Protobuf |
-|--------|------|----------|
-| **Type safety** | None (runtime errors on mismatch) | Compile-time type checking |
-| **Schema evolution** | Manual; easy to break silently | Forward-compatible by design |
-| **Performance** | Text parsing overhead | Binary encoding, smaller payloads |
-| **Recommended for** | Prototyping, simple schemas | Production, complex schemas |
 
-**Recommendation:** Use Protobuf for any production workload. Use JSON only for quick prototyping or when the schema is trivial.
 
----
 
-## Generate .proto from a UC Table
 
-### Python
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```bash
 python -m zerobus.tools.generate_proto \
@@ -35,7 +35,7 @@ python -m zerobus.tools.generate_proto \
     --output record.proto
 ```
 
-### Java
+
 
 ```bash
 java -jar zerobus-ingest-sdk-0.1.0-jar-with-dependencies.jar \
@@ -46,7 +46,7 @@ java -jar zerobus-ingest-sdk-0.1.0-jar-with-dependencies.jar \
     --output record.proto
 ```
 
-The generated `.proto` file will contain a message definition matching the table schema, for example:
+`.proto`
 
 ```protobuf
 syntax = "proto3";
@@ -58,11 +58,11 @@ message AirQuality {
 }
 ```
 
----
 
-## Compile Language Bindings
 
-### Python
+
+
+
 
 ```bash
 pip install grpcio-tools
@@ -73,7 +73,7 @@ python -m grpc_tools.protoc \
     record.proto
 ```
 
-This generates `record_pb2.py`. Import and use it:
+`record_pb2.py`
 
 ```python
 import record_pb2
@@ -85,13 +85,13 @@ record = record_pb2.AirQuality(
 )
 ```
 
-### Java
+
 
 ```bash
 protoc --java_out=src/main/java record.proto
 ```
 
-Generates Java classes under `src/main/java/`. Usage:
+`src/main/java/`
 
 ```java
 import com.example.proto.Record.AirQuality;
@@ -103,15 +103,15 @@ AirQuality record = AirQuality.newBuilder()
     .build();
 ```
 
-### Go
+
 
 ```bash
 protoc --go_out=. record.proto
 ```
 
-### Rust
 
-Use `prost` in `build.rs`:
+
+`prost``build.rs`
 
 ```rust
 // build.rs
@@ -120,55 +120,55 @@ fn main() {
 }
 ```
 
----
 
-## Delta-to-Protobuf Type Mappings
 
-| Delta / Spark Type | Protobuf Type | Notes |
-|--------------------|---------------|-------|
-| `STRING` | `string` | |
-| `INT` / `INTEGER` | `int32` | |
-| `LONG` / `BIGINT` | `int64` | |
-| `FLOAT` | `float` | |
-| `DOUBLE` | `double` | |
-| `BOOLEAN` | `bool` | |
-| `BINARY` | `bytes` | |
-| `ARRAY<T>` | `repeated T` | Element type maps recursively |
-| `MAP<K,V>` | `map<K,V>` | Key must be string or integer type |
-| `STRUCT` | Nested `message` | Fields map recursively |
-| `DATE` | `int32` | Epoch days (days since 1970-01-01) |
-| `TIMESTAMP` | `int64` | Epoch microseconds |
-| `DECIMAL(p,s)` | `bytes` or `string` | Check generated .proto for exact mapping |
-| `VARIANT` | `string` | JSON-encoded string |
 
-**Important:** The Protobuf schema must match the Delta table schema exactly (1:1 field mapping). If the table schema changes, regenerate the `.proto` and recompile.
 
----
 
-## Maximum Schema Size
 
-- Maximum **2000 columns** per proto schema
-- Maximum **10 MB** per individual message (10,485,760 bytes)
+`STRING``string`
+`INT``INTEGER``int32`
+`LONG``BIGINT``int64`
+`FLOAT``float`
+`DOUBLE``double`
+`BOOLEAN``bool`
+`BINARY``bytes`
+`ARRAY<T>``repeated T`
+`MAP<K,V>``map<K,V>`
+`STRUCT``message`
+`DATE``int32`
+`TIMESTAMP``int64`
+`DECIMAL(p,s)``bytes``string`
+`VARIANT``string`
 
----
+`.proto`
 
-## Schema Evolution Workflow
 
-When your table schema changes:
 
-1. Alter the table in Unity Catalog (add columns, etc.)
-2. Regenerate the `.proto` file using the generation command
-3. Recompile language bindings
-4. Update your producer code to populate new fields
-5. Redeploy
 
-**Note:** Zerobus does not support automatic schema evolution. You must manage this process explicitly.
 
----
 
-## Using the Descriptor in Code
 
-### Python
+
+
+
+
+
+
+
+
+`.proto`
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 from zerobus.sdk.shared import TableProperties, RecordType
@@ -181,7 +181,7 @@ table_props = TableProperties(
 )
 ```
 
-### Java
+
 
 ```java
 // Pass a default instance to extract the descriptor
@@ -191,6 +191,6 @@ TableProperties<AirQuality> tableProperties = new TableProperties<>(
 );
 ```
 
-### Go / Rust
 
-Pass the raw descriptor bytes when constructing `TableProperties`.
+
+`TableProperties`

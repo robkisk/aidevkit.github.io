@@ -5,16 +5,16 @@ sidebar:
   order: 3
 ---
 
-**Docs:** https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_forecast
 
-> `ai_forecast` is a **table-valued function** — it returns a table of rows, not a scalar. Call it with `SELECT * FROM ai_forecast(...)`.
 
-## Requirements
+`ai_forecast``SELECT * FROM ai_forecast(...)`
 
-- **Pro or Serverless SQL warehouse** — not available on Classic or Starter
-- Input data must have a DATE or TIMESTAMP time column and at least one numeric value column
 
-## Syntax
+
+
+
+
+
 
 ```sql
 SELECT *
@@ -28,32 +28,32 @@ FROM ai_forecast(
 )
 ```
 
-## Parameters
 
-| Parameter | Type | Description |
-|---|---|---|
-| `observed` | TABLE reference or subquery | Training data with time + value columns |
-| `horizon` | DATE, TIMESTAMP, or STRING | End date/time for the forecast period |
-| `time_col` | STRING | Name of the DATE or TIMESTAMP column in `observed` |
-| `value_col` | STRING | One or more numeric columns to forecast (up to 100 per group) |
-| `group_col` | STRING (optional) | Column to partition forecasts by — produces one forecast series per group value |
-| `prediction_interval_width` | DOUBLE (optional, default 0.95) | Confidence interval width between 0 and 1 |
 
-## Output Columns
 
-For each `value_col` named `metric`, the output includes:
 
-| Column | Type | Description |
-|---|---|---|
-| time_col | DATE or TIMESTAMP | The forecast timestamp (same type as input) |
-| `metric_forecast` | DOUBLE | Point forecast |
-| `metric_upper` | DOUBLE | Upper confidence bound |
-| `metric_lower` | DOUBLE | Lower confidence bound |
-| group_col | original type | Present when `group_col` is specified |
+`observed`
+`horizon`
+`time_col``observed`
+`value_col`
+`group_col`
+`prediction_interval_width`
 
-## Patterns
 
-### Single Metric Forecast
+
+`value_col``metric`
+
+
+
+
+`metric_forecast`
+`metric_upper`
+`metric_lower`
+`group_col`
+
+
+
+
 
 ```sql
 SELECT *
@@ -66,9 +66,9 @@ FROM ai_forecast(
 -- Returns: order_date, revenue_forecast, revenue_upper, revenue_lower
 ```
 
-### Multi-Group Forecast
 
-Produces one forecast series per distinct value of `group_col`:
+
+`group_col`
 
 ```sql
 SELECT *
@@ -83,7 +83,7 @@ FROM ai_forecast(
 -- One row per date per region
 ```
 
-### Multiple Value Columns
+
 
 ```sql
 SELECT *
@@ -97,7 +97,7 @@ FROM ai_forecast(
 --                revenue_forecast, revenue_upper, revenue_lower
 ```
 
-### Custom Confidence Interval
+
 
 ```sql
 SELECT *
@@ -110,7 +110,7 @@ FROM ai_forecast(
 );
 ```
 
-### Filtering Input Data (Subquery)
+
 
 ```sql
 SELECT *
@@ -126,9 +126,9 @@ FROM ai_forecast(
 );
 ```
 
-### PySpark — Use `spark.sql()`
+`spark.sql()`
 
-`ai_forecast` is a table-valued function and must be called through `spark.sql()`:
+`ai_forecast``spark.sql()`
 
 ```python
 result = spark.sql("""
@@ -143,7 +143,7 @@ result = spark.sql("""
 result.display()
 ```
 
-### Save Forecast to Delta Table
+
 
 ```python
 result = spark.sql("""
@@ -159,9 +159,9 @@ result = spark.sql("""
 result.write.format("delta").mode("overwrite").saveAsTable("catalog.schema.revenue_forecast")
 ```
 
-## Notes
 
-- The underlying model is a **prophet-like piecewise linear + seasonality model** — suitable for business time series with trend and weekly/yearly seasonality
-- Handles "any number of groups" but up to **100 metrics per group**
-- Output time column preserves the input type (DATE stays DATE, TIMESTAMP stays TIMESTAMP)
-- Value columns are always cast to DOUBLE in output regardless of input type
+
+
+
+
+

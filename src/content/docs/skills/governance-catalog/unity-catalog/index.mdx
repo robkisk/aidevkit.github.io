@@ -6,31 +6,31 @@ sidebar:
   order: 0
 ---
 
-Guidance for Unity Catalog system tables, volumes, and governance.
 
-## When to Use This Skill
 
-Use this skill when:
-- Working with **volumes** (upload, download, list files in `/Volumes/`)
-- Querying **lineage** (table dependencies, column-level lineage)
-- Analyzing **audit logs** (who accessed what, permission changes)
-- Monitoring **billing and usage** (DBU consumption, cost analysis)
-- Tracking **compute resources** (cluster usage, warehouse metrics)
-- Reviewing **job execution** (run history, success rates, failures)
-- Analyzing **query performance** (slow queries, warehouse utilization)
-- Profiling **data quality** (data profiling, drift detection, metric tables)
 
-## Reference Files
 
-| Topic | File | Description |
-|-------|------|-------------|
-| System Tables | [5-system-tables.md](5-system-tables.md) | Lineage, audit, billing, compute, jobs, query history |
-| Volumes | [6-volumes.md](6-volumes.md) | Volume file operations, permissions, best practices |
-| Data Profiling | [7-data-profiling.md](7-data-profiling.md) | Data profiling, drift detection, profile metrics |
 
-## Quick Start
+`/Volumes/`
 
-### Volume File Operations (MCP Tools)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
 # List files in a volume
@@ -52,7 +52,7 @@ download_from_volume(
 create_volume_directory(volume_path="/Volumes/catalog/schema/volume/new_folder")
 ```
 
-### Enable System Tables Access
+
 
 ```sql
 -- Grant access to system tables
@@ -61,7 +61,7 @@ GRANT USE SCHEMA ON SCHEMA system.access TO `data_engineers`;
 GRANT SELECT ON SCHEMA system.access TO `data_engineers`;
 ```
 
-### Common Queries
+
 
 ```sql
 -- Table lineage: What tables feed into this table?
@@ -84,9 +84,9 @@ WHERE usage_date >= current_date() - 30
 GROUP BY workspace_id, sku_name;
 ```
 
-## MCP Tool Integration
 
-Use `mcp__databricks__execute_sql` for system table queries:
+
+`mcp__databricks__execute_sql`
 
 ```python
 # Query lineage
@@ -100,21 +100,21 @@ mcp__databricks__execute_sql(
 )
 ```
 
-## Best Practices
 
-1. **Filter by date** - System tables can be large; always use date filters
-2. **Use appropriate retention** - Check your workspace's retention settings
-3. **Grant minimal access** - System tables contain sensitive metadata
-4. **Schedule reports** - Create scheduled queries for regular monitoring
 
-## Related Skills
 
-- **[databricks-spark-declarative-pipelines](../databricks-spark-declarative-pipelines/SKILL.md)** - for pipelines that write to Unity Catalog tables
-- **[databricks-jobs](../databricks-jobs/SKILL.md)** - for job execution data visible in system tables
-- **[databricks-synthetic-data-gen](../databricks-synthetic-data-gen/SKILL.md)** - for generating data stored in Unity Catalog Volumes
-- **[databricks-aibi-dashboards](../databricks-aibi-dashboards/SKILL.md)** - for building dashboards on top of Unity Catalog data
 
-## Resources
 
-- [Unity Catalog System Tables](https://docs.databricks.com/administration-guide/system-tables/)
-- [Audit Log Reference](https://docs.databricks.com/administration-guide/account-settings/audit-logs.html)
+
+
+
+
+
+
+
+
+
+
+
+
+

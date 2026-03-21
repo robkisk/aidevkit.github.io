@@ -5,13 +5,13 @@ sidebar:
   order: 99
 ---
 
-Strategies for distributing reads across Spark executors for parallel processing.
 
-## Time-Based Partitioning
 
-For APIs with temporal data or streaming sources.
 
-### Fixed Duration Partitions
+
+
+
+
 
 ```python
 from pyspark.sql.datasource import InputPartition
@@ -50,9 +50,9 @@ class TimeBasedReader:
             yield self._convert_to_row(item)
 ```
 
-### Auto-Subdividing for Large Results
 
-Handle APIs with result size limits by automatically subdividing large partitions:
+
+
 
 ```python
 class AutoSubdivideReader:
@@ -112,11 +112,11 @@ class AutoSubdivideReader:
         return False
 ```
 
-## Token-Range Partitioning
 
-For distributed databases using consistent hashing (Cassandra, ScyllaDB).
 
-### Cassandra Token-Range Pattern
+
+
+
 
 ```python
 from collections import namedtuple
@@ -253,9 +253,9 @@ class TokenRangeReader:
             yield row
 ```
 
-## ID-Range Partitioning
 
-For APIs with pagination or sequential IDs.
+
+
 
 ```python
 class IdRangePartition(InputPartition):
@@ -299,26 +299,26 @@ class IdRangeReader:
             current_id += self.page_size
 ```
 
-## Partition Count Guidelines
 
-**For Batch Reads:**
-- Start with 2-4x number of executor cores
-- Adjust based on data volume and partition size
-- Consider external system load limits
 
-**For Streaming Reads:**
-- Use fixed-duration partitions (e.g., 1 hour)
-- Let Spark handle parallelism across micro-batches
-- Balance latency vs throughput
 
-**For Token-Range:**
-- One partition per token range (determined by cluster)
-- Naturally distributes based on data distribution
-- May split first range into two partitions
 
-## Performance Considerations
 
-1. **Partition Size**: Aim for 128MB - 1GB per partition
-2. **API Rate Limits**: Respect rate limits with concurrency controls
-3. **Network Overhead**: Larger partitions reduce round-trips
-4. **Skew Handling**: Monitor for data skew, repartition if needed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

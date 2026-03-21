@@ -5,11 +5,11 @@ sidebar:
   order: 99
 ---
 
-Observability, security, validation, and operational best practices.
 
-## Observability and Metrics
 
-Track operation metrics for monitoring:
+
+
+
 
 ```python
 class ObservableWriter:
@@ -76,9 +76,9 @@ class ObservableWriter:
             print(f"Throughput: {throughput:.2f} rows/second")
 ```
 
-## Logging Best Practices
 
-Structured logging for production debugging:
+
+
 
 ```python
 import logging
@@ -149,9 +149,9 @@ class LoggingWriter:
             raise
 ```
 
-## Security Validation
 
-Input validation and sanitization for production data sources:
+
+
 
 ```python
 import re
@@ -199,11 +199,11 @@ class SecureDataSource:
             )
 ```
 
-For credential sanitization in logs and secrets management, see [authentication-patterns.md](authentication-patterns.md) — the "Security Best Practices" and "Use Secrets Management" sections.
 
-## Configuration Validation
 
-Validate configuration before execution:
+
+
+
 
 ```python
 class ConfigValidator:
@@ -261,9 +261,9 @@ class ConfigValidator:
             raise ValueError("Configuration errors:\n" + "\n".join(f"- {e}" for e in errors))
 ```
 
-## Resource Cleanup
 
-Ensure proper resource cleanup:
+
+
 
 ```python
 class ManagedResourceWriter:
@@ -315,9 +315,9 @@ class ManagedResourceWriter:
         self._cleanup()
 ```
 
-## Health Checks
 
-Monitor system health:
+
+
 
 ```python
 class HealthCheckMixin:
@@ -375,15 +375,15 @@ class HealthCheckMixin:
         return free_percent > 10  # 10% minimum
 ```
 
-## Operational Best Practices
 
-1. **Monitoring**: Track throughput, latency, error rates
-2. **Logging**: Use structured logging with correlation IDs
-3. **Secrets**: Never log sensitive values, use secrets management
-4. **Validation**: Validate all inputs to prevent injection attacks
-5. **Resource Cleanup**: Always close connections and clean up resources
-6. **Health Checks**: Verify system health before operations
-7. **Rate Limiting**: Respect API rate limits with backoff
-8. **Alerting**: Set up alerts for error rates and latency
-9. **Documentation**: Document all configuration options
-10. **Version Control**: Tag releases and maintain changelog
+
+
+
+
+
+
+
+
+
+
+

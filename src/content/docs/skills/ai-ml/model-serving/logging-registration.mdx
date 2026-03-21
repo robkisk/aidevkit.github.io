@@ -5,11 +5,11 @@ sidebar:
   order: 6
 ---
 
-Log models to MLflow and register to Unity Catalog.
 
-## File-Based Logging (Recommended for Agents)
 
-Log from a Python file instead of a class instance:
+
+
+
 
 ```python
 # log_model.py
@@ -65,22 +65,22 @@ uc_model_info = mlflow.register_model(
 print(f"Registered: {uc_model_info.name} version {uc_model_info.version}")
 ```
 
-Run via MCP:
+
 
 ```
 run_python_file_on_databricks(file_path="./my_agent/log_model.py")
 ```
 
-## Resources for Auto Authentication
 
-Databricks automatically provisions credentials for these resource types:
 
-| Resource Type | Import | Usage |
-|--------------|--------|-------|
-| `DatabricksServingEndpoint` | `mlflow.models.resources` | LLM endpoints |
-| `DatabricksFunction` | `mlflow.models.resources` | UC SQL/Python functions |
-| `DatabricksVectorSearchIndex` | `mlflow.models.resources` | Vector Search indexes |
-| `DatabricksLakebase` | `mlflow.models.resources` | Lakebase instances |
+
+
+
+
+`DatabricksServingEndpoint``mlflow.models.resources`
+`DatabricksFunction``mlflow.models.resources`
+`DatabricksVectorSearchIndex``mlflow.models.resources`
+`DatabricksLakebase``mlflow.models.resources`
 
 ```python
 from mlflow.models.resources import (
@@ -98,9 +98,9 @@ resources = [
 ]
 ```
 
-## pip_requirements
 
-### Recommended Versions (Tested)
+
+
 
 ```python
 pip_requirements=[
@@ -112,7 +112,7 @@ pip_requirements=[
 ]
 ```
 
-### With Memory Support
+
 
 ```python
 pip_requirements=[
@@ -122,7 +122,7 @@ pip_requirements=[
 ]
 ```
 
-### Get Current Versions
+
 
 ```python
 from pkg_resources import get_distribution
@@ -133,9 +133,9 @@ pip_requirements=[
 ]
 ```
 
-## Pre-Deployment Validation
 
-Before deploying, validate the model loads and runs:
+
+
 
 ```python
 # Validate locally (uses uv for fast env creation)
@@ -146,7 +146,7 @@ mlflow.models.predict(
 )
 ```
 
-Run via MCP (in log_model.py or separate file):
+
 
 ```python
 # validate_model.py
@@ -163,9 +163,9 @@ result = mlflow.models.predict(
 print("Validation result:", result)
 ```
 
-## Classical ML Logging
 
-For traditional ML models, autolog handles everything:
+
+
 
 ```python
 import mlflow
@@ -180,9 +180,9 @@ mlflow.sklearn.autolog(
 model.fit(X_train, y_train)
 ```
 
-## Manual Registration (Separate Step)
 
-If you logged without registering:
+
+
 
 ```python
 import mlflow
@@ -202,12 +202,12 @@ mlflow.register_model(
 )
 ```
 
-## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| **Package not found at serving time** | Specify exact versions in `pip_requirements` |
-| **Auth error accessing endpoint** | Add resource to `resources` list |
-| **Model signature mismatch** | Provide `input_example` matching your input format |
-| **Slow model loading** | Use `env_manager="uv"` for faster validation |
-| **Code not found** | Use `code_paths=["file.py"]` for additional dependencies |
+
+
+
+`pip_requirements`
+`resources`
+`input_example`
+`env_manager="uv"`
+`code_paths=["file.py"]`

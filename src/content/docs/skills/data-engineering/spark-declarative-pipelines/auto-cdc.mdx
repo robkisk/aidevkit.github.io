@@ -5,49 +5,49 @@ sidebar:
   order: 9
 ---
 
-**Keywords**: Slow Changing Dimension, SCD, SCD Type 1, SCD Type 2, AUTO CDC, change data capture, dp.create_auto_cdc_flow, deduplication
 
----
 
-## Overview
 
-AUTO CDC automatically handles Change Data Capture (CDC) to track changes in your data using Slow Changing Dimensions (SCD). It provides automatic deduplication, change tracking, and handles late-arriving data correctly.
 
-**Where to apply AUTO CDC:**
-- **Silver layer**: When business users need deduplicated or historical data for analytics/ML
-- **Gold layer**: When implementing dimensional modeling (star schema) with dim/fact tables
-- **Choice depends on**: Downstream consumption patterns and query requirements
 
----
 
-## SCD Type 1 vs Type 2
 
-### SCD Type 1 (In-place updates)
-- **Overwrites** old values with new values
-- **No history preserved** - only current state maintained
-- **Use for**: Dimension attributes that don't need history
-  - Correcting data errors (typos)
-  - Updating attributes where history doesn't matter
-  - Maintaining single current record per key
-- **Syntax**: `stored_as_scd_type="1"` (string)
 
-### SCD Type 2 (History tracking)
-- **Creates new row** for each change
-- **Preserves full history** with `__START_AT` and `__END_AT` timestamps
-- **Use for**: Tracking changes over time
-  - Customer address changes
-  - Product price history
-  - Employee role changes
-  - Any dimension requiring temporal analysis
-- **Syntax**: `stored_as_scd_type=2` (integer)
 
----
 
-## Pattern: Cleaning + AUTO CDC
 
-### Step 1: Clean and Validate Data
 
-Create a cleaned streaming table with proper typing and quality checks:
+
+
+
+
+
+
+
+
+
+
+
+
+`stored_as_scd_type="1"`
+
+
+
+`__START_AT``__END_AT`
+
+
+
+
+
+`stored_as_scd_type=2`
+
+
+
+
+
+
+
+
 
 ```python
 # Cleaned data preparation (can be silver or intermediate layer)
@@ -90,9 +90,9 @@ def users_clean():
     )
 ```
 
-### Step 2: Apply AUTO CDC (SCD Type 2)
 
-Create a history-tracked dimension table with full change history:
+
+
 
 ```python
 # AUTO CDC with SCD Type 2 (history tracking)
@@ -114,14 +114,14 @@ dp.create_auto_cdc_flow(
 )
 ```
 
-**Resulting table will include**:
-- All original columns from source
-- `__START_AT` - When this version became effective
-- `__END_AT` - When this version expired (NULL for current)
 
-### Step 3: Apply AUTO CDC (SCD Type 1)
 
-Create a deduplicated table with in-place updates (no history):
+`__START_AT`
+`__END_AT`
+
+
+
+
 
 ```python
 # AUTO CDC with SCD Type 1 (in-place updates)
@@ -143,23 +143,23 @@ dp.create_auto_cdc_flow(
 )
 ```
 
----
 
-## Key Benefits
 
-- **Automatic deduplication** based on keys - no manual MERGE logic
-- **Automatic change tracking** with temporal metadata (`__START_AT`, `__END_AT`)
-- **Handles late-arriving data** correctly using `sequence_by` timestamp
-- **Simplified pipeline code** - no complex merge/upsert logic required
-- **Built-in idempotency** - safe to reprocess data
 
----
 
-## Common Patterns
 
-### Pattern 1: Gold Dimensional Model
+`__START_AT``__END_AT`
+`sequence_by`
 
-Use AUTO CDC in Gold layer for star schema dimensions:
+
+
+
+
+
+
+
+
+
 
 ```python
 # Silver: Cleaned streaming tables
@@ -183,9 +183,9 @@ def fact_orders():
     return spark.read.table("silver.orders_clean")
 ```
 
-### Pattern 2: Silver Deduplication for Joins
 
-Use AUTO CDC in Silver when joining multiple tables:
+
+
 
 ```python
 # Silver: AUTO CDC for deduplication
@@ -206,9 +206,9 @@ def orders_enriched():
     return orders.join(products, "product_id")
 ```
 
-### Pattern 3: Mixed SCD Types
 
-Different tables use different SCD types based on requirements:
+
+
 
 ```python
 # SCD Type 2: Need history
@@ -230,11 +230,11 @@ dp.create_auto_cdc_flow(
 )
 ```
 
----
 
-## Selective History Tracking
 
-Track history only for specific columns (SCD Type 2):
+
+
+
 
 ```python
 dp.create_auto_cdc_flow(
@@ -247,25 +247,25 @@ dp.create_auto_cdc_flow(
 )
 ```
 
-When `price` or `cost` changes, a new version is created. Other column changes update the current record without creating new versions.
+`price``cost`
 
----
 
-## Using Temporary Views with AUTO CDC
 
-**`@dp.temporary_view()`** creates in-pipeline temporary views that exist only during pipeline execution. These are useful for intermediate transformations before AUTO CDC.
 
-**Key Constraints:**
-- Cannot specify `catalog` or `schema` (temporary views are pipeline-scoped only)
-- Cannot use `cluster_by` (not persisted)
-- Only exists during pipeline execution
 
-**Use Cases:**
-- Complex transformations before AUTO CDC
-- Intermediate logic that's referenced multiple times
-- Avoiding redundant transformations
+`@dp.temporary_view()`
 
-**Example: Preparation before AUTO CDC**
+
+`catalog``schema`
+`cluster_by`
+
+
+
+
+
+
+
+
 
 ```python
 from pyspark import pipelines as dp
@@ -306,53 +306,53 @@ dp.create_auto_cdc_flow(
 )
 ```
 
-**Benefits:**
-- Avoids creating unnecessary persisted tables
-- Reduces storage costs (nothing written to disk)
-- Simplifies complex multi-step transformations
-- Enables code reuse across multiple tables in same pipeline
 
----
 
-## Related Documentation
 
-- **[3-scd-query-patterns.md](3-scd-query-patterns.md)** - Querying SCD Type 2 history tables, point-in-time analysis, temporal joins
-- **[1-ingestion-patterns.md](1-ingestion-patterns.md)** - CDC data sources (Kafka, Event Hubs, Kinesis)
-- **[2-streaming-patterns.md](2-streaming-patterns.md)** - Deduplication patterns without AUTO CDC
 
----
 
-## Best Practices
 
-1. **Choose the right SCD type**:
-   - Type 2 when you need to query historical states
-   - Type 1 when you only need current state or deduplication
 
-2. **Use meaningful sequence_by column**:
-   - Should reflect true chronological order of changes
-   - Typically `updated_timestamp`, `modified_at`, or `event_timestamp`
 
-3. **Clean data before AUTO CDC**:
-   - Apply type casting, validation, and filtering first
-   - AUTO CDC works best with clean, well-typed data
 
-4. **Consider query patterns**:
-   - If analysts query history → Use Type 2
-   - If analysts only need current → Use Type 1
-   - If joining frequently → Consider Silver deduplication
 
-5. **Use selective tracking for large tables**:
-   - Track history only for columns that change meaningfully
-   - Reduces storage and improves query performance
 
----
 
-## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| **Duplicates still appearing** | Check `keys` include all business key columns; verify `sequence_by` has proper ordering |
-| **Missing `__START_AT`/`__END_AT` columns** | These only appear in SCD Type 2 (integer), not Type 1 (string) |
-| **Late data not handled** | Ensure `sequence_by` column is set and reflects true event time |
-| **Type syntax error** | Type 2 uses integer `2`, Type 1 uses string `"1"` |
-| **Performance issues** | Use `track_history_column_list` to limit which columns trigger new versions |
+
+
+
+
+
+
+
+
+
+
+
+`updated_timestamp``modified_at``event_timestamp`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`keys``sequence_by`
+`__START_AT``__END_AT`
+`sequence_by`
+`2``"1"`
+`track_history_column_list`

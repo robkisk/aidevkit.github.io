@@ -5,21 +5,21 @@ sidebar:
   order: 8
 ---
 
-Send requests to deployed Model Serving endpoints.
 
-> **If MCP tools are not available**, use the Python SDK or REST API examples below.
 
-## MCP Tools
 
-### Check Endpoint Status
 
-Before querying, verify the endpoint is ready:
+
+
+
+
+
 
 ```
 get_serving_endpoint_status(name="my-agent-endpoint")
 ```
 
-Response:
+
 ```json
 {
     "name": "my-agent-endpoint",
@@ -30,7 +30,7 @@ Response:
 }
 ```
 
-### Query Chat/Agent Endpoint
+
 
 ```
 query_serving_endpoint(
@@ -43,7 +43,7 @@ query_serving_endpoint(
 )
 ```
 
-Response:
+
 ```json
 {
     "choices": [
@@ -63,7 +63,7 @@ Response:
 }
 ```
 
-### Query ML Model Endpoint
+
 
 ```
 query_serving_endpoint(
@@ -75,22 +75,22 @@ query_serving_endpoint(
 )
 ```
 
-Response:
+
 ```json
 {
     "predictions": [0.85, 0.72]
 }
 ```
 
-### List All Endpoints
+
 
 ```
 list_serving_endpoints(limit=20)
 ```
 
-## Python SDK
 
-### Query Agent/Chat Endpoint
+
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -108,7 +108,7 @@ response = w.serving_endpoints.query(
 print(response.choices[0].message.content)
 ```
 
-### Query ML Model
+
 
 ```python
 response = w.serving_endpoints.query(
@@ -121,7 +121,7 @@ response = w.serving_endpoints.query(
 print(response.predictions)
 ```
 
-### Streaming (Agent Endpoints)
+
 
 ```python
 for chunk in w.serving_endpoints.query(
@@ -133,9 +133,9 @@ for chunk in w.serving_endpoints.query(
         print(chunk.choices[0].delta.content, end="")
 ```
 
-## REST API
 
-### Get Endpoint Status
+
+
 
 ```bash
 curl -X GET \
@@ -143,7 +143,7 @@ curl -X GET \
   -H "Authorization: Bearer <token>"
 ```
 
-### Query Chat/Agent Endpoint
+
 
 ```bash
 curl -X POST \
@@ -158,7 +158,7 @@ curl -X POST \
   }'
 ```
 
-### Query ML Model
+
 
 ```bash
 curl -X POST \
@@ -172,9 +172,9 @@ curl -X POST \
   }'
 ```
 
-## Integration Patterns
 
-### In a Python Application
+
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -195,7 +195,7 @@ answer = ask_agent("What is a Delta table?")
 print(answer)
 ```
 
-### In Another Agent (Agent Chaining)
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -216,9 +216,9 @@ def ask_specialist_agent(question: str) -> str:
 tools = [ask_specialist_agent]
 ```
 
-### With OpenAI-Compatible Libraries
 
-Databricks endpoints are OpenAI-compatible:
+
+
 
 ```python
 from openai import OpenAI
@@ -236,7 +236,7 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
-## Error Handling
+
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -260,12 +260,12 @@ except Exception as e:
         raise
 ```
 
-## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| **Endpoint NOT_READY** | Wait for deployment (~15 min for agents) |
-| **404 Not Found** | Check endpoint name, may differ from model name |
-| **Permission Denied** | Ensure token has serving endpoint permissions |
-| **Timeout** | Increase timeout, reduce max_tokens |
-| **Empty response** | Check model signature matches input format |
+
+
+
+
+
+
+
+

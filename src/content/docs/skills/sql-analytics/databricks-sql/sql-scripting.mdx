@@ -5,62 +5,62 @@ sidebar:
   order: 99
 ---
 
-> Databricks SQL procedural extensions based on the SQL/PSM standard. Covers SQL scripting (compound statements, control flow, exception handling), stored procedures, recursive CTEs, and multi-statement transactions.
 
----
 
-## Table of Contents
 
-- [SQL Scripting](#sql-scripting)
-  - [Compound Statements (BEGIN...END)](#compound-statements-beginend)
-  - [Variable Declaration (DECLARE)](#variable-declaration-declare)
-  - [Variable Assignment (SET)](#variable-assignment-set)
-  - [Control Flow](#control-flow)
-    - [IF / ELSEIF / ELSE](#if--elseif--else)
-    - [CASE Statement](#case-statement)
-    - [WHILE Loop](#while-loop)
-    - [FOR Loop](#for-loop)
-    - [LOOP Statement](#loop-statement)
-    - [REPEAT Statement](#repeat-statement)
-    - [LEAVE and ITERATE](#leave-and-iterate)
-  - [Exception Handling](#exception-handling)
-    - [Condition Declaration](#condition-declaration)
-    - [Handler Declaration](#handler-declaration)
-    - [SIGNAL and RESIGNAL](#signal-and-resignal)
-  - [EXECUTE IMMEDIATE (Dynamic SQL)](#execute-immediate-dynamic-sql)
-- [Stored Procedures](#stored-procedures)
-  - [CREATE PROCEDURE](#create-procedure)
-  - [CALL (Invoke a Procedure)](#call-invoke-a-procedure)
-  - [DROP PROCEDURE](#drop-procedure)
-  - [DESCRIBE PROCEDURE](#describe-procedure)
-  - [SHOW PROCEDURES](#show-procedures)
-- [Recursive CTEs](#recursive-ctes)
-  - [WITH RECURSIVE Syntax](#with-recursive-syntax)
-  - [Anchor and Recursive Members](#anchor-and-recursive-members)
-  - [MAX RECURSION LEVEL](#max-recursion-level)
-  - [Use Cases and Examples](#use-cases-and-examples)
-  - [Limitations](#limitations)
-- [Multi-Statement Transactions](#multi-statement-transactions)
-  - [Overview and Current Status](#overview-and-current-status)
-  - [SQL Scripting Atomic Blocks](#sql-scripting-atomic-blocks)
-  - [Python Connector Transaction API](#python-connector-transaction-api)
-  - [Isolation Levels](#isolation-levels)
-  - [Write Conflicts and Concurrency](#write-conflicts-and-concurrency)
-  - [Best Practices](#best-practices)
 
----
 
-## SQL Scripting
 
-**Availability**: Databricks Runtime 16.3+ and Databricks SQL
 
-SQL scripting enables procedural logic using the SQL/PSM standard. Every SQL script starts with a compound statement block (`BEGIN...END`).
 
-### Compound Statements (BEGIN...END)
 
-A compound statement is the fundamental building block containing variable declarations, condition/handler declarations, and executable statements.
 
-**Syntax**:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`BEGIN...END`
+
+
+
+
+
+
 
 ```sql
 [ label : ] BEGIN
@@ -70,28 +70,28 @@ A compound statement is the fundamental building block containing variable decla
 END [ label ]
 ```
 
-**Key rules**:
 
-- Declarations must appear before executable statements
-- Variable declarations come before condition declarations, which come before handler declarations
-- Top-level compound statements cannot specify labels
-- `NOT ATOMIC` is the default and only behavior (no automatic rollback on failure)
-- In notebooks, the compound statement must be the sole statement in the cell
 
-**Supported statement types in body**:
 
-| Category | Statements |
-|----------|-----------|
-| DDL | ALTER, CREATE, DROP |
-| DCL | GRANT, REVOKE |
-| DML | INSERT, UPDATE, DELETE, MERGE |
-| Query | SELECT |
-| Assignment | SET |
-| Dynamic SQL | EXECUTE IMMEDIATE |
-| Control flow | IF, CASE, WHILE, FOR, LOOP, REPEAT, LEAVE, ITERATE |
-| Nesting | Nested BEGIN...END blocks |
 
-**Minimal example**:
+
+`NOT ATOMIC`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```sql
 BEGIN
@@ -99,21 +99,21 @@ BEGIN
 END;
 ```
 
-### Variable Declaration (DECLARE)
 
-**Syntax**:
+
+
 
 ```sql
 DECLARE variable_name [, ...] data_type [ DEFAULT default_expr ];
 ```
 
-- Variables initialize to `NULL` if no `DEFAULT` is specified
-- Data type can be omitted when `DEFAULT` is provided (type inferred from expression)
-- Multiple variable names in a single `DECLARE` supported in Runtime 17.2+
-- Variables are scoped to their enclosing compound statement
-- Variable names resolve from the innermost scope outward; use labels to disambiguate
+`NULL``DEFAULT`
+`DEFAULT`
+`DECLARE`
 
-**Examples**:
+
+
+
 
 ```sql
 BEGIN
@@ -127,9 +127,9 @@ BEGIN
 END;
 ```
 
-### Variable Assignment (SET)
 
-**Syntax**:
+
+
 
 ```sql
 SET variable_name = expression;
@@ -137,9 +137,9 @@ SET VAR variable_name = expression;          -- explicit local variable
 SET (var1, var2, ...) = (expr1, expr2, ...); -- multi-assignment
 ```
 
-Use `SET VAR` to explicitly target a local variable when a session variable with the same name exists.
+`SET VAR`
 
-**Example**:
+
 
 ```sql
 BEGIN
@@ -151,13 +151,13 @@ BEGIN
 END;
 ```
 
-### Control Flow
 
-#### IF / ELSEIF / ELSE
 
-Executes statements based on the first condition evaluating to `TRUE`.
 
-**Syntax**:
+
+`TRUE`
+
+
 
 ```sql
 IF condition THEN
@@ -169,7 +169,7 @@ IF condition THEN
 END IF;
 ```
 
-**Example**:
+
 
 ```sql
 BEGIN
@@ -190,11 +190,11 @@ BEGIN
 END;
 ```
 
-#### CASE Statement
 
-Two forms: **simple CASE** (compare expression) and **searched CASE** (evaluate boolean conditions).
 
-**Simple CASE syntax**:
+
+
+
 
 ```sql
 CASE expr
@@ -204,7 +204,7 @@ CASE expr
 END CASE;
 ```
 
-**Searched CASE syntax**:
+
 
 ```sql
 CASE
@@ -214,9 +214,9 @@ CASE
 END CASE;
 ```
 
-Only the first matching branch executes.
 
-**Example**:
+
+
 
 ```sql
 BEGIN
@@ -231,11 +231,11 @@ BEGIN
 END;
 ```
 
-#### WHILE Loop
 
-Repeats while a condition is `TRUE`.
 
-**Syntax**:
+`TRUE`
+
+
 
 ```sql
 [ label : ] WHILE condition DO
@@ -243,7 +243,7 @@ Repeats while a condition is `TRUE`.
 END WHILE [ label ];
 ```
 
-**Example** -- sum odd numbers from 1 to 10:
+
 
 ```sql
 BEGIN
@@ -262,11 +262,11 @@ BEGIN
 END;
 ```
 
-#### FOR Loop
 
-Iterates over query result rows.
 
-**Syntax**:
+
+
+
 
 ```sql
 [ label : ] FOR [ variable_name AS ] query DO
@@ -274,11 +274,11 @@ Iterates over query result rows.
 END FOR [ label ];
 ```
 
-- Use `variable_name` (not the label) to qualify column references from the cursor
-- For Delta tables, modifying the source during iteration does not affect cursor results
-- Loop may not fully execute the query if terminated early by `LEAVE` or an error
+`variable_name`
 
-**Example** -- process each row from a query:
+`LEAVE`
+
+
 
 ```sql
 BEGIN
@@ -297,11 +297,11 @@ BEGIN
 END;
 ```
 
-#### LOOP Statement
 
-Unconditional loop; must use `LEAVE` to exit.
 
-**Syntax**:
+`LEAVE`
+
+
 
 ```sql
 [ label : ] LOOP
@@ -309,7 +309,7 @@ Unconditional loop; must use `LEAVE` to exit.
 END LOOP [ label ];
 ```
 
-**Example**:
+
 
 ```sql
 BEGIN
@@ -326,11 +326,11 @@ BEGIN
 END;
 ```
 
-#### REPEAT Statement
 
-Executes at least once, then repeats until condition is `TRUE`.
 
-**Syntax**:
+`TRUE`
+
+
 
 ```sql
 [ label : ] REPEAT
@@ -339,7 +339,7 @@ Executes at least once, then repeats until condition is `TRUE`.
 END REPEAT [ label ];
 ```
 
-**Example**:
+
 
 ```sql
 BEGIN
@@ -358,32 +358,32 @@ BEGIN
 END;
 ```
 
-#### LEAVE and ITERATE
 
-| Statement | Purpose | Equivalent |
-|-----------|---------|-----------|
-| `LEAVE label` | Exit the labeled loop or compound block | `BREAK` in other languages |
-| `ITERATE label` | Skip to the next iteration of the labeled loop | `CONTINUE` in other languages |
 
-Both require a labeled loop to target.
 
-### Exception Handling
 
-#### Condition Declaration
+`LEAVE label``BREAK`
+`ITERATE label``CONTINUE`
 
-Define named conditions for specific SQLSTATE codes.
 
-**Syntax**:
+
+
+
+
+
+
+
+
 
 ```sql
 DECLARE condition_name CONDITION [ FOR SQLSTATE [ VALUE ] sqlstate ];
 ```
 
-- `sqlstate` is a 5-character alphanumeric string (A-Z, 0-9, case-insensitive)
-- Cannot start with `'00'`, `'01'`, or `'XX'`
-- Defaults to `'45000'` if not specified
+`sqlstate`
+`'00'``'01'``'XX'`
+`'45000'`
 
-**Example**:
+
 
 ```sql
 BEGIN
@@ -392,27 +392,27 @@ BEGIN
 END;
 ```
 
-#### Handler Declaration
 
-Catch and handle exceptions within compound statements.
 
-**Syntax**:
+
+
+
 
 ```sql
 DECLARE handler_type HANDLER FOR condition_value [, ...] handler_action;
 ```
 
-| Parameter | Options | Description |
-|-----------|---------|-------------|
-| `handler_type` | `EXIT` | Exits the enclosing compound after handling |
-| `condition_value` | `SQLSTATE 'xxxxx'`, `condition_name`, `SQLEXCEPTION`, `NOT FOUND` | What to catch |
-| `handler_action` | Single statement or nested `BEGIN...END` | What to execute |
 
-- `SQLEXCEPTION` catches all error states (SQLSTATE class not `'00'` or `'01'`)
-- `NOT FOUND` catches `'02xxx'` states (no data found)
-- A handler cannot apply to statements in its own body
 
-**Example** -- catch division by zero:
+`handler_type``EXIT`
+`condition_value``SQLSTATE 'xxxxx'``condition_name``SQLEXCEPTION``NOT FOUND`
+`handler_action``BEGIN...END`
+
+`SQLEXCEPTION``'00'``'01'`
+`NOT FOUND``'02xxx'`
+
+
+
 
 ```sql
 BEGIN
@@ -427,7 +427,7 @@ BEGIN
 END;
 ```
 
-**Example** -- generic exception handler:
+
 
 ```sql
 BEGIN
@@ -444,11 +444,11 @@ BEGIN
 END;
 ```
 
-#### SIGNAL and RESIGNAL
 
-Raise or re-raise exceptions.
 
-**SIGNAL syntax**:
+
+
+
 
 ```sql
 SIGNAL condition_name
@@ -458,17 +458,17 @@ SIGNAL SQLSTATE [ VALUE ] sqlstate
   [ SET MESSAGE_TEXT = message_str ];
 ```
 
-**RESIGNAL syntax** (use in handlers to preserve diagnostic stack):
+
 
 ```sql
 RESIGNAL [ condition_name | SQLSTATE [ VALUE ] sqlstate ]
   [ SET { MESSAGE_ARGUMENTS = argument_map | MESSAGE_TEXT = message_str } ];
 ```
 
-- Prefer `RESIGNAL` over `SIGNAL` inside handlers -- `RESIGNAL` preserves the diagnostic stack while `SIGNAL` clears it
-- `MESSAGE_ARGUMENTS` takes a `MAP<STRING, STRING>` literal
+`RESIGNAL``SIGNAL``RESIGNAL``SIGNAL`
+`MESSAGE_ARGUMENTS``MAP<STRING, STRING>`
 
-**Example** -- validate input and raise custom error:
+
 
 ```sql
 BEGIN
@@ -483,7 +483,7 @@ BEGIN
 END;
 ```
 
-**Example** -- using named conditions with MESSAGE_ARGUMENTS:
+
 
 ```sql
 BEGIN
@@ -498,13 +498,13 @@ BEGIN
 END;
 ```
 
-### EXECUTE IMMEDIATE (Dynamic SQL)
 
-Execute SQL statements constructed as strings at runtime.
 
-**Availability**: Runtime 14.3+; expression-based `sql_string` and nested execution from Runtime 17.3+.
 
-**Syntax**:
+
+`sql_string`
+
+
 
 ```sql
 EXECUTE IMMEDIATE sql_string
@@ -512,11 +512,11 @@ EXECUTE IMMEDIATE sql_string
   [ USING { arg_expr [ AS ] [ alias ] } [, ...] ];
 ```
 
-- `sql_string`: a constant expression producing a well-formed SQL statement
-- `INTO`: captures a single-row result into variables (returns `NULL` for zero rows; errors for multiple rows)
-- `USING`: binds values to positional (`?`) or named (`:param`) parameter markers (cannot mix styles)
+`sql_string`
+`INTO``NULL`
+`USING``?``:param`
 
-**Examples**:
+
 
 ```sql
 -- Positional parameters
@@ -538,17 +538,17 @@ BEGIN
 END;
 ```
 
----
 
-## Stored Procedures
 
-**Availability**: Public Preview -- Databricks Runtime 17.0+
 
-Stored procedures persist SQL scripts in Unity Catalog and are invoked with `CALL`.
 
-### CREATE PROCEDURE
 
-**Syntax**:
+
+`CALL`
+
+
+
+
 
 ```sql
 CREATE [ OR REPLACE ] PROCEDURE [ IF NOT EXISTS ]
@@ -557,7 +557,7 @@ CREATE [ OR REPLACE ] PROCEDURE [ IF NOT EXISTS ]
     AS compound_statement
 ```
 
-**Parameter definition**:
+
 
 ```sql
 [ IN | OUT | INOUT ] parameter_name data_type
@@ -565,38 +565,38 @@ CREATE [ OR REPLACE ] PROCEDURE [ IF NOT EXISTS ]
   [ COMMENT parameter_comment ]
 ```
 
-| Parameter mode | Behavior |
-|---------------|----------|
-| `IN` (default) | Input-only; value passed into the procedure |
-| `OUT` | Output-only; initialized to `NULL`; final value returned on success |
-| `INOUT` | Input and output; accepts a value and returns the modified value on success |
 
-**Required characteristics**:
 
-| Characteristic | Description |
-|---------------|-------------|
-| `LANGUAGE SQL` | Specifies the implementation language |
-| `SQL SECURITY INVOKER` | Executes under the invoker's authority |
+`IN`
+`OUT``NULL`
+`INOUT`
 
-**Optional characteristics**:
 
-| Characteristic | Description |
-|---------------|-------------|
-| `NOT DETERMINISTIC` | Procedure may return different results with identical inputs |
-| `MODIFIES SQL DATA` | Procedure modifies SQL data |
-| `COMMENT 'description'` | Human-readable description |
-| `DEFAULT COLLATION UTF8_BINARY` | Required when schema uses non-UTF8_BINARY collation (Runtime 17.1+) |
 
-**Rules**:
 
-- `OR REPLACE` and `IF NOT EXISTS` cannot be combined
-- Parameter names must be unique within the procedure
-- `DEFAULT` is not supported for `OUT` parameters
-- Once a parameter has a `DEFAULT`, all subsequent parameters must also have defaults
-- Default expressions cannot reference other parameters or contain subqueries
-- Body is validated syntactically at creation but semantically only at invocation
 
-**Example** -- ETL procedure with output parameters:
+`LANGUAGE SQL`
+`SQL SECURITY INVOKER`
+
+
+
+
+
+`NOT DETERMINISTIC`
+`MODIFIES SQL DATA`
+`COMMENT 'description'`
+`DEFAULT COLLATION UTF8_BINARY`
+
+
+
+`OR REPLACE``IF NOT EXISTS`
+
+`DEFAULT``OUT`
+`DEFAULT`
+
+
+
+
 
 ```sql
 CREATE OR REPLACE PROCEDURE run_daily_etl(
@@ -631,25 +631,25 @@ AS BEGIN
 END;
 ```
 
-### CALL (Invoke a Procedure)
 
-**Syntax**:
+
+
 
 ```sql
 CALL procedure_name( [ argument [, ...] ] );
 CALL procedure_name( [ named_param => argument ] [, ...] );
 ```
 
-**Rules**:
 
-- Supports up to 64 levels of nesting
-- For `IN` parameters: any expression castable to the parameter type, or `DEFAULT`
-- For `OUT`/`INOUT` parameters: must be a session variable or local variable
-- Arguments must match the data type of the parameter (use typed literals, e.g., `DATE'2025-01-01'`)
-- Fewer arguments allowed if remaining parameters have `DEFAULT` values
-- Not supported via ODBC
 
-**Example**:
+
+`IN``DEFAULT`
+`OUT``INOUT`
+`DATE'2025-01-01'`
+`DEFAULT`
+
+
+
 
 ```sql
 -- Positional invocation
@@ -667,65 +667,65 @@ CALL run_daily_etl(
 );
 ```
 
-### DROP PROCEDURE
 
-**Syntax**:
+
+
 
 ```sql
 DROP PROCEDURE [ IF EXISTS ] procedure_name;
 ```
 
-- Without `IF EXISTS`, dropping a non-existent procedure raises `ROUTINE_NOT_FOUND`
-- Requires `MANAGE` privilege, ownership of the procedure, or ownership of the containing schema/catalog/metastore
+`IF EXISTS``ROUTINE_NOT_FOUND`
+`MANAGE`
 
-**Example**:
+
 
 ```sql
 DROP PROCEDURE IF EXISTS run_daily_etl;
 ```
 
-### DESCRIBE PROCEDURE
 
-**Syntax**:
+
+
 
 ```sql
 { DESC | DESCRIBE } PROCEDURE [ EXTENDED ] procedure_name;
 ```
 
-- Basic: returns procedure name and parameter list
-- `EXTENDED`: additionally returns owner, creation time, body, language, security type, determinism, data access, and configuration
 
-**Example**:
+`EXTENDED`
+
+
 
 ```sql
 DESCRIBE PROCEDURE EXTENDED run_daily_etl;
 ```
 
-### SHOW PROCEDURES
 
-**Syntax**:
+
+
 
 ```sql
 SHOW PROCEDURES [ { FROM | IN } schema_name ];
 ```
 
-Returns columns: `catalog`, `namespace`, `schema`, `procedure_name`.
+`catalog``namespace``schema``procedure_name`
 
-**Example**:
+
 
 ```sql
 SHOW PROCEDURES IN my_catalog.my_schema;
 ```
 
----
 
-## Recursive CTEs
 
-**Availability**: Databricks Runtime 17.0+ and DBSQL 2025.20+
 
-Recursive CTEs enable self-referential queries for hierarchical data, graph traversal, and series generation.
 
-### WITH RECURSIVE Syntax
+
+
+
+
+
 
 ```sql
 WITH RECURSIVE cte_name [ ( column_name [, ...] ) ]
@@ -737,31 +737,31 @@ WITH RECURSIVE cte_name [ ( column_name [, ...] ) ]
 SELECT ... FROM cte_name;
 ```
 
-### Anchor and Recursive Members
 
-| Component | Description |
-|-----------|-------------|
-| **Anchor (base case)** | Initial query providing seed rows; must NOT reference the CTE name |
-| **Recursive member** | References the CTE name; processes rows from the previous iteration |
-| **UNION ALL** | Combines anchor and recursive results (required) |
 
-The recursive member reads rows produced by the previous iteration and generates new rows. Recursion terminates when the recursive member produces zero rows.
 
-### MAX RECURSION LEVEL
+
+
+
+
+
+
+
+
 
 ```sql
 WITH RECURSIVE cte_name MAX RECURSION LEVEL 200 AS (...)
 ```
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Max recursion depth | 100 | Exceeding raises `RECURSION_LEVEL_LIMIT_EXCEEDED` |
-| Max result rows | 1,000,000 | Exceeding raises an error |
-| `LIMIT ALL` | N/A | Suspends the row limit (Runtime 17.2+) |
 
-### Use Cases and Examples
 
-**Generate a number series**:
+`RECURSION_LEVEL_LIMIT_EXCEEDED`
+
+`LIMIT ALL`
+
+
+
+
 
 ```sql
 WITH RECURSIVE numbers(n) AS (
@@ -772,7 +772,7 @@ WITH RECURSIVE numbers(n) AS (
 SELECT * FROM numbers;
 ```
 
-**Organizational hierarchy traversal**:
+
 
 ```sql
 WITH RECURSIVE org_tree AS (
@@ -791,7 +791,7 @@ WITH RECURSIVE org_tree AS (
 SELECT * FROM org_tree ORDER BY depth, name;
 ```
 
-**Graph traversal with cycle detection**:
+
 
 ```sql
 WITH RECURSIVE search_graph(f, t, label, path, cycle) AS (
@@ -812,7 +812,7 @@ WITH RECURSIVE search_graph(f, t, label, path, cycle) AS (
 SELECT * FROM search_graph WHERE NOT cycle;
 ```
 
-**String accumulation**:
+
 
 ```sql
 WITH RECURSIVE r(col) AS (
@@ -826,7 +826,7 @@ SELECT * FROM r;
 -- a, ab, abc, abcd, ..., abcdefghij
 ```
 
-**Bill of Materials (BOM) explosion**:
+
 
 ```sql
 WITH RECURSIVE bom AS (
@@ -848,32 +848,32 @@ GROUP BY component_id
 ORDER BY total_quantity DESC;
 ```
 
-### Limitations
 
-- Not supported in UPDATE, DELETE, or MERGE statements
-- Step (recursive) queries cannot include correlated column references to the CTE name
-- Random number generators may produce identical values across iterations
-- Default row limit of 1,000,000 rows (use `LIMIT ALL` in Runtime 17.2+ to override)
-- Default recursion depth of 100 (override with `MAX RECURSION LEVEL`)
 
----
 
-## Multi-Statement Transactions
 
-### Overview and Current Status
 
-Multi-statement transactions (MST) allow grouping multiple SQL statements into atomic units that either succeed completely or fail completely.
+`LIMIT ALL`
+`MAX RECURSION LEVEL`
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Single-table transactions | GA | Delta Lake default; every DML statement is atomic |
-| Multi-statement transactions (SQL scripting) | Preview | `BEGIN ATOMIC...END` blocks |
-| Multi-statement transactions (Python connector) | Preview | `connection.autocommit = False` pattern |
-| Cross-table transactions | Preview | Atomic updates across multiple Delta tables |
 
-### SQL Scripting Atomic Blocks
 
-Use `BEGIN ATOMIC...END` to execute multiple statements as a single atomic unit:
+
+
+
+
+
+
+
+
+
+`BEGIN ATOMIC...END`
+`connection.autocommit = False`
+
+
+
+
+`BEGIN ATOMIC...END`
 
 ```sql
 BEGIN ATOMIC
@@ -883,13 +883,13 @@ BEGIN ATOMIC
 END;
 ```
 
-If any statement fails, all changes are rolled back.
 
-> **Note:** Tables used in `BEGIN ATOMIC` blocks must have the `catalogManaged` table feature enabled. Create tables with `TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')`. Existing tables cannot be upgraded in place — they must be recreated with this property.
 
-### Python Connector Transaction API
+`BEGIN ATOMIC``catalogManaged``TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')`
 
-The Databricks SQL Connector for Python provides explicit transaction control:
+
+
+
 
 ```python
 from databricks import sql
@@ -915,40 +915,40 @@ finally:
     connection.autocommit = True
 ```
 
-**Key API methods**:
 
-| Method | Description |
-|--------|-------------|
-| `connection.autocommit = False` | Start explicit transaction mode |
-| `connection.commit()` | Commit the current transaction |
-| `connection.rollback()` | Discard all changes in the current transaction |
-| `connection.get_transaction_isolation()` | Returns current isolation level |
-| `connection.set_transaction_isolation(level)` | Sets isolation level |
 
-**Error handling**:
 
-- `sql.TransactionError` raised when committing without an active transaction
-- Cannot change `autocommit` while a transaction is active
-- `rollback()` is a safe no-op when no transaction is active
 
-### Isolation Levels
+`connection.autocommit = False`
+`connection.commit()`
+`connection.rollback()`
+`connection.get_transaction_isolation()`
+`connection.set_transaction_isolation(level)`
 
-Databricks uses **Snapshot Isolation** (mapped to `REPEATABLE_READ` in standard SQL terminology).
 
-| Level | Description | Default |
-|-------|-------------|---------|
-| `WriteSerializable` | Only writes are serializable; concurrent writes may reorder | Yes (table default) |
-| `Serializable` | Both reads and writes are serializable; strictest isolation | No |
-| `REPEATABLE_READ` | Snapshot isolation for connector-level transactions | Connector default |
 
-**Setting isolation at table level**:
+`sql.TransactionError`
+`autocommit`
+`rollback()`
+
+
+
+`REPEATABLE_READ`
+
+
+
+`WriteSerializable`
+`Serializable`
+`REPEATABLE_READ`
+
+
 
 ```sql
 ALTER TABLE my_table
 SET TBLPROPERTIES ('delta.isolationLevel' = 'Serializable');
 ```
 
-**Setting isolation in Python connector**:
+
 
 ```python
 from databricks.sql import TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ
@@ -957,63 +957,63 @@ connection.set_transaction_isolation(TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ
 # Only REPEATABLE_READ is supported; others raise NotSupportedError
 ```
 
-**Snapshot isolation behavior**:
 
-- **Repeatable reads**: Data read within a transaction remains consistent
-- **Atomic commits**: Changes are invisible to other connections until committed
-- **Write conflicts**: Concurrent writes to the same table cause conflicts
-- **Cross-table writes**: Concurrent writes to different tables can succeed
 
-### Write Conflicts and Concurrency
 
-**Row-level concurrency** (Runtime 14.2+) reduces conflicts for tables with deletion vectors or liquid clustering:
 
-| Operation | WriteSerializable | Serializable |
-|-----------|------------------|--------------|
-| INSERT vs INSERT | No conflict | No conflict |
-| UPDATE/DELETE/MERGE vs same | No conflict (different rows) | May conflict |
-| OPTIMIZE vs concurrent DML | Conflict only with ZORDER BY | May conflict |
 
-**Common conflict exceptions**:
 
-| Exception | Cause |
-|-----------|-------|
-| `ConcurrentAppendException` | Concurrent append to the same partition |
-| `ConcurrentDeleteReadException` | Concurrent delete of files being read |
-| `MetadataChangedException` | Concurrent ALTER TABLE or schema change |
-| `ProtocolChangedException` | Protocol version upgrade during write |
 
-### Best Practices
 
-1. **Keep transactions short** to minimize conflict windows
-2. **Always wrap in try/except/finally** with rollback on errors
-3. **Restore autocommit** in the `finally` block
-4. **Use partition pruning** in MERGE conditions to reduce conflict scope
-5. **Enable row-level concurrency** (deletion vectors + liquid clustering) for high-concurrency workloads
-6. **Prefer single-statement MERGE** over multi-statement transactions when updating a single table
-7. **Commit and restart** transactions to see changes made by other connections
 
----
 
-## Runtime Version Reference
 
-| Feature | Minimum Runtime | Status |
-|---------|----------------|--------|
-| SQL Scripting (compound statements, control flow) | 16.3 | GA |
-| Stored Procedures (CREATE/CALL/DROP PROCEDURE) | 17.0 | Public Preview |
-| Recursive CTEs (WITH RECURSIVE) | 17.0 / DBSQL 2025.20 | GA |
-| Multi-variable DECLARE | 17.2 | GA |
-| EXECUTE IMMEDIATE (basic) | 14.3 | GA |
-| EXECUTE IMMEDIATE (expressions, nested) | 17.3 | GA |
-| Recursive CTE LIMIT ALL | 17.2 | GA |
-| Multi-statement Transactions | Varies | Preview |
-| Row-level Concurrency | 14.2 | GA |
 
----
 
-## Quick Reference Card
 
-### SQL Scripting Skeleton
+
+
+
+
+
+
+
+`ConcurrentAppendException`
+`ConcurrentDeleteReadException`
+`MetadataChangedException`
+`ProtocolChangedException`
+
+
+
+
+
+`finally`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```sql
 BEGIN
@@ -1038,7 +1038,7 @@ BEGIN
 END;
 ```
 
-### Stored Procedure Skeleton
+
 
 ```sql
 CREATE OR REPLACE PROCEDURE my_schema.my_proc(
@@ -1062,7 +1062,7 @@ CALL my_schema.my_proc('value', result);
 SELECT result;
 ```
 
-### Recursive CTE Skeleton
+
 
 ```sql
 WITH RECURSIVE cte_name (col1, col2) MAX RECURSION LEVEL 50 AS (
