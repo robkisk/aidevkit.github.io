@@ -1,17 +1,30 @@
 ---
 title: Multi-Language Clients
-description: Build Zerobus producers in Java, Go, TypeScript, or Rust — same pattern, language-native SDK.
+description: Zerobus Ingest SDK examples for Java, Go, TypeScript/Node.
 sidebar:
   order: 3
 ---
 
-## What You Can Build
+Zerobus Ingest SDK examples for Java, Go, TypeScript/Node.js, and Rust. All languages follow the same core pattern: **SDK init -> create stream -> ingest records -> ACK -> flush -> close**.
 
-A Zerobus producer in your language of choice. The SDK is available for Java, Go, TypeScript, and Rust, and every language follows the same lifecycle: initialize the SDK, create a stream, ingest records, handle acknowledgments, flush, and close. Your AI coding assistant generates the correct idioms for whichever language you specify in the prompt.
+---
 
-## In Action
+## Java (8+)
 
-> "Build a Java microservice that sends air quality sensor data to Databricks using Zerobus with Protobuf serialization."
+### Installation
+
+Maven:
+```xml
+<dependency>
+    <groupId>com.databricks</groupId>
+    <artifactId>zerobus-ingest-sdk</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+### Protobuf Flow (Recommended)
+
+Java uses Protobuf by default. Generate and compile your `.proto` first (see [4-protobuf-schema.md](4-protobuf-schema.md)).
 
 ```java
 import com.databricks.zerobus.*;
@@ -26,11 +39,15 @@ public class ZerobusProducer {
         String clientSecret = System.getenv("DATABRICKS_CLIENT_SECRET");
 
         ZerobusSdk sdk = new ZerobusSdk(serverEndpoint, workspaceUrl);
+
         TableProperties<AirQuality> tableProperties = new TableProperties<>(
-            tableName, AirQuality.getDefaultInstance());
+            tableName,
+            AirQuality.getDefaultInstance()
+        );
 
         ZerobusStream<AirQuality> stream = sdk.createStream(
-            tableProperties, clientId, clientSecret).join();
+            tableProperties, clientId, clientSecret
+        ).join();
 
         try {
             for (int i = 0; i < 100; i++) {
@@ -49,17 +66,31 @@ public class ZerobusProducer {
 }
 ```
 
-**Key decisions:**
-- Java defaults to Protobuf — pass a `getDefaultInstance()` to `TableProperties` so the SDK knows the message shape
-- `createStream` returns a `CompletableFuture`, so `.join()` blocks until the stream is ready
-- The `try/finally` ensures the gRPC stream closes even if ingestion throws
-- Generate your `.proto` from the Unity Catalog table schema (see the Protobuf Schema page) to keep field mappings in sync
+### Proto Generation for Java
 
-## More Patterns
+```bash
+java -jar zerobus-ingest-sdk-0.1.0-jar-with-dependencies.jar \
+    --uc-endpoint "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com" \
+    --client-id "$DATABRICKS_CLIENT_ID" \
+    --client-secret "$DATABRICKS_CLIENT_SECRET" \
+    --table "catalog.schema.table_name" \
+    --output "record.proto"
 
-### Go producer with JSON serialization
+# Compile to Java
+protoc --java_out=src/main/java record.proto
+```
 
-> "Write a Go service that sends JSON sensor data to Databricks through Zerobus."
+---
+
+## Go (1.21+)
+
+### Installation
+
+```bash
+go get github.com/databricks/zerobus-sdk-go
+```
+
+### JSON Flow
 
 ```go
 package main
@@ -73,10 +104,13 @@ import (
 )
 
 func main() {
-    sdk, err := zerobus.NewZerobusSdk(
-        os.Getenv("ZEROBUS_SERVER_ENDPOINT"),
-        os.Getenv("DATABRICKS_WORKSPACE_URL"),
-    )
+    serverEndpoint := os.Getenv("ZEROBUS_SERVER_ENDPOINT")
+    workspaceURL := os.Getenv("DATABRICKS_WORKSPACE_URL")
+    tableName := os.Getenv("ZEROBUS_TABLE_NAME")
+    clientID := os.Getenv("DATABRICKS_CLIENT_ID")
+    clientSecret := os.Getenv("DATABRICKS_CLIENT_SECRET")
+
+    sdk, err := zerobus.NewZerobusSdk(serverEndpoint, workspaceURL)
     if err != nil {
         log.Fatal(err)
     }
@@ -86,10 +120,8 @@ func main() {
     options.RecordType = zerobus.RecordTypeJson
 
     stream, err := sdk.CreateStream(
-        zerobus.TableProperties{TableName: os.Getenv("ZEROBUS_TABLE_NAME")},
-        os.Getenv("DATABRICKS_CLIENT_ID"),
-        os.Getenv("DATABRICKS_CLIENT_SECRET"),
-        options,
+        zerobus.TableProperties{TableName: tableName},
+        clientID, clientSecret, options,
     )
     if err != nil {
         log.Fatal(err)
@@ -107,38 +139,61 @@ func main() {
         }
         stream.WaitForOffset(offset)
     }
+
     stream.Flush()
 }
 ```
 
-Go's SDK uses `defer` for cleanup, which pairs naturally with the stream lifecycle. Notice `sdk.Free()` releases the underlying native resources — skip it and you'll leak memory in long-running services. JSON records are raw strings, not structs, so you format them directly.
+### Protobuf Flow
 
-### TypeScript producer for Node.js
+```go
+options := zerobus.DefaultStreamConfigurationOptions()
+options.RecordType = zerobus.RecordTypeProto
 
-> "Create a TypeScript Zerobus producer that ingests JSON events from a Node.js application."
+// Load compiled proto descriptor
+tableProps := zerobus.TableProperties{
+    TableName:       tableName,
+    DescriptorProto: descriptorBytes, // compiled .proto descriptor
+}
+
+stream, err := sdk.CreateStream(tableProps, clientID, clientSecret, options)
+// ... ingest protobuf-serialized bytes ...
+```
+
+---
+
+## TypeScript / Node.js (16+)
+
+### Installation
+
+```bash
+npm install @databricks/zerobus-ingest-sdk
+```
+
+### JSON Flow
 
 ```typescript
 import { ZerobusSdk, RecordType } from "@databricks/zerobus-ingest-sdk";
 
-const sdk = new ZerobusSdk(
-  process.env.ZEROBUS_SERVER_ENDPOINT!,
-  process.env.DATABRICKS_WORKSPACE_URL!,
-);
+const serverEndpoint = process.env.ZEROBUS_SERVER_ENDPOINT!;
+const workspaceUrl = process.env.DATABRICKS_WORKSPACE_URL!;
+const tableName = process.env.ZEROBUS_TABLE_NAME!;
+const clientId = process.env.DATABRICKS_CLIENT_ID!;
+const clientSecret = process.env.DATABRICKS_CLIENT_SECRET!;
+
+const sdk = new ZerobusSdk(serverEndpoint, workspaceUrl);
 
 const stream = await sdk.createStream(
-  { tableName: process.env.ZEROBUS_TABLE_NAME! },
-  process.env.DATABRICKS_CLIENT_ID!,
-  process.env.DATABRICKS_CLIENT_SECRET!,
-  { recordType: RecordType.Json },
+  { tableName },
+  clientId,
+  clientSecret,
+  { recordType: RecordType.Json }
 );
 
 try {
   for (let i = 0; i < 100; i++) {
-    const offset = await stream.ingestRecordOffset({
-      device_name: `sensor-${i}`,
-      temp: 22,
-      humidity: 55,
-    });
+    const record = { device_name: `sensor-${i}`, temp: 22, humidity: 55 };
+    const offset = await stream.ingestRecordOffset(record);
     await stream.waitForOffset(offset);
   }
   await stream.flush();
@@ -147,17 +202,15 @@ try {
 }
 ```
 
-TypeScript's native async/await maps directly to the SDK's Promise-based API. Every method that touches the network — `createStream`, `ingestRecordOffset`, `waitForOffset`, `flush`, `close` — returns a Promise, so you `await` each one in sequence.
-
-### TypeScript producer with retry logic
-
-> "Add retry and exponential backoff to my TypeScript Zerobus producer."
+### With Error Handling
 
 ```typescript
+import { ZerobusSdk, RecordType } from "@databricks/zerobus-ingest-sdk";
+
 async function ingestWithRetry(
   stream: any,
   record: Record<string, unknown>,
-  maxRetries = 3,
+  maxRetries = 3
 ): Promise<boolean> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -175,11 +228,18 @@ async function ingestWithRetry(
 }
 ```
 
-This wraps the ingest-and-wait cycle with exponential backoff. For production, you'd also reinitialize the stream on connection errors (the same pattern as the Python reusable client class on the Python Client page).
+---
 
-### Rust producer with Tokio async runtime
+## Rust (1.70+)
 
-> "Build a Rust application that ingests JSON data into Databricks via Zerobus."
+### Installation
+
+```bash
+cargo add databricks-zerobus-ingest-sdk
+cargo add tokio --features macros,rt-multi-thread
+```
+
+### JSON Flow
 
 ```rust
 use databricks_zerobus_ingest_sdk::{
@@ -190,32 +250,31 @@ use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let sdk = ZerobusSdk::new(
-        env::var("ZEROBUS_SERVER_ENDPOINT")?,
-        env::var("DATABRICKS_WORKSPACE_URL")?,
-    )?;
+    let server_endpoint = env::var("ZEROBUS_SERVER_ENDPOINT")?;
+    let workspace_url = env::var("DATABRICKS_WORKSPACE_URL")?;
+    let table_name = env::var("ZEROBUS_TABLE_NAME")?;
+    let client_id = env::var("DATABRICKS_CLIENT_ID")?;
+    let client_secret = env::var("DATABRICKS_CLIENT_SECRET")?;
 
     let table_properties = TableProperties {
-        table_name: env::var("ZEROBUS_TABLE_NAME")?,
+        table_name,
         descriptor_proto: None,
     };
+
     let options = StreamConfigurationOptions {
         record_type: RecordType::Json,
         ..Default::default()
     };
 
+    let sdk = ZerobusSdk::new(server_endpoint, workspace_url)?;
     let mut stream = sdk
-        .create_stream(
-            table_properties,
-            env::var("DATABRICKS_CLIENT_ID")?,
-            env::var("DATABRICKS_CLIENT_SECRET")?,
-            Some(options),
-        )
+        .create_stream(table_properties, client_id, client_secret, Some(options))
         .await?;
 
     for i in 0..100 {
         let record = format!(
-            r#"{{"device_name": "sensor-{}", "temp": 22, "humidity": 55}}"#, i
+            r#"{{"device_name": "sensor-{}", "temp": 22, "humidity": 55}}"#,
+            i
         );
         let offset = stream.ingest_record_offset(record.into_bytes()).await?;
         stream.wait_for_offset(offset).await?;
@@ -226,12 +285,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-Rust's SDK runs on Tokio. Records are byte vectors, so you serialize to JSON manually with `format!` and call `.into_bytes()`. For Protobuf, set `descriptor_proto: Some(proto_bytes)` in `TableProperties` and pass `prost`-encoded messages instead.
+### Protobuf Flow
 
-## Watch Out For
+```rust
+let table_properties = TableProperties {
+    table_name: table_name.clone(),
+    descriptor_proto: Some(proto_descriptor_bytes),
+};
 
-- **Java defaults to Protobuf, everything else defaults to JSON** — if you forget to set `RecordType` in a non-Java client, you'll get JSON. If you forget the proto descriptor in Java, you'll get a confusing type error at stream creation.
-- **Go requires `sdk.Free()` to release native resources** — the Go SDK wraps a native library via CGo. Missing the `defer sdk.Free()` call leaks memory in long-running processes.
-- **Rust records are byte vectors, not strings** — `ingest_record_offset` expects `Vec<u8>`. Use `.into_bytes()` on your JSON string or `.encode_to_vec()` on your prost message.
-- **All languages share the same server-side limits** — 100 MB/s and 15,000 rows/s per stream, 10 MB max message size, 2,000 column max. These are stream-level caps regardless of client language.
-- **Async APIs vary by language** — Java uses `CompletableFuture`, Go uses goroutines, TypeScript uses native Promises, Rust uses Tokio futures. Match your concurrency model to your runtime.
+let options = StreamConfigurationOptions {
+    record_type: RecordType::Proto,
+    ..Default::default()
+};
+
+let mut stream = sdk
+    .create_stream(table_properties, client_id, client_secret, Some(options))
+    .await?;
+
+// Ingest serialized protobuf bytes
+let record_bytes = my_proto_message.encode_to_vec();
+let offset = stream.ingest_record_offset(record_bytes).await?;
+stream.wait_for_offset(offset).await?;
+```
+
+---
+
+## Language Comparison
+
+| Feature | Python | Java | Go | TypeScript | Rust |
+|---------|--------|------|----|------------|------|
+| Min version | 3.9+ | 8+ | 1.21+ | Node 16+ | 1.70+ |
+| Package | `databricks-zerobus-ingest-sdk` | `com.databricks:zerobus-ingest-sdk` | `github.com/databricks/zerobus-sdk-go` | `@databricks/zerobus-ingest-sdk` | `databricks-zerobus-ingest-sdk` |
+| Default serialization | JSON | Protobuf | JSON | JSON | JSON |
+| Async API | Yes (separate module) | CompletableFuture | Goroutines | Native async/await | Tokio async/await |
+| ACK pattern | `wait_for_offset(offset)` or `AckCallback` | `waitForOffset(offset)` | `WaitForOffset(offset)` | `await waitForOffset(offset)` | `wait_for_offset(offset).await?` |
+| Proto generation | `python -m zerobus.tools.generate_proto` | JAR CLI tool | External `protoc` | External `protoc` | External `protoc` |

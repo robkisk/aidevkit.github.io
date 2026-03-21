@@ -1,154 +1,291 @@
 ---
-title: Data Patterns & Domain Guidance
-description: Generate statistically realistic synthetic data with proper distributions, referential integrity, and domain-specific patterns.
+title: Data Patterns Guide
+description: Creating realistic, coherent synthetic data with Spark + Pandas UDFs.
 sidebar:
-  order: 2
+  order: 3
 ---
 
-## What You Can Build
+Creating realistic, coherent synthetic data with Spark + Pandas UDFs.
 
-You can generate synthetic data that passes the smell test -- log-normal transaction amounts, seasonal time patterns, correlated customer attributes, and proper foreign key relationships across tables. Random uniform distributions are the telltale sign of fake data. These patterns produce datasets that behave like production data in dashboards, pipelines, and ML models.
+## 5 Key Principles
 
-## In Action
+1. **Use Spark + Faker + Pandas UDFs** for all generation
+2. **Referential Integrity** - master tables first, weighted sampling
+3. **Non-Linear Distributions** - log-normal, Pareto, exponential
+4. **Time-Based Patterns** - weekday/weekend, holidays, seasonality
+5. **Row Coherence** - correlated attributes within each row
 
-> "Generate order amounts with log-normal distributions that vary by customer tier. Enterprise customers should spend more than Free tier. Use Python with PySpark."
+---
+
+## Principle 1: Use Spark + Faker + Pandas UDFs
+
+Generate data with Spark + Faker for all use cases. Pandas UDFs provide efficient, distributed Faker calls that scale seamlessly from thousands to millions of rows.
+
+### Define Pandas UDFs
 
 ```python
 from pyspark.sql import functions as F
-from pyspark.sql.types import DoubleType
+from pyspark.sql.types import StringType, DoubleType
+from faker import Faker
 import pandas as pd
 import numpy as np
 
+@F.pandas_udf(StringType())
+def fake_company(ids: pd.Series) -> pd.Series:
+    fake = Faker()
+    return pd.Series([fake.company() for _ in range(len(ids))])
+
+@F.pandas_udf(StringType())
+def fake_address(ids: pd.Series) -> pd.Series:
+    fake = Faker()
+    return pd.Series([fake.address().replace('\n', ', ') for _ in range(len(ids))])
+
 @F.pandas_udf(DoubleType())
-def generate_amount(tiers: pd.Series) -> pd.Series:
+def generate_lognormal_amount(tiers: pd.Series) -> pd.Series:
     amounts = []
     for tier in tiers:
         if tier == "Enterprise":
-            amounts.append(float(np.random.lognormal(7.5, 0.8)))   # ~$1,800 median
+            amounts.append(float(np.random.lognormal(mean=7.5, sigma=0.8)))
         elif tier == "Pro":
-            amounts.append(float(np.random.lognormal(5.5, 0.7)))   # ~$245 median
+            amounts.append(float(np.random.lognormal(mean=5.5, sigma=0.7)))
         else:
-            amounts.append(float(np.random.lognormal(4.0, 0.6)))   # ~$55 median
+            amounts.append(float(np.random.lognormal(mean=4.0, sigma=0.6)))
     return pd.Series(amounts)
-
-orders_df = customers_df.withColumn("amount", generate_amount(F.col("tier")))
 ```
 
-**Key decisions:**
-- **Log-normal distribution** produces the long tail that real financial data exhibits -- most transactions are modest, but some are large
-- **Tier-specific parameters** (`mean`, `sigma`) create correlated spending patterns where Enterprise customers spend 30x more than Free tier
-- **`pandas_udf`** processes the entire column in batches, making it fast enough for millions of rows
-- Real revenue data is never uniformly distributed; log-normal, Pareto, and exponential are the realistic choices
+### Generate with Spark
 
-## More Patterns
+```python
+# Adjust numPartitions based on scale: 8 for <100K, 32 for 1M+
+customers_df = (
+    spark.range(0, N_CUSTOMERS, numPartitions=16)
+    .select(
+        F.concat(F.lit("CUST-"), F.lpad(F.col("id").cast("string"), 5, "0")).alias("customer_id"),
+        fake_company(F.col("id")).alias("name"),
+        F.when(F.rand() < 0.6, "Free")
+         .when(F.rand() < 0.9, "Pro")
+         .otherwise("Enterprise").alias("tier"),
+    )
+)
+customers_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/customers")
+```
 
-### Generate Realistic Date Ranges with Patterns
+---
 
-> "Create order dates spread over the last 6 months with natural time distribution. Use Python with PySpark."
+## Principle 2: Referential Integrity
+
+Generate master tables first, then iterate on them to create related tables with matching IDs.
+
+> **CRITICAL:** Do NOT use `.cache()` or `.persist()` with serverless compute - these operations are not supported and will fail. Instead, write master tables to Delta first, then read them back for FK joins.
+
+### Pattern: Weighted Sampling by Tier
+
+```python
+from pyspark.sql.window import Window
+
+# 1. Generate customers (master table) with index for FK mapping
+customers_df = (
+    spark.range(0, N_CUSTOMERS, numPartitions=PARTITIONS)
+    .select(
+        F.col("id").alias("customer_idx"),  # Keep index for FK joins
+        F.concat(F.lit("CUST-"), F.lpad(F.col("id").cast("string"), 5, "0")).alias("customer_id"),
+        F.when(F.rand(SEED) < 0.6, "Free")
+         .when(F.rand(SEED) < 0.9, "Pro")
+         .otherwise("Enterprise").alias("tier"),
+    )
+)
+
+# 2. Write to Delta table (do NOT use cache with serverless!)
+customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
+
+# 3. Read back for FK lookups
+customer_lookup = spark.table(f"{CATALOG}.{SCHEMA}.customers").select(
+    "customer_idx", "customer_id", "tier"
+)
+
+# 4. Generate orders with valid foreign keys
+orders_df = spark.range(0, N_ORDERS, numPartitions=PARTITIONS)
+
+# Map order to customer using hash-based distribution
+orders_df = orders_df.select(
+    F.concat(F.lit("ORD-"), F.lpad(F.col("id").cast("string"), 6, "0")).alias("order_id"),
+    (F.abs(F.hash(F.col("id"), F.lit(SEED))) % N_CUSTOMERS).alias("customer_idx"),
+)
+
+# Join to get valid foreign keys
+orders_with_fk = orders_df.join(customer_lookup, on="customer_idx", how="left")
+```
+
+### Anti-Pattern: Random FK Generation
+
+```python
+# BAD - May generate non-existent customer IDs
+orders_df = spark.range(0, N_ORDERS).select(
+    F.concat(F.lit("CUST-"), (F.rand() * 99999).cast("int")).alias("customer_id")  # WRONG!
+)
+```
+
+---
+
+## Principle 3: Non-Linear Distributions
+
+**Never use uniform distributions** - real data is rarely uniform.
+
+### Distribution Types
+
+| Distribution | Use Case | Example |
+|--------------|----------|---------|
+| **Log-normal** | Prices, salaries, order amounts | `np.random.lognormal(mean=4.5, sigma=0.8)` |
+| **Pareto/Power law** | Popularity, wealth, page views | `(np.random.pareto(a=2.5) + 1) * 10` |
+| **Exponential** | Time between events, resolution time | `np.random.exponential(scale=24)` |
+| **Weighted categorical** | Status, region, tier | `np.random.choice(vals, p=[0.4, 0.3, 0.2, 0.1])` |
+
+### Pandas UDF for Log-Normal Amounts
+
+```python
+@F.pandas_udf(DoubleType())
+def generate_lognormal_amount(tiers: pd.Series) -> pd.Series:
+    """Generate amount based on tier using log-normal distribution."""
+    amounts = []
+    for tier in tiers:
+        if tier == "Enterprise":
+            amounts.append(float(np.random.lognormal(mean=7.5, sigma=0.8)))  # ~$1800 avg
+        elif tier == "Pro":
+            amounts.append(float(np.random.lognormal(mean=5.5, sigma=0.7)))  # ~$245 avg
+        else:
+            amounts.append(float(np.random.lognormal(mean=4.0, sigma=0.6)))  # ~$55 avg
+    return pd.Series(amounts)
+```
+
+### Anti-Pattern: Uniform Distribution
+
+```python
+# BAD - Uniform (unrealistic)
+prices = np.random.uniform(10, 1000, size=N_ORDERS)
+
+# GOOD - Log-normal (realistic for prices)
+prices = np.random.lognormal(mean=4.5, sigma=0.8, size=N_ORDERS)
+```
+
+---
+
+## Principle 4: Time-Based Patterns
+
+Add weekday/weekend effects, holidays, seasonality, and event spikes.
+
+### Holiday and Weekday Multipliers
+
+```python
+import holidays
+from datetime import datetime, timedelta
+
+# Load holiday calendar
+US_HOLIDAYS = holidays.US(years=[START_DATE.year, END_DATE.year])
+
+def get_daily_multiplier(date):
+    """Calculate volume multiplier for a given date."""
+    multiplier = 1.0
+
+    # Weekend drop
+    if date.weekday() >= 5:
+        multiplier *= 0.6
+
+    # Holiday drop (even lower than weekends)
+    if date in US_HOLIDAYS:
+        multiplier *= 0.3
+
+    # Q4 seasonality (higher in Oct-Dec)
+    multiplier *= 1 + 0.15 * (date.month - 6) / 6
+
+    # Incident spike (if applicable)
+    if INCIDENT_START <= date <= INCIDENT_END:
+        multiplier *= 3.0
+
+    # Random noise
+    multiplier *= np.random.normal(1, 0.1)
+
+    return max(0.1, multiplier)
+```
+
+### Date Range: Last 6 Months
+
+Always generate data for the last ~6 months ending at the current date:
 
 ```python
 from datetime import datetime, timedelta
 
-END_DATE = datetime.now()
+END_DATE = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 START_DATE = END_DATE - timedelta(days=180)
-
-orders_with_dates = orders_df.withColumn(
-    "order_date",
-    F.date_add(F.lit(START_DATE.date()), (F.rand() * 180).cast("int"))
-)
 ```
 
-This produces a uniform spread across 180 days. For more realistic seasonality, multiply `F.rand()` by a sine function or add weekday/weekend weighting to simulate business patterns.
+---
 
-### Maintain Referential Integrity Across Tables
+## Principle 5: Row Coherence
 
-> "Generate an orders table with valid customer_id foreign keys that reference the customers master table. Use Python with PySpark."
+Attributes within a row should correlate logically.
 
-```python
-CATALOG = "my_catalog"
-SCHEMA = "demo_data"
-
-# Step 1: Write master table to Delta FIRST
-customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
-
-# Step 2: Read back and join for FK relationships
-customer_ids = spark.table(f"{CATALOG}.{SCHEMA}.customers").select("customer_id")
-
-orders_df = (
-    spark.range(0, 15000, numPartitions=16)
-    .select(
-        F.concat(F.lit("ORD-"), F.lpad(F.col("id").cast("string"), 6, "0")).alias("order_id"),
-    )
-    .crossJoin(customer_ids.sample(fraction=3.0, withReplacement=True).limit(15000))
-    .withColumn("amount", generate_amount(F.lit("Pro")))  # Add amounts
-    .withColumn("status",
-        F.when(F.rand() < 0.65, "delivered")
-         .when(F.rand() < 0.80, "shipped")
-         .when(F.rand() < 0.90, "processing")
-         .when(F.rand() < 0.95, "pending")
-         .otherwise("cancelled")
-    )
-)
-```
-
-Write master tables to Delta first, then read them back for FK joins. This is the only approach that works on serverless compute -- `.cache()` and `.persist()` are not supported.
-
-### Choose the Right Output Format
-
-> "Save my generated dataset in the format that matches my downstream pipeline. Use Python."
+### Coherent Ticket Generation
 
 ```python
-# Delta Table -- default choice for analytics and SDP pipelines
-orders_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.orders")
-
-# Parquet -- for SDP pipeline raw file input
-orders_df.write.mode("overwrite").parquet(f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/orders")
-
-# JSON -- for log-style or streaming ingestion
-orders_df.write.mode("overwrite").json(f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/orders_json")
-
-# CSV -- for legacy system integration
-orders_df.write.mode("overwrite").option("header", "true").csv(
-    f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/orders_csv"
-)
-```
-
-Delta tables are the default for analytics workloads. Use Parquet or JSON when feeding into ingestion pipelines (SDP, streaming) that expect raw files in a Volume.
-
-### Domain-Specific Patterns
-
-> "Show me how to generate weighted status distributions that look realistic for an e-commerce order pipeline. Use Python with PySpark."
-
-```python
-# E-commerce order statuses with realistic weights
-orders_df = orders_df.withColumn("status",
-    F.when(F.rand() < 0.65, "delivered")
-     .when(F.rand() < 0.80, "shipped")
-     .when(F.rand() < 0.90, "processing")
-     .when(F.rand() < 0.95, "pending")
-     .otherwise("cancelled")
-)
-
-# IoT sensor readings with device-type variation
-@F.pandas_udf(DoubleType())
-def sensor_reading(device_types: pd.Series) -> pd.Series:
-    readings = []
-    for dt in device_types:
-        if dt == "temperature":
-            readings.append(float(np.random.normal(72.0, 3.5)))   # Fahrenheit
-        elif dt == "humidity":
-            readings.append(float(np.random.beta(2, 5) * 100))    # 0-100%
+@F.pandas_udf("struct<priority:string,resolution_hours:double,csat_score:int>")
+def generate_coherent_ticket(tiers: pd.Series) -> pd.DataFrame:
+    """Generate coherent ticket where attributes correlate."""
+    results = []
+    for tier in tiers:
+        # Priority correlates with tier
+        if tier == 'Enterprise':
+            priority = np.random.choice(['Critical', 'High', 'Medium'], p=[0.3, 0.5, 0.2])
         else:
-            readings.append(float(np.random.exponential(50)))      # Pressure
-    return pd.Series(readings)
+            priority = np.random.choice(['Critical', 'High', 'Medium', 'Low'], p=[0.05, 0.2, 0.45, 0.3])
+
+        # Resolution time correlates with priority
+        resolution_scale = {'Critical': 4, 'High': 12, 'Medium': 36, 'Low': 72}
+        resolution_hours = np.random.exponential(scale=resolution_scale[priority])
+
+        # CSAT correlates with resolution time
+        if resolution_hours < 4:
+            csat = np.random.choice([4, 5], p=[0.3, 0.7])
+        elif resolution_hours < 24:
+            csat = np.random.choice([3, 4, 5], p=[0.2, 0.5, 0.3])
+        else:
+            csat = np.random.choice([1, 2, 3, 4], p=[0.1, 0.3, 0.4, 0.2])
+
+        results.append({
+            "priority": priority,
+            "resolution_hours": round(resolution_hours, 1),
+            "csat_score": int(csat),
+        })
+
+    return pd.DataFrame(results)
 ```
 
-Each domain has characteristic distributions. E-commerce uses weighted categories, IoT uses normal/beta distributions with physical constraints, and financial data uses log-normal with outlier injection.
+### Correlation Examples
 
-## Watch Out For
+| Attribute A | Attribute B | Correlation |
+|------------|-------------|-------------|
+| Customer tier | Order amount | Enterprise = higher amounts |
+| Ticket priority | Resolution time | Critical = faster resolution |
+| Resolution time | CSAT score | Faster = higher satisfaction |
+| Region | Product preference | Regional variations |
+| Time of day | Transaction type | Business hours = B2B |
 
-- **Using uniform random for amounts** -- `F.rand() * 1000` produces a flat distribution that looks nothing like real financial data. Use log-normal (`np.random.lognormal`) for transaction amounts and Pareto for income distributions.
-- **Generating FK values instead of joining** -- random IDs won't match any existing master table. Always write the master table first, read it back, and join. This guarantees referential integrity.
-- **Forgetting to create infrastructure** -- your script should always include `CREATE SCHEMA IF NOT EXISTS` and `CREATE VOLUME IF NOT EXISTS`. Don't assume the schema exists; don't try to create the catalog.
-- **Pre-aggregating data** -- generate raw transactional records, not pre-computed metrics. Downstream pipelines and dashboards should compute aggregations themselves. Pre-aggregated synthetic data doesn't test the full pipeline.
-- **Missing table and column comments** -- without `ALTER TABLE ... SET TBLPROPERTIES` and `ALTER COLUMN ... COMMENT`, the synthetic data is undiscoverable in Unity Catalog. Add comments to make the data self-documenting.
+---
+
+## Data Volume for Aggregation
+
+Generate enough data so patterns remain visible after downstream aggregation:
+
+| Grain | Minimum Records | Rationale |
+|-------|-----------------|-----------|
+| Daily time series | 50-100/day | See trends after weekly rollup |
+| Per category | 500+ per category | Statistical significance |
+| Per customer | 5-20 events/customer | Customer-level analysis |
+| Total rows | 10K-50K minimum | Patterns survive GROUP BY |
+
+```python
+# Example: 8000 tickets over 180 days = ~44/day average
+# After weekly aggregation: ~310 records per week
+N_TICKETS = 8000
+N_CUSTOMERS = 2500  # Each has ~3 tickets on average
+N_ORDERS = 25000    # ~10 orders per customer average
+```

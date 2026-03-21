@@ -1,152 +1,358 @@
 ---
-title: Merge Operations
-description: Upsert streaming data into Delta tables with MERGE, Liquid Clustering, and parallel multi-table writes inside foreachBatch.
+title: Merge Operations in Streaming
+description: "Comprehensive guide to Delta MERGE operations: performance optimization, parallel merges to multiple tables, and modern Delta features (Liquid Clustering + D..."
 sidebar:
-  order: 3
+  order: 99
 ---
 
-## What You Can Build
+Comprehensive guide to Delta MERGE operations: performance optimization, parallel merges to multiple tables, and modern Delta features (Liquid Clustering + Deletion Vectors + Row-Level Concurrency).
 
-A raw append is fine for bronze ingestion, but most silver and gold tables need upsert semantics -- insert new records, update existing ones, and optionally delete. Delta MERGE inside `foreachBatch` gives you that. Combined with Liquid Clustering, Deletion Vectors, and Row-Level Concurrency, you get production-grade merge performance without manual OPTIMIZE pauses.
+## Quick Start
 
-## In Action
+### Basic MERGE with Optimization
 
-> "Write a Python streaming pipeline that upserts incoming events into a Delta table using MERGE inside foreachBatch, with Liquid Clustering enabled on the target table."
+```python
+from delta.tables import DeltaTable
+
+# Enable modern Delta features
+spark.sql("""
+    ALTER TABLE target_table SET TBLPROPERTIES (
+        'delta.enableDeletionVectors' = true,
+        'delta.enableRowLevelConcurrency' = true,
+        'delta.liquid.clustering' = true
+    )
+""")
+
+# MERGE in ForEachBatch
+def upsert_batch(batch_df, batch_id):
+    batch_df.createOrReplaceTempView("updates")
+    spark.sql("""
+        MERGE INTO target_table t
+        USING updates s ON t.id = s.id
+        WHEN MATCHED THEN UPDATE SET *
+        WHEN NOT MATCHED THEN INSERT *
+    """)
+    # No optimize needed - Liquid Clustering handles it automatically
+
+stream.writeStream \
+    .foreachBatch(upsert_batch) \
+    .option("checkpointLocation", "/checkpoints/merge") \
+    .start()
+```
+
+### Parallel MERGE to Multiple Tables
+
+```python
+from delta.tables import DeltaTable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def parallel_merge_multiple_tables(batch_df, batch_id):
+    """Merge into multiple tables in parallel"""
+    
+    batch_df.cache()
+    
+    def merge_table(table_name, merge_key):
+        target = DeltaTable.forName(spark, table_name)
+        source = batch_df.alias("source")
+        
+        (target.alias("target")
+            .merge(source, f"target.{merge_key} = source.{merge_key}")
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute()
+        )
+        return f"Merged {table_name}"
+    
+    tables = [
+        ("silver.customers", "customer_id"),
+        ("silver.orders", "order_id"),
+        ("silver.products", "product_id")
+    ]
+    
+    # Parallel merges
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {
+            executor.submit(merge_table, table_name, merge_key): table_name
+            for table_name, merge_key in tables
+        }
+        
+        for future in as_completed(futures):
+            future.result()  # Raise on error
+    
+    batch_df.unpersist()
+
+stream.writeStream \
+    .foreachBatch(parallel_merge_multiple_tables) \
+    .option("checkpointLocation", "/checkpoints/parallel_merge") \
+    .start()
+```
+
+## Core Concepts
+
+### Liquid Clustering + DV + RLC
+
+Enable modern Delta features for optimal merge performance:
 
 ```sql
-CREATE TABLE silver.orders (
-    id STRING, name STRING, amount DECIMAL(10,2), updated_at TIMESTAMP
+-- Enable for target table
+ALTER TABLE target_table SET TBLPROPERTIES (
+    'delta.enableDeletionVectors' = true,
+    'delta.enableRowLevelConcurrency' = true,
+    'delta.liquid.clustering' = true
+);
+```
+
+**Benefits:**
+- **Deletion Vectors**: Soft deletes without file rewrite
+- **Row-Level Concurrency**: Concurrent updates to different rows
+- **Liquid Clustering**: Automatic optimization without pauses
+- **Result**: Eliminates optimize pauses, lower P99 latency, simpler code
+
+## Common Patterns
+
+### Pattern 1: Basic MERGE with Optimization
+
+```python
+def optimized_merge(batch_df, batch_id):
+    """MERGE with optimized table"""
+    batch_df.createOrReplaceTempView("updates")
+    
+    spark.sql("""
+        MERGE INTO target_table t
+        USING updates s ON t.id = s.id
+        WHEN MATCHED THEN UPDATE SET *
+        WHEN NOT MATCHED THEN INSERT *
+    """)
+    # No optimize needed - Liquid Clustering handles it
+
+stream.writeStream \
+    .foreachBatch(optimized_merge) \
+    .option("checkpointLocation", "/checkpoints/merge") \
+    .start()
+```
+
+### Pattern 2: Parallel MERGE to Multiple Tables
+
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def parallel_merge(batch_df, batch_id):
+    """Merge into multiple tables in parallel"""
+    
+    batch_df.cache()
+    
+    def merge_one_table(table_name, merge_key):
+        target = DeltaTable.forName(spark, table_name)
+        source = batch_df.alias("source")
+        
+        (target.alias("target")
+            .merge(source, f"target.{merge_key} = source.{merge_key}")
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute()
+        )
+        return table_name
+    
+    tables = [
+        ("silver.customers", "customer_id"),
+        ("silver.orders", "order_id"),
+        ("silver.products", "product_id")
+    ]
+    
+    # Optimal thread count: min(number_of_tables, cluster_cores / 2)
+    max_workers = min(len(tables), max(2, total_cores // 2))
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(merge_one_table, table_name, merge_key): table_name
+            for table_name, merge_key in tables
+        }
+        
+        errors = []
+        for future in as_completed(futures):
+            table_name = futures[future]
+            try:
+                future.result()
+            except Exception as e:
+                errors.append((table_name, str(e)))
+    
+    batch_df.unpersist()
+    
+    if errors:
+        raise Exception(f"Merge failures: {errors}")
+```
+
+### Pattern 3: MERGE with Partition Pruning
+
+```python
+def partition_pruned_merge(batch_df, batch_id):
+    """MERGE with partition column in condition"""
+    batch_df.createOrReplaceTempView("updates")
+    
+    # Include partition column in merge condition
+    spark.sql("""
+        MERGE INTO target_table t
+        USING updates s 
+        ON t.id = s.id AND t.date = s.date  -- partition column
+        WHEN MATCHED THEN UPDATE SET *
+        WHEN NOT MATCHED THEN INSERT *
+    """)
+    # Skips irrelevant partitions for faster execution
+```
+
+### Pattern 4: CDC Multi-Target with Parallel MERGE
+
+```python
+def cdc_parallel_merge(batch_df, batch_id):
+    """Apply CDC changes to multiple tables in parallel"""
+    
+    batch_df.cache()
+    
+    # Split by operation type
+    deletes = batch_df.filter(col("_op") == "DELETE")
+    upserts = batch_df.filter(col("_op").isin(["INSERT", "UPDATE"]))
+    
+    def merge_cdc_table(table_name, merge_key):
+        target = DeltaTable.forName(spark, table_name)
+        
+        # Upserts
+        if upserts.count() > 0:
+            (target.alias("target")
+                .merge(upserts.alias("source"), f"target.{merge_key} = source.{merge_key}")
+                .whenMatchedUpdateAll()
+                .whenNotMatchedInsertAll()
+                .execute()
+            )
+        
+        # Deletes
+        if deletes.count() > 0:
+            (target.alias("target")
+                .merge(deletes.alias("source"), f"target.{merge_key} = source.{merge_key}")
+                .whenMatchedDelete()
+                .execute()
+            )
+    
+    tables = [
+        ("silver.customers", "customer_id"),
+        ("silver.orders", "order_id")
+    ]
+    
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {
+            executor.submit(merge_cdc_table, table_name, merge_key): table_name
+            for table_name, merge_key in tables
+        }
+        
+        for future in as_completed(futures):
+            future.result()
+    
+    batch_df.unpersist()
+```
+
+## Performance Optimization
+
+### Enable Liquid Clustering + DV + RLC
+
+```sql
+-- Create table with Liquid Clustering
+CREATE TABLE target_table (
+    id STRING,
+    name STRING,
+    updated_at TIMESTAMP
 ) USING DELTA
 CLUSTER BY (id)
 TBLPROPERTIES (
     'delta.enableDeletionVectors' = true,
     'delta.enableRowLevelConcurrency' = true
 );
+
+-- Or alter existing table
+ALTER TABLE target_table SET TBLPROPERTIES (
+    'delta.enableDeletionVectors' = true,
+    'delta.enableRowLevelConcurrency' = true,
+    'delta.liquid.clustering' = true
+);
+ALTER TABLE target_table CLUSTER BY (id);
 ```
 
+### Z-Ordering on Merge Key
+
+```sql
+-- Z-Order on merge key for faster lookups
+OPTIMIZE target_table ZORDER BY (id);
+
+-- Run periodically or via Predictive Optimization
+-- 5-10x faster for targeted lookups
+```
+
+### File Size Tuning
+
+```sql
+-- Target file size for optimal merge
+ALTER TABLE target_table SET TBLPROPERTIES (
+    'delta.targetFileSize' = '128mb'
+);
+```
+
+### Optimal Thread Count
+
 ```python
-def upsert_batch(batch_df, batch_id):
+# Formula: min(number_of_tables, cluster_cores / 2)
+# Example: 4 tables, 8 cores → 4 workers
+# Example: 2 tables, 4 cores → 2 workers
+
+max_workers = min(len(tables), max(2, total_cores // 2))
+```
+
+## Monitoring
+
+### Track Merge Performance
+
+```python
+import time
+
+def monitored_merge(batch_df, batch_id):
+    start_time = time.time()
+    
     batch_df.createOrReplaceTempView("updates")
     spark.sql("""
-        MERGE INTO silver.orders t
+        MERGE INTO target_table t
         USING updates s ON t.id = s.id
         WHEN MATCHED THEN UPDATE SET *
         WHEN NOT MATCHED THEN INSERT *
     """)
-
-stream.writeStream \
-    .foreachBatch(upsert_batch) \
-    .option("checkpointLocation", "/Volumes/catalog/checkpoints/silver_orders") \
-    .trigger(processingTime="30 seconds") \
-    .start()
+    
+    duration = time.time() - start_time
+    print(f"Merge duration: {duration:.2f}s")
+    
+    # Alert if duration exceeds threshold
+    if duration > 30:
+        print(f"WARNING: Merge duration {duration:.2f}s exceeds threshold")
 ```
 
-**Key decisions:**
-- **Liquid Clustering replaces OPTIMIZE + ZORDER.** The `CLUSTER BY (id)` clause tells Delta to incrementally co-locate data by the merge key. No scheduled OPTIMIZE jobs, no periodic ZORDER -- the table self-organizes during writes.
-- **Deletion Vectors** avoid full file rewrites on updates. Instead of rewriting a 128MB file to change one row, Spark writes a small deletion vector. This drops merge P99 latency significantly.
-- **Row-Level Concurrency** allows concurrent MERGE operations on different rows of the same table without conflicts. Without it, two streams merging into the same table will throw `ConcurrentAppendException`.
-- **`foreachBatch` is required** because MERGE is not a native streaming sink. Each microbatch materializes as a DataFrame, creates a temp view, and runs a SQL MERGE against the target.
+## Common Issues
 
-## More Patterns
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| **High P99 latency** | OPTIMIZE pauses | Enable Liquid Clustering (no pauses) |
+| **Merge conflicts** | Concurrent updates to same rows | Enable Row-Level Concurrency |
+| **Slow merges** | Large files, no optimization | Enable Liquid Clustering; Z-Order on merge key |
+| **Too many threads** | Resource contention | Reduce max_workers; match to cluster capacity |
+| **Partial failures** | One merge fails | Collect all errors; fail batch if any error |
 
-### Parallel MERGE to Multiple Tables
+## Production Checklist
 
-> "Write a Python foreachBatch that merges incoming data into three different silver tables in parallel."
+- [ ] Liquid Clustering + DV + RLC enabled on all target tables
+- [ ] Z-Ordering configured on merge keys
+- [ ] Optimal thread count configured (start with 2)
+- [ ] Error handling implemented (collect all errors)
+- [ ] Performance monitoring per table
+- [ ] Cache used to avoid recomputation
+- [ ] Unpersist after writes
+- [ ] File size tuned (128MB target)
 
-```python
-from delta.tables import DeltaTable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+## Related Skills
 
-def parallel_merge(batch_df, batch_id):
-    batch_df.cache()
-
-    def merge_one(table_name, merge_key):
-        target = DeltaTable.forName(spark, table_name)
-        (target.alias("target")
-            .merge(batch_df.alias("source"),
-                   f"target.{merge_key} = source.{merge_key}")
-            .whenMatchedUpdateAll()
-            .whenNotMatchedInsertAll()
-            .execute())
-
-    tables = [
-        ("silver.customers", "customer_id"),
-        ("silver.orders", "order_id"),
-        ("silver.products", "product_id")
-    ]
-
-    max_workers = min(len(tables), max(2, total_cores // 2))
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(merge_one, t, k): t for t, k in tables}
-        errors = []
-        for future in as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                errors.append((futures[future], str(e)))
-
-    batch_df.unpersist()
-    if errors:
-        raise Exception(f"Merge failures: {errors}")
-```
-
-Cache the batch DataFrame before parallel merges to avoid recomputing it for each table. The thread count formula -- `min(tables, cores/2)` -- leaves half the cluster's capacity for the actual merge work. Collect all errors before raising so you see every failure, not just the first.
-
-### MERGE with Partition Pruning
-
-> "Write a Python MERGE that includes the partition column in the join condition for faster execution."
-
-```python
-def partition_pruned_merge(batch_df, batch_id):
-    batch_df.createOrReplaceTempView("updates")
-    spark.sql("""
-        MERGE INTO target_table t
-        USING updates s
-        ON t.id = s.id AND t.date = s.date
-        WHEN MATCHED THEN UPDATE SET *
-        WHEN NOT MATCHED THEN INSERT *
-    """)
-```
-
-Including the partition column (`t.date = s.date`) in the merge condition tells Spark to scan only the relevant partitions. On large tables, this is the difference between scanning 100 files and 100,000.
-
-### CDC with Deletes
-
-> "Write a Python foreachBatch that applies CDC changes -- inserts, updates, and deletes -- to a target Delta table."
-
-```python
-from delta.tables import DeltaTable
-
-def cdc_merge(batch_df, batch_id):
-    batch_df.cache()
-    deletes = batch_df.filter(col("_op") == "DELETE")
-    upserts = batch_df.filter(col("_op").isin(["INSERT", "UPDATE"]))
-
-    target = DeltaTable.forName(spark, "silver.customers")
-
-    if upserts.count() > 0:
-        (target.alias("t")
-            .merge(upserts.alias("s"), "t.customer_id = s.customer_id")
-            .whenMatchedUpdateAll()
-            .whenNotMatchedInsertAll()
-            .execute())
-
-    if deletes.count() > 0:
-        (target.alias("t")
-            .merge(deletes.alias("s"), "t.customer_id = s.customer_id")
-            .whenMatchedDelete()
-            .execute())
-
-    batch_df.unpersist()
-```
-
-Separate the CDC batch into upserts and deletes before merging. Running a single MERGE with conditional logic for all three operations works but is harder to debug when something goes wrong.
-
-## Watch Out For
-
-- **High P99 latency from periodic OPTIMIZE** -- if you're running scheduled OPTIMIZE + ZORDER jobs, switch to Liquid Clustering. It eliminates the optimization pauses that cause latency spikes during merges.
-- **`ConcurrentAppendException` on shared target tables** -- two streams merging into the same table will conflict unless Row-Level Concurrency is enabled. Set `delta.enableRowLevelConcurrency = true` on the target table.
-- **Thread count too high in parallel merges** -- more threads than `cluster_cores / 2` causes resource contention that slows every merge. Start with 2 threads and increase only if monitoring shows idle capacity.
-- **Forgetting to unpersist after cache** -- cached DataFrames persist in memory across microbatches if you don't explicitly unpersist. Over time this crowds out actual processing memory.
-- **Slow merges on large unsorted tables** -- if Liquid Clustering isn't an option, Z-ORDER on the merge key gives 5-10x lookup speedups. Run `OPTIMIZE target_table ZORDER BY (id)` on a schedule.
+- `multi-sink-writes` - Multi-sink write patterns
+- `partitioning-strategy` - Partition optimization for merges
+- `checkpoint-best-practices` - Checkpoint configuration

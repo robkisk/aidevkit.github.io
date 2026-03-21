@@ -1,77 +1,120 @@
 ---
 title: Unity Catalog
-description: System tables, volumes, and Data Profiling for Unity Catalog -- audit logs, lineage, billing, file operations, and quality monitoring.
+description: Unity Catalog system tables and volumes. Use when querying system tables (audit, lineage, billing) or working with volume file operations (upload, download, ...
 sidebar:
   label: Unity Catalog
-  order: 1
+  order: 0
 ---
 
-## Overview
+Guidance for Unity Catalog system tables, volumes, and governance.
 
-The Unity Catalog skill teaches Claude Code how to work with Unity Catalog system tables (audit, lineage, billing, compute, jobs), volume file operations (upload, download, list), and Data Profiling (quality monitoring with drift detection). Use it when querying operational metadata, managing files in UC Volumes, or setting up data quality monitors.
+## When to Use This Skill
 
-## Capabilities
+Use this skill when:
+- Working with **volumes** (upload, download, list files in `/Volumes/`)
+- Querying **lineage** (table dependencies, column-level lineage)
+- Analyzing **audit logs** (who accessed what, permission changes)
+- Monitoring **billing and usage** (DBU consumption, cost analysis)
+- Tracking **compute resources** (cluster usage, warehouse metrics)
+- Reviewing **job execution** (run history, success rates, failures)
+- Analyzing **query performance** (slow queries, warehouse utilization)
+- Profiling **data quality** (data profiling, drift detection, metric tables)
 
-- Query system tables for audit logs, lineage tracking, billing analysis, and job monitoring
-- Upload, download, and list files in Unity Catalog Volumes
-- Create data quality monitors with profile, drift, and anomaly detection
-- Monitor ML model performance with inference tables
+## Reference Files
 
-## Related MCP Tools
+| Topic | File | Description |
+|-------|------|-------------|
+| System Tables | [5-system-tables.md](5-system-tables.md) | Lineage, audit, billing, compute, jobs, query history |
+| Volumes | [6-volumes.md](6-volumes.md) | Volume file operations, permissions, best practices |
+| Data Profiling | [7-data-profiling.md](7-data-profiling.md) | Data profiling, drift detection, profile metrics |
 
-| Tool | Description |
-|------|-------------|
-| `execute_sql` | Run SQL queries against system tables |
-| `manage_uc_objects` | Create, update, delete UC objects |
-| `manage_uc_grants` | Manage permissions on UC securables |
-| `upload_to_volume` | Upload files to UC Volumes |
-| `download_from_volume` | Download files from UC Volumes |
-| `list_volume_files` | List files in a volume directory |
+## Quick Start
 
-## Example Prompts
+### Volume File Operations (MCP Tools)
 
+```python
+# List files in a volume
+list_volume_files(volume_path="/Volumes/catalog/schema/volume/folder/")
+
+# Upload file to volume
+upload_to_volume(
+    local_path="/tmp/data.csv",
+    volume_path="/Volumes/catalog/schema/volume/data.csv"
+)
+
+# Download file from volume
+download_from_volume(
+    volume_path="/Volumes/catalog/schema/volume/data.csv",
+    local_path="/tmp/downloaded.csv"
+)
+
+# Create directory
+create_volume_directory(volume_path="/Volumes/catalog/schema/volume/new_folder")
 ```
-Query the audit log system table to show all table access
-events in the last 24 hours
+
+### Enable System Tables Access
+
+```sql
+-- Grant access to system tables
+GRANT USE CATALOG ON CATALOG system TO `data_engineers`;
+GRANT USE SCHEMA ON SCHEMA system.access TO `data_engineers`;
+GRANT SELECT ON SCHEMA system.access TO `data_engineers`;
 ```
 
+### Common Queries
+
+```sql
+-- Table lineage: What tables feed into this table?
+SELECT source_table_full_name, source_column_name
+FROM system.access.table_lineage
+WHERE target_table_full_name = 'catalog.schema.table'
+  AND event_date >= current_date() - 7;
+
+-- Audit: Recent permission changes
+SELECT event_time, user_identity.email, action_name, request_params
+FROM system.access.audit
+WHERE action_name LIKE '%GRANT%' OR action_name LIKE '%REVOKE%'
+ORDER BY event_time DESC
+LIMIT 100;
+
+-- Billing: DBU usage by workspace
+SELECT workspace_id, sku_name, SUM(usage_quantity) AS total_dbus
+FROM system.billing.usage
+WHERE usage_date >= current_date() - 30
+GROUP BY workspace_id, sku_name;
 ```
-Upload a CSV file to /Volumes/main/raw/uploads/ and verify
-the upload succeeded
+
+## MCP Tool Integration
+
+Use `mcp__databricks__execute_sql` for system table queries:
+
+```python
+# Query lineage
+mcp__databricks__execute_sql(
+    sql_query="""
+        SELECT source_table_full_name, target_table_full_name
+        FROM system.access.table_lineage
+        WHERE event_date >= current_date() - 7
+    """,
+    catalog="system"
+)
 ```
 
-```
-Create a data quality monitor on my customer_orders table
-that tracks drift on the order_amount column
-```
+## Best Practices
 
-## Key Concepts
+1. **Filter by date** - System tables can be large; always use date filters
+2. **Use appropriate retention** - Check your workspace's retention settings
+3. **Grant minimal access** - System tables contain sensitive metadata
+4. **Schedule reports** - Create scheduled queries for regular monitoring
 
-### Three-Level Namespace
+## Related Skills
 
-All Unity Catalog objects follow `catalog.schema.object` naming:
+- **[databricks-spark-declarative-pipelines](../databricks-spark-declarative-pipelines/SKILL.md)** - for pipelines that write to Unity Catalog tables
+- **[databricks-jobs](../databricks-jobs/SKILL.md)** - for job execution data visible in system tables
+- **[databricks-synthetic-data-gen](../databricks-synthetic-data-gen/SKILL.md)** - for generating data stored in Unity Catalog Volumes
+- **[databricks-aibi-dashboards](../databricks-aibi-dashboards/SKILL.md)** - for building dashboards on top of Unity Catalog data
 
-- **Catalog** -- top-level container
-- **Schema** -- logical grouping within a catalog
-- **Table/View/Volume/Function** -- data objects within a schema
+## Resources
 
-### System Tables
-
-System tables are read-only tables under the `system` catalog that provide operational metadata. They require account admin or metastore admin privileges to enable.
-
-### Volumes
-
-Volumes provide governed file storage in Unity Catalog. Two types:
-- **Managed** -- storage location managed by UC
-- **External** -- user-provided cloud storage
-
-### Data Profiling
-
-Create quality monitors on UC tables to track data profiles, detect drift, and monitor ML model performance. The Python SDK package is `databricks.lakehouse_monitoring`.
-
-## References
-
-- [Unity Catalog Documentation](https://docs.databricks.com/aws/en/data-governance/unity-catalog/)
-- [System Tables](https://docs.databricks.com/aws/en/admin/system-tables/)
-- [Volumes](https://docs.databricks.com/aws/en/connect/unity-catalog/volumes.html)
-- [Data Profiling](https://docs.databricks.com/aws/en/delta-live-tables/monitoring.html)
+- [Unity Catalog System Tables](https://docs.databricks.com/administration-guide/system-tables/)
+- [Audit Log Reference](https://docs.databricks.com/administration-guide/account-settings/audit-logs.html)

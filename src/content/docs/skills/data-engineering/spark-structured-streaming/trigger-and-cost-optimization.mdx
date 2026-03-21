@@ -1,117 +1,517 @@
 ---
-title: Trigger & Cost Optimization
-description: Choose the right trigger type and cluster configuration to balance streaming latency against compute and storage costs.
+title: Trigger and Cost Optimization
+description: Select and tune triggers to balance latency requirements with cost.
 sidebar:
-  order: 9
+  order: 99
 ---
 
-## What You Can Build
+Select and tune triggers to balance latency requirements with cost. Optimize streaming job costs through trigger tuning, cluster right-sizing, multi-stream clusters, storage optimization, and scheduled execution patterns.
 
-The trigger you choose is the single biggest lever for your streaming cost. A 30-second `processingTime` trigger keeps a cluster running 24/7. Switch to `availableNow` on a 15-minute schedule and you cut compute costs by 80% or more -- with the same data, the same code, and the same exactly-once guarantees. This page helps you pick the right trigger for your SLA and right-size the cluster underneath it.
-
-## In Action
-
-> "Convert a continuous Python streaming pipeline to a scheduled availableNow trigger for cost optimization, keeping exactly-once semantics."
+## Quick Start
 
 ```python
-# Before: continuous processing (~$150/day for a 4-node cluster)
-stream.writeStream \
+# Cost-optimized: Scheduled streaming instead of continuous
+df.writeStream \
     .format("delta") \
-    .option("checkpointLocation", "/Volumes/prod/checkpoints/orders") \
-    .trigger(processingTime="30 seconds") \
-    .start("/delta/orders")
+    .option("checkpointLocation", "/checkpoints/stream") \
+    .trigger(availableNow=True) \  # Process all, then stop
+    .start("/delta/target")
 
-# After: scheduled processing (~$20/day on an 8-core single-node)
-stream.writeStream \
-    .format("delta") \
-    .option("checkpointLocation", "/Volumes/prod/checkpoints/orders") \
-    .trigger(availableNow=True) \
-    .start("/delta/orders")
-
-# Schedule this notebook via Databricks Jobs: every 15 minutes
-# Same code, same checkpoint, same exactly-once semantics
+# Schedule via Databricks Jobs: Every 15 minutes
+# Cost: ~$20/day for 100 tables on 8-core cluster
 ```
 
-**Key decisions:**
-- **`availableNow` processes all pending data, then stops.** The cluster only runs during processing, not between triggers. Schedule it via Databricks Jobs at your desired cadence -- every 15 minutes for near-real-time, every 4 hours for batch-style.
-- **SLA / 3 = trigger interval.** A 1-hour SLA means a 20-minute trigger. This leaves headroom for processing time, recovery from failures, and safety margin. Don't set the trigger equal to the SLA -- one slow batch and you're already behind.
-- **Most "real-time" requirements aren't.** Challenge the SLA before choosing an expensive continuous trigger. If dashboards refresh every 5 minutes, a 2-minute trigger is good enough -- RTM at 10x the cost is overkill.
-- **Fixed-size clusters for streaming.** Autoscaling adds latency during scale-up events and creates unpredictable costs. Pick a cluster size, target 60-80% CPU utilization, and leave it.
+## Trigger Types
 
-## More Patterns
+### ProcessingTime Trigger
 
-### Running 100 Streams on One Cluster
-
-> "Write Python code that starts multiple streaming jobs on a single cluster using availableNow."
+Process at fixed intervals:
 
 ```python
-def start_all_streams():
-    streams = []
-    for table_config in stream_configs:
-        s = (spark
-            .readStream
-            .table(table_config["source"])
-            .writeStream
-            .format("delta")
-            .option("checkpointLocation", f"/Volumes/prod/checkpoints/{table_config['target']}")
-            .trigger(availableNow=True)
-            .start(f"/delta/{table_config['target']}"))
-        streams.append(s)
-    return streams
+# Process every 30 seconds
+.trigger(processingTime="30 seconds")
 
-# Tested: 100 streams on an 8-core single-node cluster
-# Cost: ~$20/day total
+# Process every 5 minutes
+.trigger(processingTime="5 minutes")
+
+# Latency: Trigger interval + processing time
+# Cost: Continuous cluster running
 ```
 
-With `availableNow`, streams process their backlog and stop. The cluster handles them in rapid succession rather than keeping 100 continuous streams alive. Monitor aggregate CPU -- if utilization consistently exceeds 80%, add cores or split across two clusters.
+### AvailableNow Trigger
 
-### Choosing Between Trigger Types
-
-> "Write a Python helper that calculates the optimal trigger configuration from a business SLA."
+Process all available data, then stop:
 
 ```python
-def configure_trigger(sla_minutes):
-    """Pick trigger type and interval from SLA."""
-    if sla_minutes < 1:
-        # Sub-second: Real-Time Mode
-        return {"realTime": True}
-    elif sla_minutes < 5:
-        # Near real-time: short processingTime
-        interval = max(5, sla_minutes * 20)  # seconds
-        return {"processingTime": f"{interval} seconds"}
-    else:
-        # Everything else: scheduled availableNow
-        return {"availableNow": True}
-        # Schedule via Jobs: every sla_minutes / 3
+# Process all available data, then stop
+.trigger(availableNow=True)
 
-# < 1 min SLA  -> RTM ($$$, continuous Photon cluster)
-# 1-5 min SLA  -> processingTime ($$, continuous cluster)
-# 5+ min SLA   -> availableNow ($, scheduled cluster)
+# Schedule via Databricks Jobs:
+# - Every 15 minutes: Near real-time
+# - Every 4 hours: Batch-style
+
+# Latency: Schedule interval + processing time
+# Cost: Cluster runs only during processing
 ```
 
-The cost difference between these tiers is dramatic. A continuous `processingTime` cluster running 24/7 costs 5-10x more than a scheduled `availableNow` cluster processing the same data. RTM adds Photon overhead on top of continuous operation.
+### Real-Time Mode (RTM)
 
-### Storage Cost Reduction
+Sub-second latency with Photon:
 
-> "Write SQL statements that optimize Delta table storage for streaming targets."
+```python
+# Real-Time Mode (Databricks 13.3+)
+.trigger(realTime=True)
+
+# Requirements:
+# - Photon enabled
+# - Fixed-size cluster (no autoscaling)
+# - Latency: < 800ms
+
+# Cost: Continuous cluster with Photon
+```
+
+## Trigger Selection Guide
+
+| Latency Requirement | Trigger | Cost | Use Case |
+|---------------------|---------|------|----------|
+| < 800ms | RTM | $$$ | Real-time analytics, alerts |
+| 1-30 seconds | processingTime | $$ | Near real-time dashboards |
+| 15-60 minutes | availableNow (scheduled) | $ | Batch-style SLA |
+| > 1 hour | availableNow (scheduled) | $ | ETL pipelines |
+
+## Trigger Interval Calculation
+
+### Rule of Thumb: SLA / 3
+
+```python
+# Calculate trigger interval from SLA
+business_sla_minutes = 60  # 1 hour SLA
+trigger_interval_minutes = business_sla_minutes / 3  # 20 minutes
+
+.trigger(processingTime=f"{trigger_interval_minutes} minutes")
+
+# Why /3?
+# - Processing time buffer
+# - Recovery time buffer
+# - Safety margin
+```
+
+### Example Calculations
+
+```python
+# Example 1: 1 hour SLA
+sla = 60  # minutes
+trigger = sla / 3  # 20 minutes
+.trigger(processingTime="20 minutes")
+
+# Example 2: 15 minute SLA
+sla = 15  # minutes
+trigger = sla / 3  # 5 minutes
+.trigger(processingTime="5 minutes")
+
+# Example 3: Real-time requirement
+.trigger(realTime=True)  # < 800ms
+```
+
+## Cost Optimization Strategies
+
+### Strategy 1: Trigger Interval Tuning
+
+Balance latency and cost:
+
+```python
+# Shorter interval = higher cost
+.trigger(processingTime="5 seconds")   # Expensive - continuous processing
+
+# Longer interval = lower cost
+.trigger(processingTime="5 minutes")   # Cheaper - less frequent processing
+
+# Use availableNow for batch-style (cheapest)
+.trigger(availableNow=True)            # Process backlog, then stop
+
+# Rule of thumb: SLA / 3
+# Example: 1 hour SLA → 20 minute trigger
+```
+
+### Strategy 2: Scheduled vs Continuous
+
+Choose execution pattern based on SLA:
+
+| Pattern | Cost | Latency | Use Case |
+|---------|------|---------|----------|
+| Continuous | $$$ | < 1 minute | Real-time requirements |
+| 15-min schedule | $$ | 15-30 minutes | Near real-time |
+| 4-hour schedule | $ | 4-5 hours | Batch-style SLA |
+
+```python
+# Continuous (expensive)
+.trigger(processingTime="30 seconds")
+
+# Scheduled (cost-effective)
+.trigger(availableNow=True)  # Schedule via Jobs: Every 15 minutes
+
+# Batch-style (cheapest)
+.trigger(availableNow=True)  # Schedule via Jobs: Every 4 hours
+```
+
+### Strategy 3: Cluster Right-Sizing
+
+Right-size clusters based on workload:
+
+```python
+# Don't oversize:
+# - Monitor CPU utilization (target 60-80%)
+# - Check for idle time
+# - Use fixed-size clusters (no autoscaling for streaming)
+
+# Scale test approach:
+# 1. Start small
+# 2. Monitor lag (max offsets behind latest)
+# 3. Scale up if falling behind
+# 4. Right-size based on steady state
+```
+
+### Strategy 4: Multi-Stream Clusters
+
+Run multiple streams on one cluster:
+
+```python
+# Run multiple streams on one cluster
+# Tested: 100 streams on 8-core single-node cluster
+# Cost: ~$20/day for 100 tables
+
+# Example: Multiple streams on same cluster
+stream1.writeStream.option("checkpointLocation", "/checkpoints/stream1").start()
+stream2.writeStream.option("checkpointLocation", "/checkpoints/stream2").start()
+stream3.writeStream.option("checkpointLocation", "/checkpoints/stream3").start()
+# ... up to 100+ streams
+
+# Monitor: CPU/memory per stream
+# Scale cluster if aggregate utilization > 80%
+```
+
+### Strategy 5: Storage Optimization
+
+Reduce storage costs:
 
 ```sql
--- Remove old file versions (keep 24 hours for recovery)
-VACUUM orders RETAIN 24 HOURS;
+-- VACUUM old files
+VACUUM table RETAIN 24 HOURS;
 
--- Enable write optimization to reduce small files
-ALTER TABLE orders SET TBLPROPERTIES (
+-- Enable auto-optimize to reduce small files
+ALTER TABLE table SET TBLPROPERTIES (
     'delta.autoOptimize.optimizeWrite' = true,
     'delta.autoOptimize.autoCompact' = true
 );
+
+-- Archive old data to cheaper storage
+-- Use data retention policies
 ```
 
-Streaming workloads create many small files per trigger interval. Auto-optimize compacts them during writes, and VACUUM cleans up old versions. Together they prevent storage costs from growing linearly with stream uptime.
+## Cost Formula
 
-## Watch Out For
+```
+Daily Cost = 
+    (Cluster DBU/hour × Hours running) +
+    (Storage GB × Storage rate) +
+    (Network egress if applicable)
 
-- **Batch duration exceeding trigger interval** -- if processing takes 45 seconds but your trigger is 30 seconds, batches queue up and latency grows unboundedly. Monitor batch duration in the Streaming tab and ensure it stays below 50% of the trigger interval.
-- **Paying for 24/7 compute on a batch SLA** -- if your SLA is measured in hours, `processingTime` with a continuous cluster is burning money. Switch to `availableNow` scheduled via Jobs.
-- **Autoscaling on streaming clusters** -- scale-up events add 2-5 minutes of latency while new nodes start. For streaming, the unpredictable latency is worse than the cost savings. Use fixed-size clusters.
-- **RTM enabled without meeting all prerequisites** -- RTM requires Photon disabled (on DBR 16.4+), a fixed-size dedicated cluster, `outputMode("update")`, and no `foreachBatch`. Missing any one of these causes silent fallback to microbatch mode.
-- **Aggressive VACUUM breaking time travel** -- `RETAIN 24 HOURS` means you can't time-travel beyond 24 hours. Balance retention against storage cost based on your recovery and audit requirements.
+Optimization levers:
+- Reduce hours running (scheduled triggers)
+- Reduce cluster size (right-sizing)
+- Reduce storage (VACUUM, compression)
+- Reduce network egress (co-locate compute and storage)
+```
+
+## Common Patterns
+
+### Pattern 1: Cost-Optimized Scheduled Streaming
+
+Convert continuous to scheduled:
+
+```python
+# Before: Continuous (expensive)
+df.writeStream \
+    .trigger(processingTime="30 seconds") \
+    .start()
+
+# After: Scheduled (cost-effective)
+df.writeStream \
+    .trigger(availableNow=True) \  # Process all, then stop
+    .start()
+
+# Schedule via Databricks Jobs:
+# - Every 15 minutes: Near real-time
+# - Every 4 hours: Batch-style
+# Same code, different schedule
+```
+
+### Pattern 2: Multi-Stream Cluster
+
+Optimize cluster utilization:
+
+```python
+# Run multiple streams on one cluster
+def start_all_streams():
+    streams = []
+    
+    # Start multiple streams
+    for i in range(100):
+        stream = (spark
+            .readStream
+            .table(f"source_{i}")
+            .writeStream
+            .format("delta")
+            .option("checkpointLocation", f"/checkpoints/stream_{i}")
+            .trigger(availableNow=True)
+            .start(f"/delta/target_{i}")
+        )
+        streams.append(stream)
+    
+    return streams
+
+# Monitor aggregate CPU/memory
+# Scale cluster if needed
+```
+
+### Pattern 3: RTM for Sub-Second Latency
+
+Use RTM for real-time requirements:
+
+```python
+# Real-Time Mode for sub-second latency
+df.writeStream \
+    .format("kafka")
+    .option("topic", "output")
+    .trigger(realTime=True) \
+    .start()
+
+# Required configurations:
+spark.conf.set("spark.databricks.photon.enabled", "true")
+spark.conf.set("spark.sql.streaming.stateStore.providerClass", 
+               "com.databricks.sql.streaming.state.RocksDBStateProvider")
+
+# Latency: < 800ms
+# Cost: Continuous cluster with Photon
+```
+
+## Real-Time Mode (RTM) Configuration
+
+### Enable RTM
+
+```python
+# Enable Real-Time Mode
+.trigger(realTime=True)
+
+# Required configurations:
+spark.conf.set("spark.databricks.photon.enabled", "true")
+spark.conf.set("spark.sql.streaming.stateStore.providerClass", 
+               "com.databricks.sql.streaming.state.RocksDBStateProvider")
+
+# Cluster requirements:
+# - Fixed-size cluster (no autoscaling)
+# - Photon enabled
+# - Driver: Minimum 4 cores
+```
+
+### RTM Use Cases
+
+```python
+# Good for RTM:
+# - Sub-second latency requirements
+# - Simple transformations
+# - Stateless operations
+# - Kafka-to-Kafka pipelines
+
+# Not recommended for RTM:
+# - Stateful operations (aggregations, joins)
+# - Complex transformations
+# - Large batch sizes
+```
+
+## Performance Considerations
+
+### Batch Duration vs Trigger Interval
+
+```python
+# Batch duration should be < trigger interval
+# Example:
+trigger_interval = 30  # seconds
+batch_duration = 10  # seconds
+
+# Healthy: batch_duration < trigger_interval
+# Unhealthy: batch_duration >= trigger_interval
+
+# Monitor in Spark UI:
+# - Batch duration
+# - Trigger interval
+# - Alert if batch duration >= trigger interval
+```
+
+### Trigger Interval Tuning
+
+```python
+# Start conservative, optimize based on monitoring
+# Step 1: Start with SLA / 3
+trigger_interval = business_sla / 3
+
+# Step 2: Monitor batch duration
+# If batch duration < trigger_interval / 2: Can increase trigger
+# If batch duration >= trigger_interval: Decrease trigger
+
+# Step 3: Optimize for cost vs latency
+# Increase trigger interval to reduce cost
+# Decrease trigger interval to reduce latency
+```
+
+## Cost Monitoring
+
+### Track Per-Stream Costs
+
+```python
+# Tag jobs with stream name
+job_tags = {
+    "stream_name": "orders_stream",
+    "environment": "prod",
+    "cost_center": "analytics"
+}
+
+# Use DBU consumption metrics
+# Monitor by workspace/cluster
+# Track cost per stream over time
+```
+
+### Monitor Cluster Utilization
+
+```python
+# Check CPU utilization
+# Target: 60-80% utilization
+# Below 60%: Consider downsizing
+# Above 80%: Consider upsizing
+
+# Check memory utilization
+# Monitor for OOM errors
+# Adjust cluster size accordingly
+```
+
+## Latency vs Cost Trade-offs
+
+### Continuous Processing
+
+```python
+# High cost, low latency
+.trigger(processingTime="30 seconds")
+
+# Cost: Continuous cluster running
+# Latency: 30 seconds + processing time
+# Use when: Real-time requirements
+```
+
+### Scheduled Processing
+
+```python
+# Lower cost, higher latency
+.trigger(availableNow=True)  # Schedule: Every 15 minutes
+
+# Cost: Cluster runs only during processing
+# Latency: Schedule interval + processing time
+# Use when: Batch-style SLA acceptable
+```
+
+### Real-Time Mode
+
+```python
+# Highest cost, lowest latency
+.trigger(realTime=True)
+
+# Cost: Continuous cluster with Photon
+# Latency: < 800ms
+# Use when: Sub-second latency required
+```
+
+## Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| **High latency** | Trigger interval too long | Decrease trigger interval or use RTM |
+| **High cost** | Continuous processing | Use scheduled (availableNow) |
+| **Batch duration > trigger** | Processing too slow | Optimize processing or increase trigger |
+| **RTM not working** | Photon not enabled | Enable Photon and configure cluster |
+
+## Quick Wins
+
+1. **Change from continuous to 15-minute schedule** - Significant cost reduction
+2. **Run multiple streams per cluster** - Better cluster utilization
+3. **Enable auto-optimize** - Reduce storage costs
+4. **Use Spot instances** - For non-critical streams (with caution)
+5. **Archive old data** - Move to cheaper storage tiers
+
+## Trade-offs
+
+| Cost Reduction | Impact | Mitigation |
+|----------------|--------|------------|
+| Longer trigger | Higher latency | Acceptable if SLA allows |
+| Smaller cluster | May fall behind | Monitor lag; scale if needed |
+| Aggressive VACUUM | Less time travel | Balance retention vs cost |
+| Spot instances | Possible interruptions | Use for non-critical streams |
+| Scheduled vs continuous | Higher latency | Match to business SLA |
+
+## Production Best Practices
+
+### Match Trigger to SLA
+
+```python
+# Calculate trigger from business SLA
+def calculate_trigger_interval(sla_minutes):
+    """Calculate optimal trigger interval"""
+    return max(30, sla_minutes / 3)  # Minimum 30 seconds
+
+trigger_interval = calculate_trigger_interval(business_sla_minutes)
+.trigger(processingTime=f"{trigger_interval} seconds")
+```
+
+### Cluster Configuration
+
+```python
+# Fixed-size cluster (no autoscaling for streaming)
+cluster_config = {
+    "num_workers": 4,
+    "node_type_id": "i3.xlarge",
+    "autotermination_minutes": 60,  # Terminate if idle
+    "enable_elastic_disk": True  # Reduce storage costs
+}
+```
+
+### Storage Management
+
+```sql
+-- Enable auto-optimize
+ALTER TABLE table SET TBLPROPERTIES (
+    'delta.autoOptimize.optimizeWrite' = true,
+    'delta.autoOptimize.autoCompact' = true
+);
+
+-- Periodic VACUUM
+VACUUM table RETAIN 7 DAYS;  -- Balance retention vs cost
+
+-- Archive old partitions
+-- Move to cheaper storage tier
+```
+
+## Production Checklist
+
+- [ ] Trigger type selected based on latency requirements
+- [ ] Trigger interval calculated from SLA (SLA / 3)
+- [ ] Batch duration monitored (< trigger interval)
+- [ ] Cluster right-sized (60-80% utilization)
+- [ ] Multiple streams per cluster (if applicable)
+- [ ] Scheduled execution (if SLA allows)
+- [ ] RTM configured if sub-second latency required
+- [ ] Auto-optimize enabled
+- [ ] Storage costs monitored
+- [ ] Cost per stream tracked
+
+## Related Skills
+
+- `kafka-streaming` - RTM configuration for Kafka pipelines
+- `checkpoint-best-practices` - Checkpoint management

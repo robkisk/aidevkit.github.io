@@ -1,45 +1,36 @@
 ---
-title: Setup & Authentication
-description: Get a working Zerobus connection from scratch — endpoint, service principal, table, and SDK install.
+title: Setup and Authentication
+description: "Complete setup guide for Zerobus Ingest: endpoint configuration, service principal creation, table preparation, SDK installation, and firewall requirements."
 sidebar:
   order: 1
 ---
 
-## What You Can Build
+Complete setup guide for Zerobus Ingest: endpoint configuration, service principal creation, table preparation, SDK installation, and firewall requirements.
 
-Zerobus Ingest lets you push data directly into Delta tables over gRPC — no Kafka, no Kinesis, no message bus at all. Before you write your first record, you need four things wired up: the server endpoint for your cloud region, a service principal with the right grants, a target Delta table, and the SDK installed. This page gets you from zero to a verified connection.
+---
 
-## In Action
+## 1. Determine Your Server Endpoint
 
-> "Set up everything I need to start ingesting data into Databricks with Zerobus — I'm on AWS us-west-2 and want to use Python."
+The Zerobus server endpoint format depends on your cloud provider:
 
-```bash
-# 1. Resolve the server endpoint from your workspace ID and region
-export ZEROBUS_SERVER_ENDPOINT="1234567890123456.zerobus.us-west-2.cloud.databricks.com"
-export DATABRICKS_WORKSPACE_URL="https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
+| Cloud | Server Endpoint Format | Workspace URL Format |
+|-------|------------------------|----------------------|
+| **AWS** | `<workspace-id>.zerobus.<region>.cloud.databricks.com` | `https://<instance>.cloud.databricks.com` |
+| **Azure** | `<workspace-id>.zerobus.<region>.azuredatabricks.net` | `https://<instance>.azuredatabricks.net` |
 
-# 2. Set service principal credentials
-export DATABRICKS_CLIENT_ID="<your-service-principal-client-id>"
-export DATABRICKS_CLIENT_SECRET="<your-service-principal-client-secret>"
-
-# 3. Target table (must already exist as managed Delta)
-export ZEROBUS_TABLE_NAME="my_catalog.my_schema.my_events"
-
-# 4. Install the SDK
-pip install databricks-zerobus-ingest-sdk>=1.0.0
+**Example (AWS):**
+```
+Server endpoint: 1234567890123456.zerobus.us-west-2.cloud.databricks.com
+Workspace URL:   https://dbc-a1b2c3d4-e5f6.cloud.databricks.com
 ```
 
-**Key decisions:**
-- The endpoint format differs between AWS and Azure — get this wrong and you'll see connection failures with no helpful error message
-- Environment variables keep credentials out of source code — your AI coding assistant will read these when generating Zerobus clients
-- The SDK version must be 1.0.0 or newer for GA features like `ingest_record` and flush-based ACK handling
-- You must install on classic compute — the SDK cannot be pip-installed on serverless
+**Finding your workspace ID:** Extract the numeric ID from your workspace URL or workspace settings page. It is the first segment of the server endpoint.
 
-## More Patterns
+---
 
-### Create the target table before anything else
+## 2. Create the Target Table
 
-> "Create a Unity Catalog table that I can ingest IoT sensor data into with Zerobus."
+Zerobus does **not** create or alter tables. You must pre-create your target table as a **managed Delta table** in Unity Catalog:
 
 ```sql
 CREATE TABLE catalog.schema.my_events (
@@ -51,66 +42,167 @@ CREATE TABLE catalog.schema.my_events (
 );
 ```
 
-Zerobus does not create or alter tables. If the table doesn't exist when you open a stream, you get a "table not found" error. The table must be managed Delta (no external storage), with column names limited to ASCII letters, digits, and underscores.
+**Constraints:**
+- Must be a **managed** Delta table (no external storage)
+- Table names limited to ASCII letters, digits, and underscores
+- Maximum 2000 columns
+- Table must be in a [supported region](#supported-regions)
 
-### Grant service principal access
+---
 
-> "Set up a service principal that can write to my Zerobus target table."
+## 3. Create a Service Principal
+
+Zerobus authenticates via OAuth2 service principals (M2M). Create one via the Databricks UI or CLI:
+
+### Via UI
+1. Go to **Settings > Identity and Access > Service principals**
+2. Click **Add service principal**
+3. Generate an OAuth secret: note the **client ID** and **client secret**
+
+### Via Databricks CLI
+```bash
+databricks service-principals create --display-name "zerobus-producer"
+```
+
+### Grant Table Permissions
+
+The service principal needs catalog, schema, and table access:
 
 ```sql
+-- Grant catalog access
 GRANT USE CATALOG ON CATALOG my_catalog TO `<service-principal-uuid>`;
+
+-- Grant schema access
 GRANT USE SCHEMA ON SCHEMA my_catalog.my_schema TO `<service-principal-uuid>`;
+
+-- Grant table write access
 GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.my_events TO `<service-principal-uuid>`;
 ```
 
-The explicit table-level grants are not optional. Zerobus uses an OAuth `authorization_details` flow that checks table-level permissions directly — schema-level inherited grants are not enough, even if they work for other Databricks APIs. If you see error 4024, this is almost certainly why.
+**Tip:** For broader access (e.g., writing to multiple tables in a schema), grant `MODIFY` and `SELECT` at the schema level instead.
 
-### Azure endpoint configuration
+**Important:** For Zerobus, always grant explicit table-level `MODIFY` and `SELECT` permissions in addition to catalog/schema access. Schema-level inherited grants may not be sufficient for the OAuth `authorization_details` flow used by Zerobus.
 
-> "Configure Zerobus for an Azure workspace in East US 2."
+---
+
+## 4. Install the SDK
+
+### Python (3.9+)
 
 ```bash
-export ZEROBUS_SERVER_ENDPOINT="1234567890123456.zerobus.eastus2.azuredatabricks.net"
-export DATABRICKS_WORKSPACE_URL="https://adb-1234567890123456.4.azuredatabricks.net"
+pip install databricks-zerobus-ingest-sdk>=1.0.0
 ```
 
-The domain suffix changes between clouds: `.cloud.databricks.com` for AWS, `.azuredatabricks.net` for Azure. The workspace ID is the numeric segment you'll find in your workspace URL or settings page.
-
-### Verify the connection end-to-end
-
-> "Write a quick Python health check that proves my Zerobus setup is working."
-
-```python
-import os
-from zerobus.sdk.sync import ZerobusSdk
-from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
-
-sdk = ZerobusSdk(
-    os.environ["ZEROBUS_SERVER_ENDPOINT"],
-    os.environ["DATABRICKS_WORKSPACE_URL"],
-)
-options = StreamConfigurationOptions(record_type=RecordType.JSON)
-table_props = TableProperties(os.environ["ZEROBUS_TABLE_NAME"])
-
-try:
-    stream = sdk.create_stream(
-        os.environ["DATABRICKS_CLIENT_ID"],
-        os.environ["DATABRICKS_CLIENT_SECRET"],
-        table_props,
-        options,
-    )
-    stream.close()
-    print("Connection verified.")
-except Exception as e:
-    print(f"Setup issue: {e}")
+Or with a virtual environment:
+```bash
+uv pip install databricks-zerobus-ingest-sdk>=1.0.0
 ```
 
-If `create_stream` succeeds and you can close cleanly, every prerequisite is in place. A failure here means one of your four inputs — endpoint, credentials, table, or SDK — needs attention before you move on to ingestion.
+**Note:** The Zerobus SDK cannot be pip-installed on Databricks serverless compute. Use classic compute clusters, or use the [Zerobus REST API](https://docs.databricks.com/aws/en/ingestion/zerobus-rest-api) (Beta) for notebook-based ingestion without the SDK.
 
-## Watch Out For
+### Java (8+)
 
-- **Connection refused with no clear error** — the endpoint format is wrong for your cloud provider. AWS uses `<id>.zerobus.<region>.cloud.databricks.com`, Azure uses `<id>.zerobus.<region>.azuredatabricks.net`. Double-check the domain suffix.
-- **Error 4024 / authorization_details failure** — the service principal has schema-level grants but not explicit table-level `MODIFY` and `SELECT`. Grant both directly on the target table.
-- **"Table not found" when the table exists** — the table is either external (not managed Delta), in an unsupported region, or the three-part name has a typo. Verify with `DESCRIBE TABLE EXTENDED`.
-- **SDK install fails on serverless compute** — the Zerobus SDK requires native gRPC binaries that cannot install on serverless. Use classic compute clusters, or switch to the Zerobus REST API (Beta) for notebook-based ingestion.
-- **Firewall blocks the connection** — if your producer runs behind a corporate firewall, you need to allowlist the Zerobus IP ranges for your region. Check the Databricks docs or contact your account team for current ranges.
+Maven:
+```xml
+<dependency>
+    <groupId>com.databricks</groupId>
+    <artifactId>zerobus-ingest-sdk</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+Gradle:
+```groovy
+implementation 'com.databricks:zerobus-ingest-sdk:0.1.0'
+```
+
+### Go (1.21+)
+
+```bash
+go get github.com/databricks/zerobus-sdk-go
+```
+
+### TypeScript / Node.js (16+)
+
+```bash
+npm install @databricks/zerobus-ingest-sdk
+```
+
+### Rust (1.70+)
+
+```bash
+cargo add databricks-zerobus-ingest-sdk
+cargo add tokio --features macros,rt-multi-thread
+```
+
+---
+
+## 5. Configure Environment Variables
+
+Store credentials as environment variables rather than hardcoding them:
+
+```bash
+export ZEROBUS_SERVER_ENDPOINT="1234567890123456.zerobus.us-west-2.cloud.databricks.com"
+export DATABRICKS_WORKSPACE_URL="https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
+export ZEROBUS_TABLE_NAME="my_catalog.my_schema.my_events"
+export DATABRICKS_CLIENT_ID="<service-principal-client-id>"
+export DATABRICKS_CLIENT_SECRET="<service-principal-client-secret>"
+```
+
+---
+
+## 6. Firewall Allowlisting
+
+If your client application sits behind a firewall, you must allowlist the Zerobus IP addresses for your region before testing connectivity. Contact your Databricks representative or consult the [Zerobus documentation](https://docs.databricks.com/aws/en/ingestion/zerobus-overview) for the current IP ranges.
+
+---
+
+## Supported Regions
+
+Workspace and target tables must reside in a supported region for your cloud provider.
+
+### AWS
+
+| Region Code | Location |
+|-------------|----------|
+| `us-east-1` | US East (N. Virginia) |
+| `us-east-2` | US East (Ohio) |
+| `us-west-2` | US West (Oregon) |
+| `eu-central-1` | Europe (Frankfurt) |
+| `eu-west-1` | Europe (Ireland) |
+| `ap-southeast-1` | Asia Pacific (Singapore) |
+| `ap-southeast-2` | Asia Pacific (Sydney) |
+| `ap-northeast-1` | Asia Pacific (Tokyo) |
+| `ca-central-1` | Canada (Central) |
+
+### Azure
+
+| Region Code | Location |
+|-------------|----------|
+| `canadacentral` | Canada Central |
+| `westus` | West US |
+| `eastus` | East US |
+| `eastus2` | East US 2 |
+| `centralus` | Central US |
+| `northcentralus` | North Central US |
+| `swedencentral` | Sweden Central |
+| `westeurope` | West Europe |
+| `northeurope` | North Europe |
+| `australiaeast` | Australia East |
+| `southeastasia` | Southeast Asia |
+
+---
+
+## Verification Checklist
+
+Before writing your first record, confirm:
+
+```
+- [ ] Server endpoint matches your cloud provider and region
+- [ ] Workspace URL is correct
+- [ ] Target table exists as a managed Delta table
+- [ ] Service principal has USE CATALOG, USE SCHEMA, MODIFY, SELECT grants
+- [ ] SDK is installed for your target language
+- [ ] Environment variables are set (or credentials are configured in code)
+- [ ] Firewall allows outbound connections to the Zerobus endpoint (if applicable)
+```

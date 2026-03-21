@@ -1,94 +1,25 @@
 ---
 title: Workspace Config
-description: Databricks CLI operations -- authentication, profiles, workspace management, data exploration, and Declarative Automation Bundles.
+description: "Manage Databricks workspace connections: check current workspace, switch profiles, list available workspaces, or authenticate to a new workspace. Use when th..."
 sidebar:
   label: Workspace Config
-  order: 3
+  order: 0
 ---
 
-## Overview
+Use the `manage_workspace` MCP tool for all workspace operations. Do NOT edit `~/.databrickscfg`, use Bash, or use the Databricks CLI.
 
-The Workspace Config skill teaches Claude Code how to manage Databricks workspace connections, CLI authentication, profile switching, data exploration, and Declarative Automation Bundles (DABs) via the Databricks CLI. It also covers workspace management via MCP tools for checking status, listing workspaces, and switching profiles.
+## Steps
 
-## Capabilities
+1. Call `ToolSearch` with query `select:mcp__databricks__manage_workspace` to load the tool.
 
-- Install and configure the Databricks CLI (OAuth2, never PAT)
-- Manage workspace profiles and switch between environments
-- Explore data with table search, schema discovery, and SQL execution
-- Initialize and manage Declarative Automation Bundles
-- Check workspace status, list available workspaces, and switch profiles via MCP
+2. Map user intent to action:
+   - status / which workspace / current → `action="status"`
+   - list / available workspaces → `action="list"`
+   - switch to X → call `list` first to find the profile name, then `action="switch", profile="<name>"` (or `host="<url>"` if a URL was given)
+   - login / connect / authenticate → `action="login", host="<url>"`
 
-## Related MCP Tools
+3. Call `mcp__databricks__manage_workspace` with the action and any parameters.
 
-| Tool | Description |
-|------|-------------|
-| `manage_workspace` | Check status, list workspaces, switch profiles, authenticate |
-| `execute_sql` | Run SQL queries for data exploration |
-| `get_best_warehouse` | Find an available SQL warehouse |
-| `get_best_cluster` | Find an available compute cluster |
+4. Present the result. For `status`/`switch`/`login`: show host, profile, username. For `list`: formatted table with the active profile marked.
 
-## Example Prompts
-
-```
-Check which Databricks workspace I'm currently connected to
-```
-
-```
-Switch to my production workspace profile
-```
-
-```
-Search for tables containing 'customer' in the analytics catalog
-```
-
-```
-Initialize a new DAB project with a notebook job
-```
-
-## Workspace Management
-
-Use the `manage_workspace` MCP tool for all workspace operations:
-
-| Action | Description |
-|--------|-------------|
-| `status` | Show current workspace, profile, and user |
-| `list` | List all available workspace profiles |
-| `switch` | Switch to a different profile |
-| `login` | Authenticate to a new workspace |
-
-The switch is session-scoped. For permanent setup: `databricks auth login -p <profile>`.
-
-## CLI Authentication
-
-Always use OAuth2 (never PAT):
-
-```bash
-# Login with OAuth
-databricks auth login --host https://my-workspace.cloud.databricks.com -p my-profile
-
-# Verify
-databricks auth token -p my-profile
-
-# Use profile in commands
-databricks clusters list --profile my-profile
-```
-
-Set `DATABRICKS_CONFIG_PROFILE` (not `DATABRICKS_PROFILE`) for SDK auth.
-
-## Data Exploration
-
-```bash
-# Search for tables
-databricks tables list --catalog main --schema default --profile my-profile
-
-# Execute SQL
-databricks sql execute --warehouse-id abc123 \
-  --statement "SELECT * FROM main.default.orders LIMIT 10" \
-  --profile my-profile
-```
-
-## References
-
-- [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli)
-- [CLI Authentication](https://docs.databricks.com/aws/en/dev-tools/auth)
-- [OAuth Federation](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-federation)
+> **Note:** The switch is session-scoped — it resets on MCP server restart. For permanent profile setup, use `databricks auth login -p <profile>` and update `~/.databrickscfg` with `cluster_id` or `serverless_compute_id = auto`.

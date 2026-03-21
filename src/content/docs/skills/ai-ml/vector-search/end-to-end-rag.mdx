@@ -1,116 +1,179 @@
 ---
-title: End-to-End RAG
-description: Build a complete retrieval-augmented generation pipeline from source table to agent-ready vector search.
+title: End-to-End RAG with Vector Search
+description: "Build a complete Retrieval-Augmented Generation pipeline: prepare documents, create a vector index, query it, and wire it into an agent."
 sidebar:
-  order: 2
+  order: 99
 ---
 
-## What You Can Build
+Build a complete Retrieval-Augmented Generation pipeline: prepare documents, create a vector index, query it, and wire it into an agent.
 
-You can wire a Delta table full of documents into a production RAG pipeline -- semantic search, hybrid search, metadata filtering, and agent integration -- without leaving the Databricks SDK. The full lifecycle runs from source table creation through querying and into an agent's retrieval tool.
+## MCP Tools Used
 
-## In Action
+| Tool | Step |
+|------|------|
+| `execute_sql` | Create source table, insert documents |
+| `create_vs_endpoint` | Create compute endpoint |
+| `create_vs_index` | Create Delta Sync index with managed embeddings |
+| `sync_vs_index` | Trigger index sync |
+| `get_vs_index` | Check index status |
+| `query_vs_index` | Test similarity search |
 
-> "Build a complete RAG pipeline: create a knowledge base table, index it with Vector Search, and query it with hybrid search. Use Python."
+---
+
+## Step 1: Prepare Source Table
+
+The source Delta table needs a primary key column and a text column to embed.
+
+```sql
+CREATE TABLE IF NOT EXISTS catalog.schema.knowledge_base (
+    doc_id STRING,
+    title STRING,
+    content STRING,
+    category STRING,
+    updated_at TIMESTAMP DEFAULT current_timestamp()
+);
+
+INSERT INTO catalog.schema.knowledge_base VALUES
+('doc-001', 'Getting Started', 'Databricks is a unified analytics platform...', 'overview', current_timestamp()),
+('doc-002', 'Unity Catalog', 'Unity Catalog provides centralized governance...', 'governance', current_timestamp()),
+('doc-003', 'Delta Lake', 'Delta Lake is an open-source storage layer...', 'storage', current_timestamp());
+```
+
+Or via MCP:
 
 ```python
-from databricks.sdk import WorkspaceClient
+execute_sql(sql_query="""
+    CREATE TABLE IF NOT EXISTS catalog.schema.knowledge_base (
+        doc_id STRING,
+        title STRING,
+        content STRING,
+        category STRING,
+        updated_at TIMESTAMP DEFAULT current_timestamp()
+    )
+""")
+```
 
-w = WorkspaceClient()
+## Step 2: Create Vector Search Endpoint
 
-# Step 1: Create the source table (or use execute_sql via MCP)
-# CREATE TABLE catalog.schema.knowledge_base (
-#     doc_id STRING, title STRING, content STRING,
-#     category STRING, updated_at TIMESTAMP DEFAULT current_timestamp()
-# );
-
-# Step 2: Create endpoint + index
-w.vector_search_endpoints.create_endpoint(
-    name="rag-endpoint", endpoint_type="STORAGE_OPTIMIZED"
+```python
+create_vs_endpoint(
+    name="my-rag-endpoint",
+    endpoint_type="STORAGE_OPTIMIZED"
 )
+```
 
-w.vector_search_indexes.create_index(
-    name="catalog.schema.kb_index",
-    endpoint_name="rag-endpoint",
+Endpoint creation is asynchronous. Check status:
+
+```python
+get_vs_endpoint(name="my-rag-endpoint")
+# Wait for state: "ONLINE"
+```
+
+## Step 3: Create Delta Sync Index
+
+```python
+create_vs_index(
+    name="catalog.schema.knowledge_base_index",
+    endpoint_name="my-rag-endpoint",
     primary_key="doc_id",
     index_type="DELTA_SYNC",
     delta_sync_index_spec={
         "source_table": "catalog.schema.knowledge_base",
-        "embedding_source_columns": [{
-            "name": "content",
-            "embedding_model_endpoint_name": "databricks-gte-large-en"
-        }],
+        "embedding_source_columns": [
+            {
+                "name": "content",
+                "embedding_model_endpoint_name": "databricks-gte-large-en"
+            }
+        ],
         "pipeline_type": "TRIGGERED",
         "columns_to_sync": ["doc_id", "title", "content", "category"]
     }
 )
+```
 
-# Step 3: Sync and query
-w.vector_search_indexes.sync_index(index_name="catalog.schema.kb_index")
+Key decisions:
+- **`embedding_source_columns`**: Databricks computes embeddings automatically from the `content` column
+- **`pipeline_type`**: `TRIGGERED` for manual sync (cheaper), `CONTINUOUS` for auto-sync on table changes
+- **`columns_to_sync`**: Only sync columns you need in query results (reduces storage and improves performance)
 
-results = w.vector_search_indexes.query_index(
-    index_name="catalog.schema.kb_index",
+## Step 4: Sync and Verify
+
+```python
+# Trigger initial sync
+sync_vs_index(index_name="catalog.schema.knowledge_base_index")
+
+# Check status
+get_vs_index(index_name="catalog.schema.knowledge_base_index")
+# Wait for state: "ONLINE"
+```
+
+## Step 5: Query the Index
+
+```python
+# Semantic search
+query_vs_index(
+    index_name="catalog.schema.knowledge_base_index",
     columns=["doc_id", "title", "content", "category"],
     query_text="How do I govern my data?",
-    query_type="HYBRID",
-    num_results=5
+    num_results=3
 )
 ```
 
-**Key decisions:**
-- **`STORAGE_OPTIMIZED`** is the default choice -- 20x faster indexing, lower cost, and SQL-like filter syntax
-- **`query_type="HYBRID"`** combines semantic similarity with keyword matching, which handles both conceptual and exact-term queries
-- **`columns_to_sync`** is set explicitly to avoid indexing columns you won't use in results
-- **Managed embeddings** remove the need to run your own embedding pipeline
+### With Filters
 
-## More Patterns
-
-### Semantic Search with Text Query
-
-> "Query my vector index for documents similar to a natural language question. Use Python."
+The filter syntax depends on the endpoint type used when creating the index.
 
 ```python
-results = w.vector_search_indexes.query_index(
-    index_name="catalog.schema.kb_index",
+# Storage-Optimized endpoint (used in this walkthrough): SQL-like filter_string
+query_vs_index(
+    index_name="catalog.schema.knowledge_base_index",
     columns=["doc_id", "title", "content"],
-    query_text="What is machine learning?",
-    num_results=5
+    query_text="How do I govern my data?",
+    num_results=3,
+    filter_string="category = 'governance'"
 )
 
-for doc in results.result.data_array:
-    score = doc[-1]  # similarity score is always the last element
-    print(f"Score: {score:.3f} | {doc[1]}: {doc[2][:80]}...")
+# Standard endpoint (if you created a Standard endpoint instead): JSON filters_json
+query_vs_index(
+    index_name="catalog.schema.my_standard_index",
+    columns=["doc_id", "title", "content"],
+    query_text="How do I govern my data?",
+    num_results=3,
+    filters_json='{"category": "governance"}'
+)
 ```
 
-The similarity score is appended as the last element in each result row, regardless of which columns you requested. Higher scores mean closer semantic match.
-
-### Filtering by Metadata
-
-> "Search only governance-related documents using the Storage-Optimized endpoint's SQL filter syntax. Use Python."
+### Hybrid Search (Vector + Keyword)
 
 ```python
-# Storage-Optimized endpoints use filter_string (SQL syntax)
-results = w.vector_search_indexes.query_index(
-    index_name="catalog.schema.kb_index",
+query_vs_index(
+    index_name="catalog.schema.knowledge_base_index",
     columns=["doc_id", "title", "content"],
-    query_text="data access controls",
+    query_text="Delta Lake ACID transactions",
     num_results=5,
-    filter_string="category = 'governance' AND updated_at >= '2024-01-01'"
+    query_type="HYBRID"
 )
-
-# Standard endpoints use filters_json (dictionary format) instead:
-# filters_json='{"category": "governance"}'
 ```
 
-The filter syntax depends on which endpoint type you created. This is the most common source of "filter not working" issues -- always match the syntax to your endpoint.
+---
 
-### Wire Results into an Agent
+## Step 6: Use in an Agent
 
-> "Build a ChatAgent that retrieves context from Vector Search before generating a response. Use Python."
+### As a Tool in a ChatAgent
+
+Use `VectorSearchRetrieverTool` to wire the index into an agent deployed on Model Serving:
 
 ```python
 from databricks.agents import ChatAgent
+from databricks.agents.tools import VectorSearchRetrieverTool
 from databricks.sdk import WorkspaceClient
+
+# Define the retriever tool
+retriever_tool = VectorSearchRetrieverTool(
+    index_name="catalog.schema.knowledge_base_index",
+    columns=["doc_id", "title", "content"],
+    num_results=3,
+)
 
 class RAGAgent(ChatAgent):
     def __init__(self):
@@ -120,7 +183,7 @@ class RAGAgent(ChatAgent):
         query = messages[-1].content
 
         results = self.w.vector_search_indexes.query_index(
-            index_name="catalog.schema.kb_index",
+            index_name="catalog.schema.knowledge_base_index",
             columns=["title", "content"],
             query_text=query,
             num_results=3,
@@ -142,27 +205,40 @@ class RAGAgent(ChatAgent):
         return {"content": response.choices[0].message.content}
 ```
 
-The agent queries the index at inference time, builds a context string from the top results, and passes it to the LLM as a system message. For production deployments, use `VectorSearchRetrieverTool` with LangGraph for built-in tracing and tool-calling support.
+---
 
-### Keep the Index Fresh
+## Updating the Index
 
-> "I added new documents to my source table. Sync the index and verify it picked them up."
+### Add New Documents
 
-```python
-# Trigger sync after inserting new rows
-w.vector_search_indexes.sync_index(index_name="catalog.schema.kb_index")
-
-# Check index status -- wait for ONLINE state
-status = w.vector_search_indexes.get_index(index_name="catalog.schema.kb_index")
-print(f"State: {status.status.ready}")
+```sql
+INSERT INTO catalog.schema.knowledge_base VALUES
+('doc-004', 'MLflow', 'MLflow is an open-source platform for ML lifecycle...', 'ml', current_timestamp());
 ```
 
-For `TRIGGERED` pipelines, the index won't reflect new or deleted rows until you call `sync_index()`. Delta change data feed handles deletions automatically -- just delete from the source table and sync.
+Then sync:
 
-## Watch Out For
+```python
+sync_vs_index(index_name="catalog.schema.knowledge_base_index")
+```
 
-- **Index stuck in PROVISIONING** -- the endpoint itself might still be creating. Check `get_endpoint` status before investigating the index.
-- **Query returns no results after insert** -- for `TRIGGERED` pipelines, you must call `sync_index()` and wait for the sync to complete before querying.
-- **"Column not found in index"** -- the column must be listed in `columns_to_sync` at index creation time. You can't add columns after the fact; recreate the index.
-- **Mixing up `filters_json` and `filter_string`** -- Standard endpoints use the dictionary-based `filters_json`, Storage-Optimized use SQL-like `filter_string`. The error message when you use the wrong one is not obvious.
-- **Stale results after table update** -- if you're on `TRIGGERED` and forget to sync, you'll query old data without any warning.
+### Delete Documents
+
+```sql
+DELETE FROM catalog.schema.knowledge_base WHERE doc_id = 'doc-001';
+```
+
+Then sync — the index automatically handles deletions via Delta change data feed.
+
+---
+
+## Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| **Index stuck in PROVISIONING** | Endpoint may still be creating. Check `get_vs_endpoint` first |
+| **Query returns no results** | Index may not be synced yet. Run `sync_vs_index` and wait for ONLINE state |
+| **"Column not found in index"** | Column must be in `columns_to_sync`. Recreate index with the column included |
+| **Embeddings not computed** | Ensure `embedding_model_endpoint_name` is a valid serving endpoint |
+| **Stale results after table update** | For TRIGGERED pipelines, you must call `sync_vs_index` manually |
+| **Filter not working** | Standard endpoints use `filters_json` (dict), Storage-Optimized use `filter_string` (SQL) |

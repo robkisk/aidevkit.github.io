@@ -1,17 +1,71 @@
 ---
-title: App Resources
-description: Wire Databricks Apps to SQL warehouses, Lakebase, serving endpoints, and secrets with the valueFrom pattern.
+title: App Resources and Communication Strategies
+description: Databricks Apps integrate with platform resources via managed connections.
 sidebar:
   order: 2
 ---
 
-## What You Can Build
+Databricks Apps integrate with platform resources via managed connections. Use resources instead of hardcoding IDs for portability and security.
 
-You can connect your Databricks App to SQL warehouses for analytics, Lakebase for transactional storage, model serving endpoints for inference, secrets for API keys, and Unity Catalog volumes for file storage -- all without hardcoding resource IDs. The `valueFrom` pattern in `app.yaml` injects resource identifiers as environment variables, keeping your app portable across workspaces.
+**Docs**: https://docs.databricks.com/aws/en/dev-tools/databricks-apps/resources
 
-## In Action
+---
 
-> "Using Python, build a Databricks App that queries a SQL warehouse using the valueFrom resource pattern instead of hardcoded IDs."
+## Supported Resource Types
+
+| Resource | Default Key | Permissions | Use Case |
+|----------|-------------|-------------|----------|
+| SQL warehouse | `sql-warehouse` | Can use, Can manage | Querying Delta tables |
+| Lakebase database | `database` | Can connect and create | Low-latency transactional data |
+| Model serving endpoint | `serving-endpoint` | Can view, Can query, Can manage | AI/ML inference |
+| Secret | `secret` | Can read, Can write, Can manage | API keys, tokens |
+| Unity Catalog volume | `volume` | Can read, Can read and write | File storage |
+| Vector search index | `vector-search-index` | Can select | Semantic search |
+| Genie space | `genie-space` | Can view, Can run, Can edit | Natural language analytics |
+| UC connection | `connection` | Use Connection | External data sources |
+| UC function | `function` | Can execute | SQL/Python functions |
+| MLflow experiment | `experiment` | Can read, Can edit | ML experiment tracking |
+| Lakeflow job | `job` | Can view, Can manage run | Data pipelines |
+
+---
+
+## Configuring Resources in app.yaml
+
+Use `valueFrom` to reference resources — never hardcode IDs:
+
+```yaml
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+
+  - name: SERVING_ENDPOINT_NAME
+    valueFrom: serving-endpoint
+
+  - name: DB_CONNECTION_STRING
+    valueFrom: database
+```
+
+Add resources via the Databricks Apps UI when creating or editing an app:
+1. Navigate to Configure step
+2. Click **+ Add resource**
+3. Select resource type and set permissions
+4. Assign a key (referenced in `valueFrom`)
+
+---
+
+## Communication Strategies
+
+Choose your data backend based on access pattern:
+
+| Strategy | When to Use | Library | Connection Pattern |
+|----------|-------------|---------|-------------------|
+| **SQL Warehouse** | Analytical queries on Delta tables | `databricks-sql-connector` | `sql.connect()` with `Config()` |
+| **Lakebase (PostgreSQL)** | Low-latency transactional CRUD | `psycopg2` / `asyncpg` | Standard PostgreSQL via auto-injected env vars |
+| **Databricks SDK** | Platform API calls (jobs, clusters, UC) | `databricks-sdk` | `WorkspaceClient()` |
+| **Model Serving** | AI/ML inference requests | `requests` or SDK | REST call to serving endpoint |
+| **Unity Catalog Functions** | Server-side compute (SQL/Python UDFs) | `databricks-sql-connector` | Execute via SQL warehouse |
+
+### SQL Warehouse Pattern
 
 ```python
 import os
@@ -26,41 +80,14 @@ conn = sql.connect(
 )
 
 with conn.cursor() as cursor:
-    cursor.execute("SELECT * FROM catalog.schema.orders LIMIT 100")
+    cursor.execute("SELECT * FROM catalog.schema.table LIMIT 100")
     rows = cursor.fetchall()
 ```
 
-**Key decisions:**
-- `DATABRICKS_WAREHOUSE_ID` comes from `valueFrom: sql-warehouse` in `app.yaml` -- never paste a warehouse ID directly in code
-- `Config()` auto-detects the service principal credentials the platform injects at deploy time
-- `credentials_provider=lambda: cfg.authenticate` ensures token refresh happens transparently
-- Add resources via the Databricks Apps UI (Configure step > Add resource) and assign a key that `valueFrom` references
-
-## More Patterns
-
-### Declaring resources in app.yaml
-
-> "Show me an app.yaml that references a SQL warehouse, a model serving endpoint, and a Lakebase database."
-
-```yaml
-env:
-  - name: DATABRICKS_WAREHOUSE_ID
-    valueFrom: sql-warehouse
-  - name: SERVING_ENDPOINT_NAME
-    valueFrom: serving-endpoint
-  - name: DB_CONNECTION_STRING
-    valueFrom: database
-```
-
-Each `valueFrom` key maps to a resource type you configure in the Databricks Apps UI. The platform resolves the key to the actual resource identifier and injects it as an environment variable at runtime.
-
-### Calling a model serving endpoint
-
-> "Using Python, call a Databricks model serving endpoint from an app using the injected environment variable."
+### Model Serving Pattern
 
 ```python
-import os
-import requests
+import os, requests
 from databricks.sdk.core import Config
 
 cfg = Config()
@@ -71,54 +98,28 @@ endpoint = os.getenv("SERVING_ENDPOINT_NAME")
 response = requests.post(
     f"https://{cfg.host}/serving-endpoints/{endpoint}/invocations",
     headers=headers,
-    json={"inputs": [{"prompt": "Summarize this quarter's revenue trends."}]},
+    json={"inputs": [{"prompt": "Hello"}]},
 )
 result = response.json()
 ```
 
-The `cfg.authenticate()` call returns a dictionary with the Authorization header already set. You add `Content-Type` and send the request -- no manual token management needed.
-
-### Using the Databricks SDK for platform API calls
-
-> "Using Python, list clusters from a Databricks App using the SDK."
+### SDK Pattern
 
 ```python
 from databricks.sdk import WorkspaceClient
 
-w = WorkspaceClient()  # Auto-detects credentials from environment
+w = WorkspaceClient()  # Auto-detects credentials
 for cluster in w.clusters.list():
     print(f"{cluster.cluster_name}: {cluster.state}")
 ```
 
-`WorkspaceClient()` picks up the same service principal credentials that `Config()` detects. Use it for any Databricks API call -- jobs, clusters, Unity Catalog, MLflow.
+For Lakebase patterns, see [5-lakebase.md](5-lakebase.md).
 
-### Choosing a communication strategy
+---
 
-> "How do I decide between SQL warehouse, Lakebase, SDK, and model serving for my app's data layer?"
+## Best Practices
 
-```python
-# SQL Warehouse -- analytical queries on Delta tables
-#   Library: databricks-sql-connector
-#   Use when: dashboards, aggregations, large scans
-
-# Lakebase (PostgreSQL) -- low-latency transactional CRUD
-#   Library: psycopg2 / asyncpg
-#   Use when: app state, user sessions, form submissions
-
-# Databricks SDK -- platform API calls
-#   Library: databricks-sdk
-#   Use when: managing jobs, clusters, Unity Catalog objects
-
-# Model Serving -- AI/ML inference
-#   Library: requests or SDK
-#   Use when: calling deployed models from your app
-```
-
-Most production apps combine at least two strategies -- a SQL warehouse for analytics and Lakebase or model serving for the interactive layer.
-
-## Watch Out For
-
-- **Hardcoding resource IDs** -- your app breaks when someone deploys it to a different workspace. Always use `valueFrom` so the resource binding is configurable per environment.
-- **Forgetting to grant the service principal access** -- declaring a resource in `app.yaml` does not automatically grant permissions. You must also assign the SP the correct permission level (e.g., `CAN USE` for a SQL warehouse) via the Apps UI.
-- **Using SDK calls where SQL works** -- the SDK is for platform management, not data queries. Querying Delta tables through `WorkspaceClient` is possible but slower and less ergonomic than `sql.connect()`.
-- **Skipping `requirements.txt` for Lakebase drivers** -- `psycopg2` and `asyncpg` are not pre-installed in the Apps runtime. Omitting them from `requirements.txt` is the most common cause of Lakebase app failures.
+- Always use `valueFrom` — keeps apps portable between environments
+- Grant service principal minimum required permissions (e.g., `CAN USE` not `CAN MANAGE` for SQL warehouse)
+- Use Lakebase for transactional workloads; SQL warehouse for analytical workloads
+- For external services, use UC connections or secrets (never hardcode API keys)
