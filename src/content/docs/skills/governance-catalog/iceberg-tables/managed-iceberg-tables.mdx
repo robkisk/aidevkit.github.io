@@ -1,265 +1,101 @@
 ---
 title: Managed Iceberg Tables
-description: Managed Iceberg tables are native Apache Iceberg tables created and stored within Unity Catalog.
+description: Create native Iceberg tables in Unity Catalog with full read/write access from Databricks and external engines.
 sidebar:
   order: 1
 ---
 
+## What You Can Build
 
+Managed Iceberg tables are native Apache Iceberg tables stored in Unity Catalog. You get full read/write from Databricks and from any external engine via the Iceberg REST Catalog endpoint. Use them when you need a true open table format that works across platforms -- Spark, PyIceberg, Snowflake, Trino, Flink -- without the limitations of Delta-only features.
 
+## In Action
 
-
-
-
-
-
-
+> "Write SQL to create a managed Iceberg table for order events, partitioned by order_date, and load data from a staging table."
 
 ```sql
--- Create an empty Iceberg table (no clustering)
-CREATE TABLE my_catalog.my_schema.events (
-  event_id BIGINT,
-  event_type STRING,
-  event_date DATE,
-  payload STRING
-)
-USING ICEBERG;
+CREATE TABLE analytics.gold.order_events
+USING ICEBERG
+PARTITIONED BY (order_date)
+AS SELECT * FROM analytics.staging.raw_orders;
 ```
 
+**Key decisions:**
+- **`USING ICEBERG`** makes this a native Iceberg table, not Delta -- external engines can read and write via IRC without conversion
+- **`PARTITIONED BY` over `CLUSTER BY`** -- both produce Liquid Clustering under the hood, but `PARTITIONED BY` auto-disables deletion vectors and row tracking, and works on any engine (EMR, OSS Spark, Trino), not just Databricks
+- Only plain column references work in `PARTITIONED BY` -- expression transforms like `bucket()`, `years()`, `months()` are not supported
+- If you must use `CLUSTER BY` on Iceberg v2, manually set `'delta.enableDeletionVectors' = false` and `'delta.enableRowTracking' = false` in TBLPROPERTIES, or you get `MANAGED_ICEBERG_ATTEMPTED_TO_ENABLE_CLUSTERING_WITHOUT_DISABLING_DVS_OR_ROW_TRACKING`
 
+## More Patterns
 
-```sql
--- Create from existing data (no clustering)
-CREATE TABLE my_catalog.my_schema.events_archive
-USING ICEBERG
-AS SELECT * FROM my_catalog.my_schema.events
-WHERE event_date < '2025-01-01';
-```
+### Upsert with MERGE
 
-
-
-`PARTITIONED BY``CLUSTER BY`
-
-
-
-`PARTITIONED BY (col)`
-`CLUSTER BY (col)`
-
-
-
-`PARTITIONED BY``bucket()``years()``months()``days()``hours()`
-
-`CLUSTER BY``'delta.enableDeletionVectors' = false``'delta.enableRowTracking' = false``[MANAGED_ICEBERG_ATTEMPTED_TO_ENABLE_CLUSTERING_WITHOUT_DISABLING_DVS_OR_ROW_TRACKING]`
-
-`PARTITIONED BY`
+> "Write SQL to upsert incoming event data into a managed Iceberg table, matching on event_id."
 
 ```sql
--- Single column (v2 or v3 — no TBLPROPERTIES needed)
-CREATE TABLE orders (
-  order_id BIGINT,
-  order_date DATE
-)
-USING ICEBERG
-PARTITIONED BY (order_date);
-
--- Multi-column
-CREATE TABLE orders (
-  order_id BIGINT,
-  region STRING,
-  order_date DATE
-)
-USING ICEBERG
-PARTITIONED BY (region, order_date);
-```
-
-`CLUSTER BY`
-
-```sql
--- Single column clustering (v2)
-CREATE TABLE orders (
-  order_id BIGINT,
-  order_date DATE
-)
-USING ICEBERG
-TBLPROPERTIES (
-  'delta.enableDeletionVectors' = false,
-  'delta.enableRowTracking' = false
-)
-CLUSTER BY (order_date);
-```
-
-`CLUSTER BY`
-
-```sql
-CREATE TABLE orders (
-  order_id BIGINT,
-  order_date DATE
-)
-USING ICEBERG
-TBLPROPERTIES ('format-version' = '3')
-CLUSTER BY (order_date);
-```
-
-
-
-
-
-
-
-```sql
--- INSERT
-INSERT INTO my_catalog.my_schema.events
-VALUES (1, 'click', '2025-06-01', '{"page": "home"}');
-
--- INSERT from query
-INSERT INTO my_catalog.my_schema.events
-SELECT * FROM staging_events WHERE event_date = current_date();
-
--- UPDATE
-UPDATE my_catalog.my_schema.events
-SET event_type = 'page_view'
-WHERE event_id = 1;
-
--- DELETE
-DELETE FROM my_catalog.my_schema.events
-WHERE event_date < '2024-01-01';
-
--- MERGE (upsert)
-MERGE INTO my_catalog.my_schema.events AS target
-USING staging_events AS source
+MERGE INTO analytics.gold.order_events AS target
+USING analytics.staging.new_events AS source
 ON target.event_id = source.event_id
 WHEN MATCHED THEN UPDATE SET *
 WHEN NOT MATCHED THEN INSERT *;
 ```
 
+Managed Iceberg tables support all standard DML -- INSERT, UPDATE, DELETE, and MERGE. This is one of the advantages over UniForm, where the table is read-only from external engines.
 
+### Create an Iceberg v3 table with VARIANT
 
-
-
-
-
-```sql
--- Query by timestamp
-SELECT * FROM my_catalog.my_schema.events TIMESTAMP AS OF '2025-06-01T00:00:00Z';
-
--- Query by snapshot ID
-SELECT * FROM my_catalog.my_schema.events VERSION AS OF 1234567890;
-
--- Only for external engines: View snapshot history
-SELECT * FROM my_catalog.my_schema.events.snapshots;
-```
-
-
-
-
-
-
-
-
-
-
-
-
+> "Write SQL to create an Iceberg v3 table that stores semi-structured event payloads as VARIANT, clustered by event_date."
 
 ```sql
--- Manual compaction
-OPTIMIZE my_catalog.my_schema.events;
-
--- Manual vacuum
-VACUUM my_catalog.my_schema.events;
-
--- Manual statistics collection
-ANALYZE TABLE my_catalog.my_schema.events COMPUTE STATISTICS FOR ALL COLUMNS;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```sql
-CREATE TABLE my_catalog.my_schema.events_v3 (
+CREATE TABLE analytics.gold.events_v3 (
   event_id BIGINT,
   event_date DATE,
-  data VARIANT
+  payload VARIANT
 )
 USING ICEBERG
 TBLPROPERTIES ('format-version' = '3')
 CLUSTER BY (event_date);
 ```
 
+Iceberg v3 (Beta, DBR 17.3+) adds deletion vectors, the VARIANT type, and row lineage. On v3, `CLUSTER BY` works without manually disabling DVs or row tracking. The tradeoff: external engines must use Iceberg library 1.9.0+, and you cannot downgrade back to v2 once upgraded.
 
+### Convert a Delta table to managed Iceberg
 
-
-
-
-
-
-
+> "Write SQL to convert an existing Delta table to a managed Iceberg table using DEEP CLONE."
 
 ```sql
-ALTER TABLE my_catalog.my_schema.events
-SET TBLPROPERTIES ('format-version' = '3');
+CREATE TABLE analytics.gold.events_iceberg
+USING ICEBERG
+DEEP CLONE analytics.gold.events_delta;
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-`SHALLOW CLONE``DEEP CLONE`
-`PARTITIONED BY``PARTITIONED BY``bucket()``years()`
-`writeStream``INSERT INTO``MERGE`
-`zstd``snappy``write.parquet.compression-codec`
-`write.metadata.path``write.metadata.previous-versions-max`
-
-
-
-
-
-
-
+`DEEP CLONE` copies data files into a new managed Iceberg table. `SHALLOW CLONE` is not supported for Iceberg. For foreign Iceberg tables (from Snowflake or another catalog), use CTAS instead:
 
 ```sql
-CREATE TABLE my_catalog.my_schema.events_iceberg
+CREATE TABLE analytics.gold.events_managed
 USING ICEBERG
-DEEP CLONE my_catalog.my_schema.events_delta;
+PARTITIONED BY (event_date)
+AS SELECT * FROM foreign_catalog.schema.events;
 ```
 
+### Query historical snapshots
 
+> "Write SQL to read the order_events table as it existed at a specific timestamp."
 
 ```sql
--- With Liquid Clustering (v2 — must disable DVs and row tracking)
-CREATE TABLE my_catalog.my_schema.events_managed
-USING ICEBERG
-TBLPROPERTIES (
-  'delta.enableDeletionVectors' = false,
-  'delta.enableRowTracking' = false
-)
-CLUSTER BY (event_date)
-AS SELECT * FROM foreign_catalog.foreign_schema.events;
+SELECT * FROM analytics.gold.order_events
+  TIMESTAMP AS OF '2025-06-01T00:00:00Z';
 
--- With Liquid Clustering (v3 — no extra TBLPROPERTIES needed)
-CREATE TABLE my_catalog.my_schema.events_managed
-USING ICEBERG
-TBLPROPERTIES ('format-version' = '3')
-CLUSTER BY (event_date)
-AS SELECT * FROM foreign_catalog.foreign_schema.events;
+-- Or by snapshot ID
+SELECT * FROM analytics.gold.order_events
+  VERSION AS OF 1234567890;
 ```
+
+Time travel works the same as Delta. External engines can also query the snapshot history metadata table via `table_name.snapshots`.
+
+## Watch Out For
+
+- **Never install an Iceberg library into DBR** -- Databricks Runtime includes built-in Iceberg support. Adding a JAR causes version conflicts and class-loading errors.
+- **Never set `write.metadata.path` or `write.metadata.previous-versions-max`** -- Databricks manages metadata locations automatically. Overriding these causes metadata corruption.
+- **Default compression is zstd, not snappy** -- older Iceberg readers that do not support zstd will fail silently. Check reader compatibility or set `write.parquet.compression-codec` to `snappy` in TBLPROPERTIES.
+- **No Change Data Feed (CDF) on Iceberg tables** -- CDF is Delta-only. If you need CDF for downstream streaming tables, use Delta + UniForm instead.

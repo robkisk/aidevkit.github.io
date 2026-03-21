@@ -1,153 +1,97 @@
 ---
-title: Project Initialization with databricks pipelines init
-description: The databricks pipelines init command scaffolds a complete Databricks Asset Bundle project for Lakeflow Spark Declarative Pipelines, providing a production-r...
+title: Project Initialization
+description: Scaffold a production-ready pipeline project with databricks pipelines init, Asset Bundles, and multi-environment deployment.
 sidebar:
   order: 8
 ---
 
+## What You Can Build
 
+Starting a new pipeline project from scratch means getting the folder structure, bundle configuration, environment variables, and deployment targets right before writing any transformation logic. Ask your AI coding assistant to initialize a pipeline project and it will run `databricks pipelines init`, customize the generated scaffold, and set up multi-environment deployment — so you go from zero to a deployable pipeline in minutes.
 
-`databricks pipelines init`
+## In Action
 
-
-
-`databricks.yml`
-
-
-
-
-
-
-
-
-
+> "Initialize a new SQL pipeline project called customer_orders_pipeline targeting the main catalog, with per-user dev schemas"
 
 ```bash
 databricks pipelines init --output-dir .
 ```
 
+The interactive prompts ask for:
+- **Project name** — `customer_orders_pipeline`
+- **Initial catalog** — `main` (or `prod_catalog`, `dev_catalog`)
+- **Personal schema per user** — `yes` gives each developer their own schema in dev (`$\{workspace.current_user.short_name\}`)
+- **Language** — `sql` or `python`
 
+This generates a complete Asset Bundle project:
 
-`my_pipeline_project`
+```
+customer_orders_pipeline/
+├── databricks.yml
+├── resources/
+│   ├── customer_orders_pipeline_etl.pipeline.yml
+│   └── sample_job.job.yml
+└── src/
+    └── customer_orders_pipeline_etl/
+        ├── explorations/
+        │   └── sample_exploration.ipynb
+        └── transformations/
+            ├── sample_trips_customer_orders_pipeline.sql
+            └── sample_zones_customer_orders_pipeline.sql
+```
 
-`customer_orders_pipeline`
+**Key decisions:**
+- **Asset Bundles by default** — every new project gets multi-environment deployment (dev/prod) out of the box. Manual pipeline creation is for prototyping only.
+- **Per-user schemas in dev** — prevents developers from overwriting each other's tables during development. Each person gets their own schema namespace.
+- **SQL unless Python is needed** — SQL is simpler, faster to write, and covers the majority of transformation patterns. Use Python only when you need UDFs, ML inference, or external API calls.
 
+## More Patterns
 
-
-`main``prod_catalog``dev_catalog`
-
-
-`yes``${workspace.current_user.short_name}`
-`no`
-
-
-`.py``.sql`
-
-
-
+### Replace sample files with your transformations
+> "Remove the sample files and set up a medallion architecture with bronze, silver, and gold SQL files"
 
 ```bash
-databricks pipelines init \
-  --output-dir . \
-  --config-file init-config.json
-```
+cd src/customer_orders_pipeline_etl/transformations/
 
+rm sample_*.sql
 
-```json
-{
-  "project_name": "customer_pipeline",
-  "initial_catalog": "prod_catalog",
-  "use_personal_schema": "no",
-  "initial_language": "sql"
-}
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-```
-project_root/
-├── databricks.yml                           # Bundle configuration
-├── resources/
-│   ├── customer_pipeline_etl.pipeline.yml  # Pipeline resource definition
-│   └── sample_job.job.yml                  # Optional scheduled job
-├── README.md                                # Auto-generated documentation
-└── src/
-    └── customer_pipeline_etl/
-        ├── README.md                        # ETL folder documentation
-        ├── explorations/
-        │   └── sample_exploration.ipynb     # Notebook for ad-hoc queries
-        └── transformations/
-            ├── sample_trips_customer_pipeline.sql
-            └── sample_zones_customer_pipeline.sql
-```
-
-
-
-```
-project_root/
-├── databricks.yml                           # Bundle configuration
-├── pyproject.toml                           # Python dependencies
-├── resources/
-│   ├── customer_pipeline_etl.pipeline.yml  # Pipeline resource definition
-│   └── sample_job.job.yml                  # Optional scheduled job
-├── README.md                                # Auto-generated documentation
-└── src/
-    └── customer_pipeline_etl/
-        ├── README.md                        # ETL folder documentation
-        ├── explorations/
-        │   └── sample_exploration.ipynb     # Notebook for ad-hoc queries
-        └── transformations/
-            ├── sample_trips_customer_pipeline.py
-            └── sample_zones_customer_pipeline.py
-```
-
-
-`pyproject.toml`
-`.py``@dp.table`
-
-
-
-
-
-
-
-
-
-
-```bash
-cd src/customer_pipeline_etl/transformations/
-
-# Remove sample files
-rm sample_*.sql  # or sample_*.py for Python
-
-# Add your transformation files
 touch bronze_orders.sql
 touch silver_cleaned_orders.sql
 touch gold_daily_summary.sql
 ```
 
+The `transformations/**` glob in the pipeline YAML picks up any `.sql` or `.py` file in this directory or its subdirectories. Two layout options work:
 
+**Flat with prefixes** (template default):
+```
+transformations/
+├── bronze_orders.sql
+├── silver_cleaned_orders.sql
+└── gold_daily_summary.sql
+```
 
-`databricks.yml`
+**Subdirectories by layer**:
+```
+transformations/
+├── bronze/
+│   └── orders.sql
+├── silver/
+│   └── cleaned_orders.sql
+└── gold/
+    └── daily_summary.sql
+```
+
+Both work with the same glob pattern. Choose based on team preference. Subdirectories scale better when a pipeline has more than 10-15 files.
+
+### Understand the bundle configuration
+> "Walk me through the key parts of databricks.yml for a pipeline project"
 
 ```yaml
 bundle:
-  name: customer_pipeline
-  uuid: <auto-generated>
+  name: customer_orders_pipeline
 
 include:
   - resources/*.yml
-  - resources/*/*.yml
 
 variables:
   catalog:
@@ -169,47 +113,18 @@ targets:
     mode: production
     workspace:
       host: https://your-workspace.cloud.databricks.com
-      root_path: /Workspace/Users/you@example.com/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: prod_catalog
       schema: production
     permissions:
-      - user_name: you@example.com
+      - user_name: deployer@example.com
         level: CAN_MANAGE
 ```
 
+`mode: development` prefixes resource names with the dev username and enables faster iteration. `mode: production` removes the prefix and enforces permissions. Variables flow into the pipeline YAML via `$\{var.catalog\}` and `$\{var.schema\}`, making the same code deploy to any environment.
 
-`mode: development``[dev username]`
-`mode: production`
-`variables`
-`permissions`
-
-
-
-`resources/*_etl.pipeline.yml`
-
-```yaml
-resources:
-  pipelines:
-    customer_pipeline_etl:
-      name: customer_pipeline_etl
-      catalog: ${var.catalog}
-      schema: ${var.schema}
-      serverless: true
-      root_path: "../src/customer_pipeline_etl"
-      libraries:
-        - glob:
-            include: ../src/customer_pipeline_etl/transformations/**
-      environment:
-        dependencies:
-          - --editable ${workspace.file_path}
-      # Optional: Add development mode for faster iteration
-      # development: true
-      # Optional: Add continuous mode for always-running pipeline
-      # continuous: false
-```
-
-
+### Deploy and run across environments
+> "Show the deploy and run commands for dev and prod targets"
 
 ```bash
 # Validate configuration
@@ -218,500 +133,66 @@ databricks bundle validate
 # Deploy to dev (default target)
 databricks bundle deploy
 
-# Deploy to prod
+# Run the pipeline in dev
+databricks bundle run customer_orders_pipeline_etl
+
+# Deploy to production
 databricks bundle deploy --target prod
 
-# Deploy and run immediately
-databricks bundle run customer_pipeline_etl
+# Run in production
+databricks bundle run customer_orders_pipeline_etl --target prod
 ```
 
+Always run `validate` before deploy — it catches YAML errors, missing variables, and permission issues before anything touches the workspace. In dev, resources are prefixed with your username. In prod, they use the bare name.
 
-
-
-
-
-
-
+### Non-interactive initialization for CI/CD
+> "Initialize a pipeline project non-interactively using a config file for automated setup"
 
 ```bash
-# Run via bundle (uses default target)
-databricks bundle run customer_pipeline_etl
-
-# Run specific target
-databricks bundle run customer_pipeline_etl --target prod
-
-# Or use Pipeline API directly
-databricks pipelines start-update --pipeline-id <id>
+databricks pipelines init \
+  --output-dir . \
+  --config-file init-config.json
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```
-I can create this pipeline using either SQL or Python:
-
-- **SQL**: Best for transformations, aggregations, joins (simpler, faster to develop)
-- **Python**: Best for custom logic, UDFs, ML inference, external APIs
-
-Which would you prefer?
+```json
+{
+  "project_name": "customer_pipeline",
+  "initial_catalog": "prod_catalog",
+  "use_personal_schema": "no",
+  "initial_language": "sql"
+}
 ```
 
+The config file answers all interactive prompts so the init command can run in a CI pipeline or automated setup script. Use lowercase `"sql"` or `"python"` for the language field.
 
-
-
-
-`transformations/**`
-
-
-
-```
-transformations/
-├── bronze_raw_orders.sql          # Raw data ingestion
-├── bronze_raw_events.sql
-├── bronze_raw_customers.sql
-├── silver_cleaned_orders.sql      # Cleaned and validated
-├── silver_joined_data.sql
-├── silver_customer_profiles.sql
-├── gold_daily_metrics.sql         # Business aggregations
-├── gold_customer_summary.sql
-└── gold_revenue_analysis.sql
-```
-
-
-`databricks pipelines init`
-
-
-
-
-
-
-```
-transformations/
-├── bronze/
-│   ├── raw_orders.sql
-│   ├── raw_events.sql
-│   └── raw_customers.sql
-├── silver/
-│   ├── cleaned_orders.sql
-│   ├── joined_data.sql
-│   └── customer_profiles.sql
-└── gold/
-    ├── daily_metrics.sql
-    ├── customer_summary.sql
-    └── revenue_analysis.sql
-```
-
-
-
-
-
-`transformations/**`
-
-`**`
-
-
-
-```sql
--- File: bronze_raw_orders.sql
-CREATE OR REFRESH STREAMING TABLE bronze_raw_orders
-CLUSTER BY (order_date)
-COMMENT "Raw order data ingested from cloud storage"
-AS
-SELECT
-  *,
-  current_timestamp() AS _ingested_at,
-  _metadata.file_path AS _source_file
-FROM read_files(
-  '/Volumes/main/raw_data/orders/',
-  format => 'json',
-  schemaHints => 'order_id STRING, customer_id STRING, amount DECIMAL(10,2), order_date DATE'
-);
-```
-
-
-
-```sql
--- File: silver_cleaned_orders.sql
-CREATE OR REFRESH MATERIALIZED VIEW silver_cleaned_orders
-CLUSTER BY (order_date)
-COMMENT "Cleaned and validated orders with customer enrichment"
-AS
-SELECT
-  o.order_id,
-  o.customer_id,
-  o.amount,
-  o.order_date,
-  c.customer_name,
-  c.customer_segment
-FROM LIVE.bronze_raw_orders o
-INNER JOIN LIVE.bronze_raw_customers c
-  ON o.customer_id = c.customer_id
-WHERE o.amount > 0  -- Remove invalid orders
-  AND o.order_date >= '2020-01-01';
-```
-
-
-
-```sql
--- File: gold_daily_metrics.sql
-CREATE OR REFRESH MATERIALIZED VIEW gold_daily_metrics
-CLUSTER BY (metric_date)
-COMMENT "Daily business metrics for reporting"
-AS
-SELECT
-  order_date AS metric_date,
-  COUNT(DISTINCT customer_id) AS unique_customers,
-  COUNT(*) AS total_orders,
-  SUM(amount) AS total_revenue,
-  AVG(amount) AS avg_order_value
-FROM LIVE.silver_cleaned_orders
-GROUP BY order_date;
-```
-
-
-
-
-
-
-
-
-
-
-```
-my_pipeline/
-├── bronze/
-│   ├── orders.sql
-│   └── events.sql
-├── silver/
-│   ├── cleaned.sql
-│   └── joined.sql
-└── gold/
-    └── summary.sql
-```
-
-
-
-
-
-
-
-`pyproject.toml`
+### Python project dependencies
+> "Show the pyproject.toml structure for a Python pipeline with runtime and dev dependencies"
 
 ```toml
 [project]
 name = "customer_pipeline"
 version = "0.0.1"
 dependencies = [
-    # Add your runtime dependencies here
-    # "pandas>=2.0.0",
-    # "scikit-learn==1.3.0",
+    "pandas>=2.0.0",
+    "scikit-learn==1.3.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
     "ruff",
-    "databricks-dlt",
     "databricks-connect>=15.4,<15.5",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.ruff]
-line-length = 120
 ```
 
-
-
-
-   ```toml
-   dependencies = [
-       "pandas>=2.0.0",
-       "requests==2.31.0",
-   ]
-   ```
-
-
-   ```toml
-   [project.optional-dependencies]
-   dev = [
-       "pytest",
-       "ruff",
-   ]
-   ```
-
-
-   ```bash
-   databricks bundle deploy
-   ```
-
-
-   ```yaml
-   environment:
-     dependencies:
-       - --editable ${workspace.file_path}
-   ```
-
-
-
-
-
-
-
-
-
-
-
-
-```bash
-pip install databricks-cli
-# or
-pip install --upgrade databricks-cli
-```
-
-
-
-
-
-
-```bash
-# List available catalogs
-databricks catalogs list
-
-# Create catalog if needed
-databricks catalogs create --name my_catalog
-```
-
-
-
-
-
-
-`"initial_language": "sql"``"initial_language": "python"`
-`"initial_language": "SQL"``"initial_language": "Python"`
-
-
-
-
-
-`resources/*_etl.pipeline.yml`
-```yaml
-libraries:
-  - glob:
-      include: ../src/my_pipeline_etl/transformations/**
-      # Make sure this path matches your file locations
-```
-
-
-
-
-
-
-```bash
-# Configure authentication
-databricks configure --host https://your-workspace.cloud.databricks.com
-
-# Or set environment variables
-export DATABRICKS_HOST="https://your-workspace.cloud.databricks.com"
-export DATABRICKS_TOKEN="your-personal-access-token"
-```
-
-
-
-
-
-
-```bash
-# Validate configuration
-databricks bundle validate
-
-# Check YAML syntax
-# Ensure proper indentation (use spaces, not tabs)
-# Verify required fields are present
-```
-
-
-
-
-
-
-```bash
-# Force full deployment
-databricks bundle deploy --force
-
-# Or delete and recreate
-databricks bundle destroy
-databricks bundle deploy
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```bash
-# Work in dev environment (default)
-databricks bundle deploy
-databricks bundle run my_pipeline_etl
-
-# Resources are prefixed: [dev username]my_pipeline_etl
-# Tables written to: dev_catalog.username.table_name
-```
-
-
-
-```bash
-# Deploy to production
-databricks bundle deploy --target prod
-
-# Run in production
-databricks bundle run my_pipeline_etl --target prod
-
-# No prefix: my_pipeline_etl
-# Tables written to: prod_catalog.production.table_name
-```
-
-
-
-
-```yaml
-targets:
-  dev:
-    variables:
-      catalog: dev_catalog
-      schema: ${workspace.current_user.short_name}
-
-  prod:
-    variables:
-      catalog: prod_catalog
-      schema: production
-```
-
-
-```yaml
-resources:
-  pipelines:
-    my_pipeline_etl:
-      catalog: ${var.catalog}  # dev_catalog or prod_catalog
-      schema: ${var.schema}    # username or production
-```
-
-
-
-
-
-
-
-`bronze_orders_raw.sql``orders.sql`
-
-`bronze_*``silver_*``gold_*`
-`bronze/``silver/``gold/`
-`transformations/**`
-
-
-
-
-
-
-
-`databricks.yml`
-
-
-
-
-
-`databricks bundle validate`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Runtime dependencies under `[project].dependencies` are installed in the pipeline environment. Dev dependencies under `[project.optional-dependencies].dev` are for local development only. The pipeline YAML references the project with `--editable $\{workspace.file_path\}` so the package installs automatically on deploy.
+
+## Watch Out For
+- **Sample files left in place** — the generated sample files create tables from Databricks sample data. Remove them before deploying or they will create unnecessary tables in your target schema.
+- **Language case sensitivity** — the init config expects lowercase `"sql"` or `"python"`. Capitalized values like `"SQL"` or `"Python"` may cause initialization failures.
+- **YAML indentation errors** — use spaces, never tabs. Run `databricks bundle validate` after every edit to catch syntax errors early.
+- **Stale deployments** — if you rename or remove transformation files, the old tables remain in the workspace. Use `databricks bundle destroy` to clean up, then redeploy. Do not use `--force` unless you understand it recreates the pipeline from scratch.

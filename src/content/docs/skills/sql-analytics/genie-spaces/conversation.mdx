@@ -1,244 +1,127 @@
 ---
 title: Genie Conversations
-description: Use the Genie Conversation API to ask natural language questions to a curated Genie Space.
+description: Ask natural language questions to Genie Spaces programmatically and build multi-turn data exploration workflows.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+The Genie Conversation API lets you ask natural language questions to a curated Genie Space and get back SQL, results, and column metadata -- programmatically. Use it when you want your AI coding assistant to query business data through a space that already has curated logic, certified queries, and domain-specific instructions. Genie handles the SQL generation; you handle the conversation flow.
 
+## In Action
 
-
-`ask_genie`
-
-`ask_genie`
-
-`ask_genie`
-
-
-
-
-
-
-
-
-
-`execute_sql`
-
-
-
-
-
-
-
-
-
-
-
-
-`ask_genie``conversation_id`
-
-
-
-
+> "Ask my Sales Genie what total revenue was last month, then follow up with a regional breakdown."
 
 ```python
-ask_genie(
-    space_id="01abc123...",
-    question="What were total sales last month?"
-)
-```
-
-
-```python
-{
-    "question": "What were total sales last month?",
-    "conversation_id": "conv_xyz789",
-    "message_id": "msg_123",
-    "status": "COMPLETED",
-    "sql": "SELECT SUM(total_amount) AS total_sales FROM orders WHERE order_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL 1 MONTH) AND order_date < DATE_TRUNC('month', CURRENT_DATE)",
-    "columns": ["total_sales"],
-    "data": [[125430.50]],
-    "row_count": 1
-}
-```
-
-
-
-`conversation_id`
-
-```python
-# First question
+# First question -- starts a new conversation
 result = ask_genie(
     space_id="01abc123...",
     question="What were total sales last month?"
 )
+# result["status"] == "COMPLETED"
+# result["sql"] contains the generated query
+# result["data"] contains [[125430.50]]
 
-# Follow-up (uses context from first question)
-ask_genie(
+# Follow-up -- reuse conversation_id for context
+followup = ask_genie(
     space_id="01abc123...",
     question="Break that down by region",
     conversation_id=result["conversation_id"]
 )
 ```
 
+**Key decisions:**
+- **`conversation_id` carries context** -- passing it from a previous response tells Genie that "that" refers to "total sales last month." Omit it to start a fresh conversation on a different topic.
+- **Use Genie when curated logic exists** -- if the space has certified queries defining "active customer" or "churn rate," Genie applies those rules. For ad-hoc queries where you already know the SQL, use direct SQL execution instead.
+- **The response includes the generated SQL** -- you can inspect, modify, or log it. The `sql` field shows exactly what Genie ran against the warehouse.
+- **Genie may ask for clarification** -- if the question is ambiguous, `text_response` contains a follow-up question instead of results. Rephrase with more specifics.
 
+## More Patterns
 
+### Handle response statuses
 
-
-
-
-`question`
-`conversation_id`
-`message_id`
-`status``COMPLETED``FAILED``CANCELLED``TIMEOUT`
-`sql`
-`columns`
-`data`
-`row_count`
-`text_response`
-`error`
-
-
-
-
+> "Write Python to handle success, failure, and timeout responses from the Genie Conversation API."
 
 ```python
-result = ask_genie(space_id, "Who are our top 10 customers?")
+result = ask_genie(space_id="01abc123...", question="Who are our top 10 customers?")
 
 if result["status"] == "COMPLETED":
     print(f"SQL: {result['sql']}")
     print(f"Rows: {result['row_count']}")
     for row in result["data"]:
         print(row)
-```
 
-
-
-```python
-result = ask_genie(space_id, "What is the meaning of life?")
-
-if result["status"] == "FAILED":
+elif result["status"] == "FAILED":
     print(f"Error: {result['error']}")
-    # Genie couldn't answer - may need to rephrase or use direct SQL
+    # Rephrase the question or check space configuration
+
+elif result["status"] == "TIMEOUT":
+    print("Query took too long -- simplify the question or increase timeout")
 ```
 
+The `status` field is one of `COMPLETED`, `FAILED`, `CANCELLED`, or `TIMEOUT`. Always check it before accessing `data` or `sql`. Failed responses often mean the question is outside the scope of the space's tables -- not that something is broken.
 
+### Handle clarification requests
+
+> "Write Python to detect when Genie asks for clarification instead of returning results."
 
 ```python
-result = ask_genie(space_id, question, timeout_seconds=60)
-
-if result["status"] == "TIMEOUT":
-    print("Query took too long - try a simpler question or increase timeout")
-```
-
-
-
-
-
-```
-User: "Ask my Sales Genie what the churn rate is"
-
-Claude:
-1. Identifies user wants to use Genie (explicit request)
-2. Calls ask_genie(space_id="sales_genie_id", question="What is the churn rate?")
-3. Returns: "Based on your Sales Genie, the churn rate is 4.2%.
-   Genie used this SQL: SELECT ..."
-```
-
-
-
-```
-User: "I just created a Genie Space for HR data. Can you test it?"
-
-Claude:
-1. Gets the space_id from the user or recent create_or_update_genie result
-2. Calls ask_genie with test questions:
-   - "How many employees do we have?"
-   - "What is the average salary by department?"
-3. Reports results: "Your HR Genie is working. It correctly answered..."
-```
-
-
-
-```
-User: "Use my analytics Genie to explore sales trends"
-
-Claude:
-1. ask_genie(space_id, "What were total sales by month this year?")
-2. User: "Which month had the highest growth?"
-3. ask_genie(space_id, "Which month had the highest growth?", conversation_id=conv_id)
-4. User: "What products drove that growth?"
-5. ask_genie(space_id, "What products drove that growth?", conversation_id=conv_id)
-```
-
-
-
-
-
-
-
-```python
-# Good: New conversation for new topic
-result1 = ask_genie(space_id, "What were sales last month?")  # New conversation
-result2 = ask_genie(space_id, "How many employees do we have?")  # New conversation
-
-# Good: Follow-up for related question
-result1 = ask_genie(space_id, "What were sales last month?")
-result2 = ask_genie(space_id, "Break that down by product",
-                    conversation_id=result1["conversation_id"])  # Related follow-up
-```
-
-
-
-
-
-```python
-result = ask_genie(space_id, "Show me the data")
+result = ask_genie(space_id="01abc123...", question="Show me the data")
 
 if result.get("text_response"):
-    # Genie is asking for clarification
+    # Genie is asking for clarification, not returning results
     print(f"Genie asks: {result['text_response']}")
-    # Rephrase with more specifics
+    # Rephrase: "Show me the top 10 orders by amount this month"
 ```
 
+Vague questions like "show me the data" or "what's happening" trigger clarification instead of SQL generation. Questions that reference actual column names and time ranges ("total revenue by region last quarter") get direct answers.
 
+### Set timeouts based on query complexity
 
-
-
-
+> "Write Python showing appropriate timeout settings for different types of Genie questions."
 
 ```python
-# Quick question
+# Simple aggregation -- fast
 ask_genie(space_id, "How many orders today?", timeout_seconds=30)
 
-# Complex analysis
+# Multi-table join -- moderate
+ask_genie(space_id, "What's the average order value by customer segment?",
+          timeout_seconds=60)
+
+# Full-table scan with complex logic -- slow
 ask_genie(space_id, "Calculate customer lifetime value for all customers",
           timeout_seconds=180)
 ```
 
+The default timeout works for most questions. Bump it for questions that imply large scans or complex joins. If a question consistently times out, the underlying SQL may need optimization -- check the generated SQL in the response.
 
+### Multi-turn exploration workflow
 
+> "Show a complete multi-turn data exploration session using Genie."
 
+```python
+# Start with a broad question
+r1 = ask_genie(space_id, "What were total sales by month this year?")
+conv_id = r1["conversation_id"]
 
-`space_id`
+# Drill into the interesting finding
+r2 = ask_genie(space_id, "Which month had the highest growth?",
+               conversation_id=conv_id)
 
-`get_genie(space_id)`
+# Go deeper
+r3 = ask_genie(space_id, "What products drove that growth?",
+               conversation_id=conv_id)
 
+# Switch topics -- new conversation
+r4 = ask_genie(space_id, "How many new customers signed up last quarter?")
+```
 
+Keep the same `conversation_id` for related follow-ups within a topic. Start a new conversation (omit `conversation_id`) when switching to an unrelated question. Mixing topics in one conversation confuses the context and produces worse SQL.
 
-`timeout_seconds`
+## Watch Out For
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+- **Reusing conversation_id across unrelated topics** -- Genie uses prior context to interpret follow-ups. Asking "How many employees?" after a sales conversation causes Genie to look for employee data in sales tables. Start a fresh conversation for new topics.
+- **"Space not found" errors** -- verify the `space_id` is correct and you have access. Use `get_genie(space_id)` to confirm the space exists before querying.
+- **Timeout on a running warehouse** -- if the SQL warehouse is stopped, it must start before executing. The startup time counts against your timeout. Set a longer timeout or ensure the warehouse is running before querying.
+- **Genie generates SQL, it does not guarantee correctness** -- always review the `sql` field for critical decisions. Add SQL instructions and certified queries in the Genie Space UI to improve accuracy for your domain.

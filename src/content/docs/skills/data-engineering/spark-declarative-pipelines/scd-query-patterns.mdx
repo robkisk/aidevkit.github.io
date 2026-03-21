@@ -1,50 +1,19 @@
 ---
 title: SCD Query Patterns
-description: How to query SCD Type 2 history tables effectively, including current state queries, point-in-time analysis, and change tracking.
+description: Query SCD Type 2 history tables for current state, point-in-time lookups, temporal joins, and change tracking.
 sidebar:
   order: 3
 ---
 
+## What You Can Build
 
+Once Auto CDC builds your SCD Type 2 history tables, you need patterns to query them correctly. Ask your AI coding assistant for current-state views, point-in-time lookups, temporal joins against fact tables, or change frequency analysis and it will generate queries that use the `__START_AT` and `__END_AT` columns properly.
 
+## In Action
 
-
-
-
-
-
-```sql
-CREATE FLOW customers_scd2_flow AS
-AUTO CDC INTO customers_history
-FROM stream(customers_cdc_clean)
-KEYS (customer_id)
-SEQUENCE BY event_timestamp
-STORED AS SCD TYPE 2
-TRACK HISTORY ON *;
-```
-
-
-```
-customers_history
-├── customer_id        -- Business key
-├── customer_name
-├── email
-├── phone
-├── __START_AT         -- When this version became effective (auto-generated)
-├── __END_AT           -- When this version expired (NULL for current)
-└── ...other columns
-```
-
-`__START_AT``__END_AT``START_AT``END_AT`
-
-
-
-
-
-
+> "Create a materialized view that shows only current customer records from an SCD Type 2 history table"
 
 ```sql
--- __END_AT IS NULL indicates active record (Lakeflow uses double underscore)
 CREATE OR REPLACE MATERIALIZED VIEW dim_customers_current AS
 SELECT
   customer_id, customer_name, email, phone, address,
@@ -53,25 +22,17 @@ FROM customers_history
 WHERE __END_AT IS NULL;
 ```
 
+**Key decisions:**
+- **`__END_AT IS NULL` for current records** — this is the standard filter. Current (active) rows have a null end timestamp. Do not use `MAX(__START_AT)` subqueries — they are slower and harder to read.
+- **Materialized view, not streaming table** — SCD queries are batch reads over a history table. Materialized views refresh automatically when the source changes and are the right abstraction for dimension views.
+- **Double-underscore columns** — Lakeflow generates `__START_AT` and `__END_AT` (two underscores), not `START_AT`/`END_AT`. This is the most common mistake when querying SCD Type 2 tables.
 
+## More Patterns
 
-```sql
-SELECT *
-FROM customers_history
-WHERE customer_id = '12345'
-  AND __END_AT IS NULL;
-```
-
-
-
-
-
-
-
-
+### Point-in-time lookup
+> "Show all products and their prices as they were on January 1, 2024, from an SCD Type 2 table"
 
 ```sql
--- Products as of January 1, 2024 (use __START_AT / __END_AT)
 CREATE OR REPLACE MATERIALIZED VIEW products_as_of_2024_01_01 AS
 SELECT
   product_id, product_name, price, category,
@@ -81,52 +42,12 @@ WHERE __START_AT <= '2024-01-01'
   AND (__END_AT > '2024-01-01' OR __END_AT IS NULL);
 ```
 
+The two-part WHERE clause finds the version that was active on the target date: it started on or before that date, and either ended after that date or is still current. This pattern works for any point-in-time analysis — swap the date literal for a parameter to make it reusable.
 
-
-
-
-
-
-```sql
--- Complete history for a customer (use __START_AT / __END_AT)
-SELECT
-  customer_id, customer_name, email, phone,
-  __START_AT, __END_AT,
-  COALESCE(
-    DATEDIFF(DAY, __START_AT, __END_AT),
-    DATEDIFF(DAY, __START_AT, CURRENT_TIMESTAMP())
-  ) AS days_active
-FROM customers_history
-WHERE customer_id = '12345'
-ORDER BY __START_AT DESC;
-```
-
-
+### Temporal join — fact table with historical prices
+> "Join a sales fact table with the product price that was in effect at the time of each sale, using SQL"
 
 ```sql
--- Customers who changed during Q1 2024 (use __START_AT)
-SELECT
-  customer_id, customer_name,
-  __START_AT AS change_timestamp,
-  'UPDATE' AS change_type
-FROM customers_history
-WHERE __START_AT BETWEEN '2024-01-01' AND '2024-03-31'
-  AND __START_AT != (
-    SELECT MIN(__START_AT)
-    FROM customers_history ch2
-    WHERE ch2.customer_id = customers_history.customer_id
-  )
-ORDER BY __START_AT;
-```
-
-
-
-
-
-
-
-```sql
--- Join sales with product prices at time of sale
 CREATE OR REPLACE MATERIALIZED VIEW sales_with_historical_prices AS
 SELECT
   s.sale_id, s.product_id, s.sale_date, s.quantity,
@@ -140,57 +61,30 @@ INNER JOIN products_history p
   AND (s.sale_date < p.__END_AT OR p.__END_AT IS NULL);
 ```
 
+This is the core temporal join pattern. Each sale row matches exactly one product version — the one that was active on the sale date. Without temporal joins, you get current prices applied retroactively to old sales, which corrupts revenue calculations.
 
+### Change tracking and audit trail
+> "Show the complete version history for a specific customer with the duration each version was active"
 
 ```sql
--- Join sales with current product information
-CREATE OR REPLACE MATERIALIZED VIEW sales_with_current_prices AS
 SELECT
-  s.sale_id, s.product_id, s.sale_date, s.quantity,
-  s.amount AS amount_at_sale,
-  p.product_name AS current_product_name,
-  p.price AS current_price,
-  p.category AS current_category
-FROM sales_fact s
-INNER JOIN products_history p
-  ON s.product_id = p.product_id
-  AND p.__END_AT IS NULL;  -- Current version only
+  customer_id, customer_name, email, phone,
+  __START_AT, __END_AT,
+  COALESCE(
+    DATEDIFF(DAY, __START_AT, __END_AT),
+    DATEDIFF(DAY, __START_AT, CURRENT_TIMESTAMP())
+  ) AS days_active
+FROM customers_history
+WHERE customer_id = '12345'
+ORDER BY __START_AT DESC;
 ```
 
+The `COALESCE` handles the current version where `__END_AT` is null — it calculates days active from the start date to now. This pattern is useful for audit trails, compliance reporting, and understanding how frequently a record changes.
 
-
-
-
-`TRACK HISTORY ON specific_columns`
-
-```sql
--- Only price changes trigger new versions
-CREATE FLOW products_scd2_flow AS
-AUTO CDC INTO products_history
-FROM stream(products_cdc_clean)
-KEYS (product_id)
-SEQUENCE BY event_timestamp
-STORED AS SCD TYPE 2
-TRACK HISTORY ON price, cost;  -- Only these columns
-```
-
-
-
-
-
-
+### Change frequency analysis
+> "Build a materialized view that shows how many times each product was updated and when it was first seen and last changed"
 
 ```sql
--- Current state view (most common pattern)
-CREATE OR REPLACE MATERIALIZED VIEW dim_products_current AS
-SELECT * FROM products_history WHERE __END_AT IS NULL;
-
--- Recent changes only
-CREATE OR REPLACE MATERIALIZED VIEW dim_recent_changes AS
-SELECT * FROM products_history
-WHERE __START_AT >= CURRENT_DATE() - INTERVAL 90 DAYS;
-
--- Change frequency stats
 CREATE OR REPLACE MATERIALIZED VIEW product_change_stats AS
 SELECT
   product_id,
@@ -201,48 +95,27 @@ FROM products_history
 GROUP BY product_id;
 ```
 
+High version counts can indicate upstream data quality problems — a product changing 50 times a day probably has a bug in the source system. Use this view to monitor SCD table health and flag anomalies.
 
-
-
-
-
-
-```sql
--- ✅ Efficient
-WHERE __END_AT IS NULL
-
--- ❌ Less efficient
-WHERE __START_AT = (SELECT MAX(__START_AT) FROM table WHERE ...)
-```
-
-
+### Selective history tracking
+> "Set up SCD Type 2 on products but only track new versions when price or cost changes, not description edits"
 
 ```sql
--- ✅ Standard pattern
-WHERE __START_AT <= '2024-01-01'
-  AND (__END_AT > '2024-01-01' OR __END_AT IS NULL)
+CREATE OR REFRESH STREAMING TABLE products_history;
+
+CREATE FLOW products_scd2_flow AS
+AUTO CDC INTO products_history
+FROM stream(products_cdc_clean)
+KEYS (product_id)
+SEQUENCE BY event_timestamp
+STORED AS SCD TYPE 2
+TRACK HISTORY ON price, cost;
 ```
 
+Without `TRACK HISTORY ON`, every column change creates a new version — including trivial updates like description edits. Selective tracking keeps the history table lean and temporal queries fast. Choose columns that represent meaningful business state changes.
 
-
-```sql
--- Current state
-CREATE OR REPLACE MATERIALIZED VIEW dim_current AS
-SELECT * FROM history WHERE __END_AT IS NULL;
-
--- Recent changes
-CREATE OR REPLACE MATERIALIZED VIEW dim_recent_changes AS
-SELECT * FROM history
-WHERE __START_AT >= CURRENT_DATE() - INTERVAL 90 DAYS;
-```
-
-
-
-
-
-
-
-`__END_AT IS NULL`
-`__START_AT <= date AND (__END_AT > date OR __END_AT IS NULL)`
-
-
+## Watch Out For
+- **Single-underscore column names** — the temporal columns are `__START_AT` and `__END_AT` (double underscore). Using `_START_AT` or `START_AT` returns a "column not found" error that does not explain the real issue.
+- **Using `MAX(__START_AT)` instead of `__END_AT IS NULL`** — both return the current record, but the `IS NULL` filter is a simple predicate the optimizer handles directly. The `MAX` subquery forces a full table scan per key.
+- **Point-in-time queries missing the `OR __END_AT IS NULL` clause** — without it, you exclude any record that is still current on the target date. The query silently returns incomplete results.
+- **Temporal joins without the end-date check** — joining only on `sale_date >= __START_AT` matches every version from the past, not just the one that was active. Always include the `__END_AT` boundary.

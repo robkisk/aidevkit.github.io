@@ -1,168 +1,72 @@
 ---
 title: Package Requirements
-description: Databricks Runtime versions and pip package compatibility.
+description: Get the right package versions installed for model serving across DBR versions and deployment targets.
 sidebar:
   order: 9
 ---
 
+## What You Can Build
 
+You can get your agent or model running on any Databricks Runtime version with the correct package versions, avoiding the dependency conflicts that cause "works on my cluster, fails on the endpoint" failures. The package landscape for MLflow 3, LangGraph, and the Databricks agent stack moves fast -- getting versions right is the difference between a 5-minute deploy and a multi-hour debugging session.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-`%pip install`
-
-`mlflow`
-`langchain`
-`pydantic`
-`pandas``numpy``scipy`
-`scikit-learn`
-`databricks-sdk`
-
-
-
-
+> "Install the full MLflow 3 agent stack on my DBR 16.1+ cluster for building a ResponsesAgent with LangGraph. Use Python."
 
 ```python
 %pip install -U mlflow==3.6.0 databricks-langchain langgraph==0.3.4 databricks-agents pydantic
 dbutils.library.restartPython()
 ```
 
+**Key decisions:**
+- **`mlflow==3.6.0`** -- pin exactly. MLflow 3 introduced `ResponsesAgent` and the file-based logging pattern. Minor versions can introduce breaking changes to the agent interface.
+- **`databricks-langchain`** without a version pin -- this package tracks the runtime and updates frequently. Let it resolve to latest unless you have a known-good version.
+- **`langgraph==0.3.4`** -- pin exactly. LangGraph's API surface changes between minor versions, and the serving endpoint must match.
+- **`dbutils.library.restartPython()`** is mandatory -- without it, the running Python process still has old module versions cached.
 
+## More Patterns
 
+### Memory-Enabled Agent Stack
 
-
-`mlflow``==3.6.0`
-`databricks-langchain`
-`langgraph``==0.3.4`
-`databricks-agents``agents.deploy()`
-`pydantic`
-
-
+> "Install the agent packages with Lakebase memory support. Use Python."
 
 ```python
 %pip install -U mlflow==3.6.0 databricks-langchain[memory] langgraph==0.3.4 databricks-agents
+dbutils.library.restartPython()
 ```
 
+The `[memory]` extra installs Lakebase client libraries for agents that maintain conversation state across sessions.
 
+### Vector Search Agent Stack
+
+> "Install packages for an agent that uses Vector Search as a retriever tool. Use Python."
 
 ```python
 %pip install -U mlflow==3.6.0 databricks-langchain databricks-vectorsearch langgraph==0.3.4
+dbutils.library.restartPython()
 ```
 
+`databricks-vectorsearch` provides `VectorSearchRetrieverTool`, which wraps a vector index as a LangChain tool your agent can call.
 
+### Capture Versions for `pip_requirements`
 
-```python
-%pip install -U mlflow-skinny[databricks] databricks-agents
-```
-
-
-
-
-
-```python
-pip_requirements=[
-    "mlflow==3.6.0",
-    "databricks-langchain",
-    "langgraph==0.3.4",
-    "pydantic",
-]
-```
-
-
+> "Build a pip_requirements list from the versions currently installed on my cluster so my serving endpoint matches exactly. Use Python."
 
 ```python
 from pkg_resources import get_distribution
 
-pip_requirements=[
+pip_requirements = [
     f"mlflow=={get_distribution('mlflow').version}",
     f"databricks-langchain=={get_distribution('databricks-langchain').version}",
     f"langgraph=={get_distribution('langgraph').version}",
 ]
 ```
 
+Use this in your `log_model.py` to capture exact versions from the cluster where your agent is tested and working. The serving endpoint will install these same versions.
 
+### Audit Installed Versions
 
-
-
-```
-mlflow==3.6.0
-databricks-langchain>=0.3.0
-langgraph==0.3.4
-databricks-agents>=0.20.0
-pydantic>=2.0
-```
-
-
-
-```
-mlflow==2.14.0
-langchain==0.2.1
-langchain-openai==0.1.8
-langchain-community==0.2.1
-```
-
-
-
-```
-mlflow>=2.10.0
-scikit-learn>=1.3.0
-pandas>=2.0.0
-```
-
-
-
-
-
-`pip install mlflow>=3.0`
-`langgraph==0.3.4`
-`pydantic>=2.0`
-`pip install databricks-langchain`
-`pip install databricks-agents`
-
-
-
-
-
-```bash
-# Option 1: Host + Token
-export DATABRICKS_HOST="https://your-workspace.databricks.com"
-export DATABRICKS_TOKEN="your-token"
-
-# Option 2: Profile
-export DATABRICKS_CONFIG_PROFILE="your-profile"
-```
-
-
-
-`execute_databricks_command`
-
-```
-execute_databricks_command(
-    code="%pip install -U mlflow==3.6.0 databricks-langchain langgraph==0.3.4 databricks-agents pydantic"
-)
-```
-
-
-
-```
-execute_databricks_command(
-    code="dbutils.library.restartPython()",
-    cluster_id="<cluster_id>",
-    context_id="<context_id>"
-)
-```
-
-
+> "Check which versions of the key agent packages are installed on my cluster. Use Python."
 
 ```python
 import pkg_resources
@@ -176,17 +80,26 @@ for pkg in packages:
         print(f"{pkg}: NOT INSTALLED")
 ```
 
+Run this before and after `%pip install` to confirm the upgrade took effect. Also useful for debugging version mismatch issues between cluster and serving endpoint.
 
+### Set Up Local Environment Variables
 
+> "Configure my local machine to authenticate with Databricks for local testing. Use bash."
+
+```bash
+# Option 1: Host + Token
+export DATABRICKS_HOST="https://your-workspace.databricks.com"
+export DATABRICKS_TOKEN="your-token"
+
+# Option 2: Profile-based (reads from ~/.databrickscfg)
+export DATABRICKS_CONFIG_PROFILE="your-profile"
 ```
-execute_databricks_command(
-    code="""
-import pkg_resources
-for pkg in ['mlflow', 'langchain', 'langgraph', 'pydantic', 'databricks-langchain']:
-    try:
-        print(f"{pkg}: {pkg_resources.get_distribution(pkg).version}")
-    except:
-        print(f"{pkg}: NOT INSTALLED")
-    """
-)
-```
+
+Local testing with `mlflow.models.predict` or direct agent imports requires authentication. These environment variables are read by both the Databricks SDK and MLflow.
+
+## Watch Out For
+
+- **Skipping `restartPython()` after `%pip install`** -- the Python process caches old modules. You will see import errors or stale behavior from the previous version until you restart.
+- **Pinning `databricks-langchain` to an old version** -- this package tracks the Databricks runtime and updates frequently. Unless you have a specific version requirement, let it resolve to latest.
+- **Mismatched versions between cluster and `pip_requirements`** -- the cluster runs `mlflow==3.6.0` but your `log_model.py` says `mlflow>=3.0`. The serving endpoint resolves `>=3.0` differently and breaks. Always capture exact versions.
+- **Using DBR &lt; 16.1 for agent development** -- older runtimes ship with MLflow 2.x and require manual upgrades of many packages. DBR 16.1+ has the GenAI stack pre-installed, saving significant setup time.

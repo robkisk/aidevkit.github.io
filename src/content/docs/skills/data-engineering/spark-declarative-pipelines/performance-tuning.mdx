@@ -1,217 +1,118 @@
 ---
-title: Performance Tuning for SDP
-description: Performance optimization strategies including Liquid Clustering (modern approach), materialized view refresh, state management, and compute configuration.
+title: Performance Tuning
+description: Optimize pipelines with Liquid Clustering, bounded streaming state, materialized view refresh strategies, and table properties.
 sidebar:
   order: 4
 ---
 
+## What You Can Build
 
+Performance tuning turns a working pipeline into one that runs fast at scale. Ask your AI coding assistant to optimize clustering, reduce streaming state, configure materialized view refresh, or set table properties and it will apply the modern defaults — Liquid Clustering over partitioning, bounded state over unbounded aggregations, and push-down filters over late-stage filtering.
 
+## In Action
 
-
-
-
-`PARTITION BY``Z-ORDER`
-
-
-
-
-
-
-
-
-
-
+> "Create a SQL streaming table for events with Liquid Clustering on the columns we filter by most: event_type and event_date"
 
 ```sql
-CREATE OR REPLACE STREAMING TABLE bronze_events
+CREATE OR REFRESH STREAMING TABLE bronze_events
 CLUSTER BY (event_type, event_date)
 AS
 SELECT
   *,
   current_timestamp() AS _ingested_at,
   CAST(current_date() AS DATE) AS event_date
-FROM read_files('/mnt/raw/events/', format => 'json');
+FROM STREAM read_files(
+  '/Volumes/catalog/schema/raw/events/',
+  format => 'json',
+  schemaHints => 'event_id STRING, event_type STRING, event_time TIMESTAMP'
+);
 ```
 
+**Key decisions:**
+- **`CLUSTER BY` replaces `PARTITION BY`** — Liquid Clustering is the modern default. It reorganizes data incrementally without the small-file problem that partitioning creates on high-cardinality columns.
+- **Pick 1-4 columns you filter on** — choose columns that appear in WHERE and JOIN clauses downstream. Order matters less than with partitioning, but put the most selective column first.
+- **No more Z-ORDER** — Liquid Clustering replaces both `PARTITION BY` and `pipelines.autoOptimize.zOrderCols`. One `CLUSTER BY` clause handles both coarse and fine-grained data layout.
 
-```python
-from pyspark import pipelines as dp
+## More Patterns
 
-@dp.table(cluster_by=["event_type", "event_date"])
-def bronze_events():
-    return spark.readStream.format("cloudFiles").load("/data")
-```
-
-
+### Auto clustering when you are unsure which columns to pick
+> "Create a streaming table where Databricks automatically chooses clustering columns based on query patterns"
 
 ```sql
--- Let Databricks choose based on query patterns
-CREATE OR REPLACE STREAMING TABLE bronze_events
+CREATE OR REFRESH STREAMING TABLE bronze_events
 CLUSTER BY (AUTO)
-AS SELECT ...;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-```sql
-CREATE OR REPLACE STREAMING TABLE bronze_events
-CLUSTER BY (event_type, ingestion_date)
-TBLPROPERTIES ('delta.autoOptimize.optimizeWrite' = 'true')
 AS
+SELECT * FROM STREAM read_files(
+  '/Volumes/catalog/schema/raw/events/',
+  format => 'json'
+);
+```
+
+`CLUSTER BY (AUTO)` lets Databricks analyze query patterns and choose clustering columns automatically. Use this when you do not yet know your access patterns or the table serves many different query shapes. You can switch to explicit columns later without rebuilding the table.
+
+### Reduce streaming state with windowed aggregations
+> "Compute hourly event counts per user with bounded state instead of an unbounded running total"
+
+```sql
+CREATE OR REFRESH STREAMING TABLE user_hourly_events AS
 SELECT
-  *,
-  current_timestamp() AS _ingested_at,
-  CAST(current_date() AS DATE) AS ingestion_date
-FROM read_files('/mnt/raw/events/', format => 'json');
+  user_id,
+  window(event_time, '1 hour') AS time_window,
+  COUNT(*) AS event_count
+FROM STREAM bronze_events
+GROUP BY user_id, window(event_time, '1 hour');
 ```
 
+Without a window function, `GROUP BY user_id` maintains state for every user forever. Adding a time window bounds the state — once a window closes, its state can be purged. For roll-up summaries (monthly from daily), use a materialized view on top of the windowed streaming table to avoid compounding state.
 
-
-
-
-
+### Two-tier aggregation — streaming then batch
+> "Build a streaming daily stats table, then a batch monthly rollup on top of it as a materialized view"
 
 ```sql
-CREATE OR REPLACE STREAMING TABLE silver_orders
-CLUSTER BY (customer_id, order_date)
-AS
+CREATE OR REFRESH STREAMING TABLE user_daily_stats AS
 SELECT
-  order_id, customer_id, product_id, amount,
-  CAST(order_timestamp AS DATE) AS order_date,
-  order_timestamp
-FROM STREAM bronze_orders;
-```
+  user_id,
+  DATE(event_time) AS event_date,
+  COUNT(*) AS event_count
+FROM STREAM bronze_events
+GROUP BY user_id, DATE(event_time);
 
-
-
-
-
-
-
-```sql
-CREATE OR REPLACE MATERIALIZED VIEW gold_sales_summary
-CLUSTER BY (product_category, year_month)
-AS
+CREATE OR REPLACE MATERIALIZED VIEW user_monthly_stats AS
 SELECT
-  product_category,
-  DATE_FORMAT(order_date, 'yyyy-MM') AS year_month,
-  SUM(amount) AS total_sales,
-  COUNT(*) AS transaction_count,
-  AVG(amount) AS avg_order_value
-FROM silver_orders
-GROUP BY product_category, DATE_FORMAT(order_date, 'yyyy-MM');
+  user_id,
+  DATE_TRUNC('month', event_date) AS month,
+  SUM(event_count) AS total_events
+FROM user_daily_stats
+GROUP BY user_id, DATE_TRUNC('month', event_date);
 ```
 
+The streaming table handles the incremental ingestion with daily-granularity state. The materialized view does the monthly rollup as a batch read — no streaming state at all. This pattern keeps state manageable while still providing multiple granularities.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+### Table properties for write optimization
+> "Configure a high-volume streaming table with auto-compaction, change data feed, and shorter log retention"
 
 ```sql
-CREATE OR REPLACE STREAMING TABLE events
-PARTITIONED BY (date DATE)
-TBLPROPERTIES ('pipelines.autoOptimize.zOrderCols' = 'user_id,event_type')
-AS SELECT ...;
-```
-
-
-
-
-
-```sql
-CREATE OR REPLACE STREAMING TABLE events
-CLUSTER BY (date, user_id, event_type)
-AS SELECT ...;
-```
-
-
-
-
-
-
-
-`DROP`
-
-
-
-
-
-
-
-
-
-
-
-```sql
-CREATE OR REPLACE STREAMING TABLE bronze_events
+CREATE OR REFRESH STREAMING TABLE bronze_high_volume
+CLUSTER BY (event_date)
 TBLPROPERTIES (
   'delta.autoOptimize.optimizeWrite' = 'true',
-  'delta.autoOptimize.autoCompact' = 'true'
-)
-AS SELECT * FROM read_files(...);
-```
-
-
-
-
-
-```sql
-CREATE OR REPLACE STREAMING TABLE silver_customers
-TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')
-AS SELECT * FROM STREAM bronze_customers;
-```
-
-
-
-
-
-```sql
-CREATE OR REPLACE STREAMING TABLE bronze_high_volume
-TBLPROPERTIES (
+  'delta.autoOptimize.autoCompact' = 'true',
+  'delta.enableChangeDataFeed' = 'true',
   'delta.logRetentionDuration' = '7 days',
   'delta.deletedFileRetentionDuration' = '7 days'
 )
-AS SELECT * FROM read_files(...);
+AS SELECT * FROM STREAM read_files(
+  '/Volumes/catalog/schema/raw/events/',
+  format => 'json'
+);
 ```
 
+`optimizeWrite` coalesces small files during writes. `autoCompact` further combines small files in the background. Together they prevent the small-file problem that degrades read performance on high-volume tables. Shorter retention durations reduce storage costs but limit time travel — 7 days is aggressive, use 30 days if you need longer rollback windows.
 
-
-
-
-
-
-
+### Materialized view refresh scheduling
+> "Create a materialized view for near-real-time metrics that refreshes every 5 minutes, and a daily summary that refreshes once a day"
 
 ```sql
--- Near-real-time (frequent)
 CREATE OR REPLACE MATERIALIZED VIEW gold_live_metrics
 REFRESH EVERY 5 MINUTES
 AS
@@ -222,7 +123,6 @@ SELECT
 FROM silver_metrics
 GROUP BY metric_name;
 
--- Daily reports (scheduled)
 CREATE OR REPLACE MATERIALIZED VIEW gold_daily_summary
 REFRESH EVERY 1 DAY
 AS
@@ -231,237 +131,10 @@ FROM silver_sales
 GROUP BY report_date;
 ```
 
-
-
-
-
-```sql
--- Refreshes incrementally if source has row tracking
-CREATE OR REPLACE MATERIALIZED VIEW gold_aggregates AS
-SELECT
-  product_id,
-  SUM(quantity) AS total_quantity,
-  SUM(amount) AS total_amount
-FROM silver_sales
-GROUP BY product_id;
-```
-
-
-
-
-
-```sql
--- Instead of querying large table repeatedly
-CREATE OR REPLACE MATERIALIZED VIEW orders_monthly AS
-SELECT
-  customer_id,
-  YEAR(order_date) AS year,
-  MONTH(order_date) AS month,
-  SUM(amount) AS total
-FROM large_orders_table
-GROUP BY customer_id, YEAR(order_date), MONTH(order_date);
-
--- Query the MV (fast)
-SELECT * FROM orders_monthly WHERE year = 2024;
-```
-
-
-
-
-
-
-
-```sql
--- High state: Every unique combination creates state
-SELECT
-  user_id,       -- 1M users
-  product_id,    -- 10K products
-  session_id,    -- 100M sessions
-  COUNT(*) AS events
-FROM STREAM bronze_events
-GROUP BY user_id, product_id, session_id;  -- Massive state!
-```
-
-
-
-
-
-```sql
--- Aggregate at higher level
-SELECT
-  user_id,
-  product_category,  -- 100 categories (not 10K products)
-  DATE(event_time) AS event_date,
-  COUNT(*) AS events
-FROM STREAM bronze_events
-GROUP BY user_id, product_category, DATE(event_time);
-```
-
-
-
-```sql
--- Bounded state with windows
-SELECT
-  user_id,
-  window(event_time, '1 hour') AS time_window,
-  COUNT(*) AS events
-FROM STREAM bronze_events
-GROUP BY user_id, window(event_time, '1 hour');
-```
-
-
-
-```sql
--- Streaming aggregation (maintains state)
-CREATE OR REPLACE STREAMING TABLE user_daily_stats AS
-SELECT
-  user_id,
-  DATE(event_time) AS event_date,
-  COUNT(*) AS event_count
-FROM STREAM bronze_events
-GROUP BY user_id, DATE(event_time);
-
--- Batch aggregation (no streaming state)
-CREATE OR REPLACE MATERIALIZED VIEW user_monthly_stats AS
-SELECT
-  user_id,
-  DATE_TRUNC('month', event_date) AS month,
-  SUM(event_count) AS total_events
-FROM user_daily_stats
-GROUP BY user_id, DATE_TRUNC('month', event_date);
-```
-
-
-
-
-
-
-
-```sql
--- Small static dimension, large streaming fact
-CREATE OR REPLACE STREAMING TABLE sales_enriched AS
-SELECT
-  s.sale_id, s.product_id, s.amount,
-  p.product_name, p.category  -- From small static table
-FROM STREAM bronze_sales s
-LEFT JOIN dim_products p ON s.product_id = p.product_id;
-```
-
-
-
-
-
-```sql
--- Time bounds limit state retention
-CREATE OR REPLACE STREAMING TABLE orders_with_payments AS
-SELECT
-  o.order_id, o.amount AS order_amount,
-  p.payment_id, p.amount AS payment_amount
-FROM STREAM bronze_orders o
-INNER JOIN STREAM bronze_payments p
-  ON o.order_id = p.order_id
-  AND p.payment_time BETWEEN o.order_time AND o.order_time + INTERVAL 1 HOUR;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```yaml
-execution_mode: continuous  # or triggered
-serverless: true
-```
-
-
-
-
-
-
-
-
-
-```sql
--- ✅ Filter at source
-CREATE OR REPLACE STREAMING TABLE silver_recent AS
-SELECT *
-FROM STREAM bronze_events
-WHERE event_date >= CURRENT_DATE() - INTERVAL 7 DAYS;
-
--- ❌ Filter late
-CREATE OR REPLACE STREAMING TABLE silver_all AS
-SELECT * FROM STREAM bronze_events;
-
-CREATE OR REPLACE MATERIALIZED VIEW gold_recent AS
-SELECT * FROM silver_all
-WHERE event_date >= CURRENT_DATE() - INTERVAL 7 DAYS;
-```
-
-
-
-```sql
--- ❌ Reads all columns
-SELECT * FROM large_table;
-
--- ✅ Only needed columns
-SELECT customer_id, order_date, amount FROM large_table;
-```
-
-
-
-```sql
--- ❌ Expensive on high-cardinality
-SELECT DISTINCT transaction_id FROM huge_table;
-
--- ✅ Better
-SELECT transaction_id, COUNT(*) FROM huge_table GROUP BY transaction_id;
-```
-
-
-
-
-
-
-
-```sql
--- Data freshness
-SELECT
-  table_name,
-  MAX(event_timestamp) AS latest_event,
-  CURRENT_TIMESTAMP() AS now,
-  TIMESTAMPDIFF(MINUTE, MAX(event_timestamp), CURRENT_TIMESTAMP()) AS lag_minutes
-FROM pipeline_monitoring.table_metrics
-GROUP BY table_name;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+`REFRESH EVERY` controls how often the materialized view recomputes. Match the refresh interval to the business need — dashboards that update every 5 minutes justify the compute cost, but batch reports do not. Materialized views also refresh incrementally when the source table has row tracking enabled.
+
+## Watch Out For
+- **Still using `PARTITION BY`** — it still works, but Liquid Clustering (`CLUSTER BY`) is strictly better. It handles high-cardinality columns, does not create small files, and can be changed without rebuilding the table.
+- **Unbounded `GROUP BY` in streaming tables** — `GROUP BY user_id` without a time window grows state proportionally to the number of distinct users, forever. Add `window()` or use a materialized view for the aggregation.
+- **Filtering late in the pipeline** — a silver table that selects everything from bronze, followed by a gold materialized view with a WHERE clause, reads all data twice. Push filters as early as possible in the streaming chain.
+- **Missing `CLUSTER BY` on gold tables** — gold tables serve BI tools and dashboards. Without clustering, every dashboard query scans the full table. Cluster on the dimensions users filter by most (date, category, region).

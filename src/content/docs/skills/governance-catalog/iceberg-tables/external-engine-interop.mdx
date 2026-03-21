@@ -1,81 +1,51 @@
 ---
 title: External Engine Interoperability
-description: This file covers connecting external engines to Databricks via the Iceberg REST Catalog (IRC).
+description: Connect PyIceberg, OSS Spark, and other engines to Databricks-managed Iceberg tables via the IRC endpoint.
 sidebar:
   order: 5
 ---
 
+## What You Can Build
 
+Any Iceberg-compatible engine can connect to Databricks through the IRC endpoint and work with your Unity Catalog tables directly. PyIceberg for lightweight Python reads and writes without Spark. OSS Spark for existing Spark clusters outside Databricks. EMR, Flink, Kafka Connect for streaming pipelines. The IRC handles auth and credential vending -- you configure the catalog connection once and use standard Iceberg APIs from there.
 
+## In Action
 
-
-`EXTERNAL USE SCHEMA`
-
-
-
-
-
-
-
-
-
-
-
-
-
-`pyarrow``adlfs`
-
-```bash
-pip install --upgrade "pyiceberg>=0.9,<0.10" "pyarrow>=17,<20"
-pip install adlfs
-```
-
-
-
-```bash
-pip install "pyiceberg[pyarrow]>=0.9"
-```
-
-
-
-`warehouse``<schema>.<table>``<catalog>.<schema>.<table>`
+> "Write Python to connect PyIceberg to a Databricks workspace, read a table with a filter, and append new rows."
 
 ```python
 from pyiceberg.catalog import load_catalog
 
 catalog = load_catalog(
     "uc",
-    uri="https://<workspace-url>/api/2.1/unity-catalog/iceberg-rest",
-    warehouse="<uc-catalog-name>",  # Unity Catalog catalog name
-    token="<pat-token>",
+    uri="https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest",
+    warehouse="analytics",
+    token="dapi_your_pat_token",
 )
-```
 
-
-
-```python
-# Load table — identifier is <schema>.<table> because 'warehouse' pins the UC catalog
-tbl = catalog.load_table("<schema>.<table>")
-
-# Inspect schema and current snapshot
-print(tbl)                    # schema, partitioning, snapshot summary
-print(tbl.current_snapshot()) # snapshot metadata
-
-# Read sample rows
-df = tbl.scan(limit=10).to_pandas()
-print(df.head())
-
-# Pushdown filter (SQL-style filter strings are supported)
+# Read with pushdown filter
+tbl = catalog.load_table("gold.order_events")
 df = tbl.scan(
-    row_filter="event_date >= '2025-01-01'",
+    row_filter="order_date >= '2025-01-01'",
     limit=1000,
 ).to_pandas()
 
-# Read as Arrow
-arrow_table = tbl.scan().to_arrow()
+# Inspect schema and snapshot
+print(tbl)
+print(tbl.current_snapshot())
 ```
 
+**Key decisions:**
+- **`warehouse` pins the UC catalog** -- all subsequent table identifiers use `schema.table`, not `catalog.schema.table`
+- **PyIceberg reads go directly to cloud storage** -- the IRC vends temporary credentials, so PyIceberg reads Parquet files from S3/ADLS/GCS without going through Databricks compute
+- **Writes only work on managed Iceberg tables** -- UniForm and Compatibility Mode tables are read-only from external engines
+- **Upgrade pyarrow explicitly** -- the bundled pyarrow v15 on serverless causes write errors. Pin `pyarrow>=17,<20` and install `adlfs` for Azure
 
+## More Patterns
+
+### Write data from PyIceberg
+
+> "Write Python to append rows to a Databricks-managed Iceberg table using PyIceberg and PyArrow."
 
 ```python
 import pyarrow as pa
@@ -83,15 +53,14 @@ from pyiceberg.catalog import load_catalog
 
 catalog = load_catalog(
     "uc",
-    uri="https://<workspace-url>/api/2.1/unity-catalog/iceberg-rest",
-    warehouse="<uc-catalog-name>",
-    token="<pat-token>",
+    uri="https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest",
+    warehouse="analytics",
+    token="dapi_your_pat_token",
 )
 
-tbl = catalog.load_table("<schema>.<table>")
+tbl = catalog.load_table("gold.inventory")
 
-# Schema must match the Iceberg table schema exactly — use explicit Arrow types
-# PyArrow defaults to int64; if the Iceberg table uses int (32-bit), cast explicitly
+# Schema must match exactly -- PyArrow defaults to int64, cast explicitly if table uses int32
 arrow_schema = pa.schema([
     pa.field("id",   pa.int32()),
     pa.field("name", pa.string()),
@@ -99,49 +68,30 @@ arrow_schema = pa.schema([
 ])
 
 rows = [
-    {"id": 1, "name": "foo", "qty": 10},
-    {"id": 2, "name": "bar", "qty": 20},
+    {"id": 1, "name": "widget-a", "qty": 100},
+    {"id": 2, "name": "widget-b", "qty": 250},
 ]
 arrow_tbl = pa.Table.from_pylist(rows, schema=arrow_schema)
-
 tbl.append(arrow_tbl)
-
-# Verify
-print("Current snapshot:", tbl.current_snapshot())
 ```
 
+PyArrow defaults to int64 for integers. If the Iceberg table schema uses int32, the append fails with a schema mismatch. Always define an explicit Arrow schema that matches the table definition.
 
+### Connect OSS Spark with OAuth
 
-
-
-
-
-
-
-
-
-
-
-`org.apache.iceberg:iceberg-aws-bundle:<version>`
-`org.apache.iceberg:iceberg-azure-bundle:<version>`
-`org.apache.iceberg:iceberg-gcp-bundle:<version>`
-
-
-
-`rest.auth.type=oauth2`
+> "Write Python to configure an external Spark session to read and write Databricks-managed Iceberg tables using OAuth."
 
 ```python
 from pyspark.sql import SparkSession
 
-WORKSPACE_URL       = "https://<workspace-url>"
-UC_CATALOG_NAME     = "<uc-catalog-name>"
-OAUTH_CLIENT_ID     = "<oauth-client-id>"
-OAUTH_CLIENT_SECRET = "<oauth-client-secret>"
-CATALOG_ALIAS       = "uc"    # arbitrary name used to reference this catalog in Spark SQL
+WORKSPACE_URL       = "https://my-workspace.cloud.databricks.com"
+UC_CATALOG_NAME     = "analytics"
+OAUTH_CLIENT_ID     = "your-client-id"
+OAUTH_CLIENT_SECRET = "your-client-secret"
 ICEBERG_VER         = "1.7.1"
 
 RUNTIME      = f"org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:{ICEBERG_VER}"
-CLOUD_BUNDLE = f"org.apache.iceberg:iceberg-aws-bundle:{ICEBERG_VER}"   # or azure/gcp-bundle
+CLOUD_BUNDLE = f"org.apache.iceberg:iceberg-aws-bundle:{ICEBERG_VER}"
 
 spark = (
     SparkSession.builder
@@ -149,63 +99,51 @@ spark = (
     .config("spark.jars.packages", f"{RUNTIME},{CLOUD_BUNDLE}")
     .config("spark.sql.extensions",
             "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-    .config(f"spark.sql.catalog.{CATALOG_ALIAS}",
+    .config("spark.sql.catalog.uc",
             "org.apache.iceberg.spark.SparkCatalog")
-    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.type", "rest")
-    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.rest.auth.type", "oauth2")
-    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.uri",
+    .config("spark.sql.catalog.uc.type", "rest")
+    .config("spark.sql.catalog.uc.rest.auth.type", "oauth2")
+    .config("spark.sql.catalog.uc.uri",
             f"{WORKSPACE_URL}/api/2.1/unity-catalog/iceberg-rest")
-    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.oauth2-server-uri",
+    .config("spark.sql.catalog.uc.oauth2-server-uri",
             f"{WORKSPACE_URL}/oidc/v1/token")
-    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.credential",
+    .config("spark.sql.catalog.uc.credential",
             f"{OAUTH_CLIENT_ID}:{OAUTH_CLIENT_SECRET}")
-    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.scope", "all-apis")
-    .config(f"spark.sql.catalog.{CATALOG_ALIAS}.warehouse", UC_CATALOG_NAME)
+    .config("spark.sql.catalog.uc.scope", "all-apis")
+    .config("spark.sql.catalog.uc.warehouse", UC_CATALOG_NAME)
     .getOrCreate()
 )
 
-# List schemas
-spark.sql(f"SHOW NAMESPACES IN {CATALOG_ALIAS}").show(truncate=False)
-
-# Query
-spark.sql(f"SELECT * FROM {CATALOG_ALIAS}.<schema>.<table>").show()
+# Query via Spark SQL
+spark.sql("SELECT * FROM uc.gold.order_events").show()
 
 # Write (managed Iceberg tables only)
-df.writeTo(f"{CATALOG_ALIAS}.<schema>.<table>").append()
+df.writeTo("uc.gold.order_events").append()
 ```
 
+Two JARs are required: the Spark runtime and a cloud-specific bundle. Use `iceberg-aws-bundle` for AWS, `iceberg-azure-bundle` for Azure, or `iceberg-gcp-bundle` for GCP. This configuration is for Spark outside Databricks only -- inside DBR, use the built-in Iceberg support and never install the Iceberg library.
 
+### Query from Spark SQL after session setup
+
+> "Show the Spark SQL statements for listing schemas, querying, and inserting into a Databricks-managed Iceberg table."
 
 ```sql
 -- List schemas
 SHOW NAMESPACES IN uc;
 
 -- Query
-SELECT * FROM uc.<schema>.<table>;
+SELECT * FROM uc.gold.order_events
+WHERE order_date >= '2025-01-01';
 
--- Insert
-INSERT INTO uc.<schema>.<table> VALUES (1, 'foo', 10);
+-- Insert (managed Iceberg tables only)
+INSERT INTO uc.gold.order_events VALUES (42, 'purchase', '2025-07-01', '{}');
 ```
 
+Once the Spark session is configured with the IRC catalog, standard Spark SQL works as expected. The catalog alias (`uc` in this example) is arbitrary -- pick any name that makes sense for your context.
 
+## Watch Out For
 
-
-
-
-
-`403 Forbidden`
-`403 Forbidden``EXTERNAL USE SCHEMA`
-`Table not found``warehouse`
-
-
-`OPTIMIZE`
-
-`pa.int32()`
-`>=17``adlfs`
-
-
-
-
-
-
-
+- **Never install Iceberg JARs inside Databricks Runtime** -- DBR includes built-in support. Adding a library causes class conflicts. This configuration is strictly for external Spark clusters.
+- **403 Forbidden usually means IP access lists, not credentials** -- if the workspace has IP access lists enabled, add the client's egress CIDR to the allowlist before debugging auth. Check via Admin Console under Settings, Security, IP access list.
+- **PyArrow schema mismatches fail silently on reads, loudly on writes** -- reads may cast types automatically, but writes require exact type matching. Always define explicit Arrow schemas.
+- **Iceberg v3 tables require library 1.9.0+** -- older Iceberg client libraries cannot read v3 tables. If you get unexpected errors on a table that recently upgraded, check the client library version.

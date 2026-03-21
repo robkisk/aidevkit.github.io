@@ -1,77 +1,62 @@
 ---
-title: MLflow 3 Judge Alignment with MemAlign
-description: Patterns for aligning LLM judges to domain expert preferences using MemAlign.
+title: Judge Alignment with MemAlign
+description: Align LLM judges to match domain expert preferences so evaluation reflects what your team actually cares about.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+You can make your LLM judge score agent responses the way your domain experts would. Out-of-the-box judges apply generic quality standards -- they do not know that your legal team cares about citation format or that your support team values empathy over brevity. MemAlign distills expert feedback into the judge's instructions so it evaluates with domain-specific criteria. The result is a judge you can trust for production monitoring, regression detection, and automated prompt optimization.
 
-`GOTCHAS.md`
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`feedback_value_type`
+> "Design a base judge for evaluating my agent's response quality on a 1-5 scale, then register it to my experiment. Use Python."
 
 ```python
 import mlflow
 from mlflow.genai.judges import make_judge
-from mlflow.genai import evaluate
 
 mlflow.set_experiment(experiment_id=EXPERIMENT_ID)
 
-# Define base judge using make_judge -- MemAlign works with any feedback type
-# This example uses a Likert scale (1-5 float), but boolean or categorical also work
 domain_quality_judge = make_judge(
     name="domain_quality_base",
     instructions=(
-        "Evaluate if the response in {{ outputs }} appropriately analyzes the available data "
-        "and provides an actionable recommendation to the question in {{ inputs }}. "
-        "The response should be accurate, contextually relevant, and give a strategic advantage "
-        "to the person making the request. "
-        "Your grading criteria: "
-        " 1: Completely unacceptable. Incorrect data interpretation or no recommendations. "
-        " 2: Mostly unacceptable. Irrelevant or spurious feedback or weak recommendations with minimal strategic advantage. "
-        " 3: Somewhat acceptable. Relevant feedback provided with some strategic advantage. "
-        " 4: Mostly acceptable. Relevant feedback provided with strong strategic advantage. "
-        " 5: Completely acceptable. Relevant feedback provided with excellent strategic advantage."
+        "Evaluate if the response in {{ outputs }} appropriately addresses "
+        "the question in {{ inputs }}. The response should be accurate, "
+        "contextually relevant, and actionable. "
+        "Grading criteria: "
+        " 1: Completely unacceptable. Incorrect or no recommendation. "
+        " 2: Mostly unacceptable. Weak recommendations, minimal value. "
+        " 3: Somewhat acceptable. Relevant with some strategic value. "
+        " 4: Mostly acceptable. Relevant with strong strategic value. "
+        " 5: Completely acceptable. Excellent strategic value."
     ),
-    feedback_value_type=float,   # Example uses a Likert scale; MemAlign works with any feedback type
+    feedback_value_type=float,
     model=JUDGE_MODEL,
 )
 
-# Register to experiment — creates the persistent record used by align()
-registered_base_judge = domain_quality_judge.register(experiment_id=EXPERIMENT_ID)
-print(f"Registered base judge: {registered_base_judge.name}")
+registered_judge = domain_quality_judge.register(experiment_id=EXPERIMENT_ID)
 ```
 
+**Key decisions:**
+- **`make_judge` is scorer-agnostic** -- works with `float` (Likert), `bool` (pass/fail), or categorical feedback types
+- **`name` must match your labeling schema** -- `align()` pairs SME feedback with judge scores using this name
+- **`\{\{ outputs \}\}` and `\{\{ inputs \}\}`** are template variables that get filled from evaluation data
+- **Register the judge to an experiment** to make it retrievable in later sessions
 
+## More Patterns
 
+### Run Evaluation and Tag Traces for Expert Review
 
-
-`evaluate()`
+> "Evaluate my agent with the base judge and tag the successful traces for domain expert review. Use Python."
 
 ```python
 from mlflow.genai import evaluate
 
-# Eval dataset: inputs only (no expectations needed at this stage)
 eval_data = [
-    {"inputs": {"input": [{"role": "user", "content": question}]}}
-    for question in example_questions
+    {"inputs": {"input": [{"role": "user", "content": q}]}}
+    for q in example_questions
 ]
 
 results = evaluate(
@@ -80,178 +65,135 @@ results = evaluate(
     scorers=[domain_quality_judge],
 )
 
-# Tag traces that were successfully evaluated in this evaluate() job
-# "OK" state means the agent responded AND the judge scored it without errors
-ok_trace_ids = results.result_df.loc[results.result_df["state"] == "OK", "trace_id"]
-for trace_id in ok_trace_ids:
+# Tag traces that were successfully scored
+ok_traces = results.result_df.loc[results.result_df["state"] == "OK", "trace_id"]
+for trace_id in ok_traces:
     mlflow.set_trace_tag(trace_id=trace_id, key="eval", value="complete")
 
-print(f"Tagged {len(ok_trace_ids)} successfully evaluated traces for labeling")
+print(f"Tagged {len(ok_traces)} traces for expert labeling")
 ```
 
+Only tag traces where the agent responded and the judge scored successfully. Sending error traces to domain experts wastes their time and skews alignment.
 
+### Create a Labeling Session for Domain Experts
 
-
-
-
-
-`name``name``evaluate()``align()`
+> "Build a Unity Catalog dataset from tagged traces and create a labeling session for SME review. Use Python."
 
 ```python
 from mlflow.genai.datasets import create_dataset, get_dataset
-from mlflow.genai import create_labeling_session, get_review_app
+from mlflow.genai import create_labeling_session
 from mlflow.genai import label_schemas
 
 # Build persistent dataset from tagged traces
-try:
-    eval_dataset = get_dataset(name=DATASET_NAME)
-except Exception:
-    eval_dataset = create_dataset(name=DATASET_NAME)
-
+eval_dataset = create_dataset(name=DATASET_NAME)
 tagged_traces = mlflow.search_traces(
     locations=[EXPERIMENT_ID],
     filter_string="tag.eval = 'complete'",
     return_type="pandas",
 )
-# merge_records() expects 'inputs' and 'outputs' column names
-if "inputs" not in tagged_traces.columns and "request" in tagged_traces.columns:
-    tagged_traces = tagged_traces.rename(columns={"request": "inputs"})
-if "outputs" not in tagged_traces.columns and "response" in tagged_traces.columns:
-    tagged_traces = tagged_traces.rename(columns={"response": "outputs"})
-
+tagged_traces = tagged_traces.rename(
+    columns={"request": "inputs", "response": "outputs"}
+)
 eval_dataset = eval_dataset.merge_records(tagged_traces)
 
-# CRITICAL: The label schema name MUST match the judge name used in evaluate()
-# This is how align() pairs SME feedback with LLM judge scores on the same traces
-LABEL_SCHEMA_NAME = "domain_quality_base"  # Must match the judge name exactly
-
+# CRITICAL: Schema name MUST match the judge name from make_judge()
 feedback_schema = label_schemas.create_label_schema(
-    name=LABEL_SCHEMA_NAME,               # Must match judge name from Pattern 1
+    name="domain_quality_base",
     type="feedback",
-    title=LABEL_SCHEMA_NAME,
+    title="domain_quality_base",
     input=label_schemas.InputNumeric(min_value=1.0, max_value=5.0),
-    instruction=(
-        "Evaluate if the response appropriately analyzes the available data and provides "
-        "an actionable recommendation for the question. The response should be accurate, "
-        "contextually relevant, and give a strategic advantage to the person making the request. "
-        "\n\n Your grading criteria should be: "
-        "\n 1: Completely unacceptable. Incorrect data interpretation or no recommendations."
-        "\n 2: Mostly unacceptable. Irrelevant or spurious feedback or weak recommendations with minimal strategic advantage."
-        "\n 3: Somewhat acceptable. Relevant feedback provided with some strategic advantage."
-        "\n 4: Mostly acceptable. Relevant feedback provided with strong strategic advantage."
-        "\n 5: Completely acceptable. Relevant feedback provided with excellent strategic advantage."
-    ),
-    enable_comment=True,   # Allow SMEs to leave free-text rationale (used by MemAlign)
+    instruction="Rate the response quality from 1 (unacceptable) to 5 (excellent).",
+    enable_comment=True,
     overwrite=True,
 )
 
-# Optional: add a deployed agent to the Review App so SMEs can ask new questions
-review_app = get_review_app(experiment_id=EXPERIMENT_ID)
-review_app = review_app.add_agent(
-    agent_name=MODEL_NAME,
-    model_serving_endpoint=AGENT_ENDPOINT_NAME,
-    overwrite=True,
-)
-
-# Create labeling session and attach the dataset
 labeling_session = create_labeling_session(
-    name=f"{LABELING_SESSION_NAME}_sme",
-    assigned_users=ASSIGNED_USERS,
-    label_schemas=[LABEL_SCHEMA_NAME],     # Must match judge name
+    name="quality_review_sme",
+    assigned_users=["expert1@company.com", "expert2@company.com"],
+    label_schemas=["domain_quality_base"],
 )
 labeling_session = labeling_session.add_dataset(dataset_name=DATASET_NAME)
 
-print(f"Share with domain experts: {labeling_session.url}")
-# Domain experts open this URL and rate each response using the 1-5 scale
+print(f"Share with experts: {labeling_session.url}")
 ```
 
+The label schema `name` must match the judge `name` exactly. This is how `align()` pairs expert ratings with the judge's scores on the same traces. A mismatch causes alignment to fail silently.
 
+### Align the Judge with MemAlign
 
-
-
-
-
-
+> "After domain experts have completed labeling, align the judge to match their preferences using MemAlign. Use Python."
 
 ```python
 from mlflow.genai.judges.optimizers import MemAlignOptimizer
 from mlflow.genai.scorers import get_scorer
 
-# Fetch the tagged traces (which now have SME labels attached)
 traces_for_alignment = mlflow.search_traces(
     locations=[EXPERIMENT_ID],
     filter_string="tag.eval = 'complete'",
-    return_type="list",   # align() requires list format
+    return_type="list",
 )
-print(f"Aligning on {len(traces_for_alignment)} traces")
 
-# Configure MemAlign optimizer
-# Other optimizers are available (e.g., SIMBA), but MemAlign is recommended for its
-# speed, cost efficiency, and ability to improve continuously as feedback accumulates
 optimizer = MemAlignOptimizer(
-    reflection_lm=REFLECTION_MODEL,                       # Model for guideline distillation
-    retrieval_k=5,                                        # Examples to retrieve per evaluation
+    reflection_lm=REFLECTION_MODEL,
+    retrieval_k=5,
     embedding_model="databricks:/databricks-gte-large-en",
-    # Defaults to "openai/text-embedding-3-small" if not set -- see GOTCHAS.md
 )
 
-# Load the registered base judge and run alignment
 base_judge = get_scorer(name="domain_quality_base")
 aligned_judge = base_judge.align(
     traces=traces_for_alignment,
     optimizer=optimizer,
 )
 
-# Inspect distilled semantic guidelines — these encode expert preferences
-print("Distilled Guidelines from SME feedback:")
+# Register the aligned version
+aligned_judge.update(experiment_id=EXPERIMENT_ID)
+
+# Inspect what MemAlign learned from experts
 for i, guideline in enumerate(aligned_judge._semantic_memory, 1):
     print(f"  {i}. {guideline.guideline_text}")
-    if guideline.source_trace_ids:
-        print(f"     Derived from {len(guideline.source_trace_ids)} trace(s)")
 ```
 
+MemAlign distills expert feedback patterns into semantic guidelines that augment the judge's instructions. It runs in seconds, not minutes, and improves continuously as you add more expert feedback without re-optimization.
 
+### Register and Retrieve the Aligned Judge
 
-
-
-
+> "Save the aligned judge for reuse across sessions and show both registration options. Use Python."
 
 ```python
 from mlflow.genai.scorers import ScorerSamplingConfig
 
-# Option A: Update the existing judge record in-place (recommended for iterative alignment)
+# Option A: Update the existing judge in-place (iterative alignment)
 aligned_judge_registered = aligned_judge.update(
     experiment_id=EXPERIMENT_ID,
     sampling_config=ScorerSamplingConfig(sample_rate=0.0),
 )
-print(f"Updated judge: {aligned_judge_registered.name}")
 
-# Option B: Register as a new named version (preserves the original for comparison)
+# Option B: Register as a new named version (preserves the original)
 from mlflow.genai.judges import make_judge
 
 aligned_judge_v2 = make_judge(
     name="domain_quality_aligned_v1",
-    instructions=aligned_judge.instructions,  # Includes distilled guidelines
-    feedback_value_type=float,                # Match the original judge's feedback type
+    instructions=aligned_judge.instructions,
+    feedback_value_type=float,
     model=JUDGE_MODEL,
 )
 aligned_judge_v2 = aligned_judge_v2.register(experiment_id=EXPERIMENT_ID)
 
 # Retrieve in a later session
-# NOTE: Episodic memory is lazily loaded — inspect .instructions, not ._episodic_memory
 from mlflow.genai.scorers import get_scorer
 
-retrieved_judge = get_scorer(name="domain_quality_base", experiment_id=EXPERIMENT_ID)
-print(retrieved_judge.instructions[:500])  # Shows aligned instructions with guidelines
+retrieved_judge = get_scorer(
+    name="domain_quality_base", experiment_id=EXPERIMENT_ID
+)
+# Inspect .instructions to see guidelines, not ._episodic_memory (lazily loaded)
+print(retrieved_judge.instructions[:500])
 ```
 
+Option A is best for iterative improvement -- each alignment round refines the same judge. Option B is best when you want to compare aligned vs. unaligned side by side.
 
+### Re-evaluate with the Aligned Judge
 
-
-
-
-
-`optimize_prompts()`
+> "Run a baseline evaluation with the aligned judge and understand why scores may be lower. Use Python."
 
 ```python
 from mlflow.genai import evaluate
@@ -259,17 +201,11 @@ from mlflow.genai.scorers import get_scorer
 from mlflow.genai.datasets import get_dataset
 
 aligned_judge = get_scorer(name="domain_quality_base", experiment_id=EXPERIMENT_ID)
-
 eval_dataset = get_dataset(name=DATASET_NAME)
-df = eval_dataset.to_df()
 
 eval_records = [
-    {
-        "inputs": {
-            "input": [{"role": "user", "content": extract_user_message(row)}]
-        }
-    }
-    for row in df["inputs"]
+    {"inputs": {"input": [{"role": "user", "content": extract_user_message(row)}]}}
+    for row in eval_dataset.to_df()["inputs"]
 ]
 
 with mlflow.start_run(run_name="aligned_judge_baseline"):
@@ -280,42 +216,16 @@ with mlflow.start_run(run_name="aligned_judge_baseline"):
     )
 
 print(f"Aligned judge baseline metrics: {baseline_results.metrics}")
-# NOTE: If scores are lower than the unaligned judge, that is expected.
+# NOTE: Lower scores than the unaligned judge are expected.
 # The aligned judge is more accurate, not less generous.
 ```
 
+Do not panic if aligned judge scores drop. The unaligned judge was underspecified -- it gave high scores because it did not know your domain's standards. The aligned judge reflects what your experts actually care about.
 
+## Watch Out For
 
-
-
-
-
-
-```python
-from mlflow.genai.scorers import ScorerSamplingConfig
-
-aligned_judge = get_scorer(name="domain_quality_base", experiment_id=EXPERIMENT_ID)
-monitoring_judge = aligned_judge.start(
-    sampling_config=ScorerSamplingConfig(sample_rate=0.1)  # Score 10% of production traffic
-)
-```
-
-`patterns-prompt-optimization.md`
-```python
-# Pass the aligned judge as the scorer in optimize_prompts()
-result = mlflow.genai.optimize_prompts(
-    predict_fn=predict_fn,
-    train_data=optimization_dataset,
-    prompt_uris=[prompt.uri],
-    optimizer=GepaPromptOptimizer(reflection_model=REFLECTION_MODEL),
-    scorers=[aligned_judge],   # ← aligned judge drives GEPA's reflection
-)
-```
-
-
-```python
-with mlflow.start_run(run_name="agent_v2"):
-    v2_results = evaluate(data=eval_records, predict_fn=agent_v2, scorers=[aligned_judge])
-
-# Metrics from aligned judge are more meaningful than unaligned LLM judge
-```
+- **Label schema name mismatch** -- the label schema `name` in the labeling session MUST match the judge `name` used in `evaluate()`. Mismatches cause `align()` to silently fail.
+- **Aligned judge scores lower than unaligned** -- this is expected and correct. A lower score from a calibrated judge is a better signal than an inflated score from a generic one.
+- **Episodic memory is lazily loaded** -- `get_scorer()` and printing the result will not show episodic memory. Inspect `.instructions` instead. Memory loads on first use during evaluation.
+- **Forgetting to set `embedding_model`** -- MemAlign defaults to `openai/text-embedding-3-small`. On Databricks, explicitly use `databricks:/databricks-gte-large-en` to avoid external API calls.
+- **Sending error traces to experts** -- only tag traces where both the agent and judge succeeded. Error traces waste expert time and produce noisy alignment data.

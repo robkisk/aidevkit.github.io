@@ -1,329 +1,140 @@
 ---
-title: Troubleshooting Guide
-description: Common issues and solutions for synthetic data generation.
+title: Troubleshooting
+description: Fix common errors in synthetic data generation -- serverless limitations, dependency issues, and performance problems.
 sidebar:
   order: 6
 ---
 
+## What You Can Build
 
+You can diagnose and fix the errors that come up during synthetic data generation without trial-and-error. The most common issues fall into three categories: serverless compute limitations (`.cache()` not supported), dependency installation failures (`ModuleNotFoundError`), and performance problems (slow UDFs, out-of-memory). Each has a specific cause and a specific fix.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-`DatabricksEnv().withDependencies("faker", "pandas", ...)`
-`environments`
-`faker holidays`
-`databricks libraries install --json '{"cluster_id": "<cluster_id>", "libraries": [{"pypi": {"package": "faker"}}, {"pypi": {"package": "holidays"}}]}'`
+> "My generation script fails with 'PERSIST TABLE is not supported on serverless compute' when I try to cache the customers table for FK joins. Fix it. Use Python with PySpark."
 
 ```python
-# For DB Connect 16.4+
+# BAD -- fails on serverless
+customers_df = spark.range(0, N_CUSTOMERS)  # ... generate columns
+customers_df.cache()  # AnalysisException: PERSIST TABLE is not supported on serverless
+
+# GOOD -- write to Delta, then read back
+customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
+customer_lookup = spark.table(f"{CATALOG}.{SCHEMA}.customers")
+```
+
+**Key decisions:**
+- **Never use `.cache()` or `.persist()` on serverless** -- these operations are fundamentally not supported. This is not a bug, it is a serverless compute limitation.
+- **Write to Delta, read back** is the only reliable pattern for reusing a DataFrame across multiple downstream joins on serverless. It materializes the data once and makes it available for all subsequent reads.
+- **Master tables first, child tables second** -- generate customers, write to Delta, read back the lookup columns, then generate orders with FK joins to the lookup.
+
+## More Patterns
+
+### Fix ModuleNotFoundError for Faker
+
+> "My Pandas UDF fails with ModuleNotFoundError: No module named 'faker' on the executor. Fix it. Use Python."
+
+```python
+# For Databricks Connect 16.4+
 from databricks.connect import DatabricksSession, DatabricksEnv
 
 env = DatabricksEnv().withDependencies("faker", "pandas", "numpy", "holidays")
 spark = DatabricksSession.builder.withEnvironment(env).serverless(True).getOrCreate()
 ```
 
+The `ModuleNotFoundError` happens because Faker is installed on the driver but not on the executor. `DatabricksEnv().withDependencies()` pushes dependencies to the remote compute. For serverless jobs, use the `environments` spec with `"client": "4"`. For classic clusters, install libraries via the CLI.
 
+### Fix DatabricksEnv Import Error
 
-
-
-
+> "I get ImportError: cannot import name 'DatabricksEnv' from databricks.connect. Fix it. Use bash."
 
 ```bash
-# Upgrade (prefer uv, fall back to pip)
+# Check your version
+uv run python -c "import importlib.metadata; print(importlib.metadata.version('databricks-connect'))"
+
+# Upgrade to 16.4+
 uv pip install "databricks-connect>=16.4,<17.4"
-# or: pip install "databricks-connect>=16.4,<17.4"
-
-# Or use job with environments parameter instead
 ```
 
+`DatabricksEnv` was introduced in Databricks Connect 16.4. Older versions do not have it. Upgrade, or fall back to installing libraries on a classic cluster.
 
+### Fix Slow Faker UDFs
 
-
-
-`~/.databrickscfg`
-
-```ini
-[DEFAULT]
-host = https://your-workspace.cloud.databricks.com/
-serverless_compute_id = auto
-auth_type = databricks-cli
-```
-
-
-
-
-
-
-
-`.cache()``.persist()`
-```
-AnalysisException: [NOT_SUPPORTED_WITH_SERVERLESS] PERSIST TABLE is not supported on serverless compute.
-```
-
-
-
-
+> "My data generation takes forever to produce 1M rows. Speed it up. Use Python with PySpark."
 
 ```python
-# BAD - will fail on serverless
-customers_df = spark.range(0, N_CUSTOMERS)...
-customers_df.cache()  # ❌ FAILS: "PERSIST TABLE is not supported on serverless compute"
-
-# GOOD - write to Delta, then read back
-customers_df = spark.range(0, N_CUSTOMERS)...
-customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
-customer_lookup = spark.table(f"{CATALOG}.{SCHEMA}.customers")  # ✓ Read from Delta
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```python
-# Verify serverless is available
-# Try creating a simple job first to test
-
-# Check Unity Catalog permissions
-spark.sql("SELECT current_catalog(), current_schema()")
-```
-
-
-
-
-
-
-
-```python
-# Instead of:
-# spark = DatabricksSession.builder.clusterId("xxx").getOrCreate()
-
-# Use:
-spark = DatabricksSession.builder.serverless(True).getOrCreate()
-```
-
-
-
-`client`
-
-`"client": "4"`
-
-```python
-{
-  "environments": [{
-    "environment_key": "datagen_env",
-    "spec": {
-      "client": "4",  # Required!
-      "dependencies": ["faker", "numpy", "pandas"]
-    }
-  }]
-}
-```
-
-
-
-
-
-
-
-`F.window``Window`
-
-```python
-# WRONG - F.window is for time-based tumbling/sliding windows (streaming)
-window_spec = F.window.partitionBy("account_id").orderBy("contact_id")
-# Error: AttributeError: 'function' object has no attribute 'partitionBy'
-
-# CORRECT - Window is for analytical window specifications
-from pyspark.sql.window import Window
-window_spec = Window.partitionBy("account_id").orderBy("contact_id")
-```
-
-`row_number()``rank()``lead()``lag()`
-
-```python
-from pyspark.sql.window import Window
-
-# Mark first contact per account as primary
-window_spec = Window.partitionBy("account_id").orderBy("contact_id")
-contacts_df = contacts_df.withColumn(
-    "is_primary",
-    F.row_number().over(window_spec) == 1
-)
-```
-
-
-
-
-
-
-
-`pandas_udf`
-
-```python
-# SLOW - scalar UDF
+# SLOW -- scalar UDF, one Faker call per row
 @F.udf(returnType=StringType())
 def slow_fake_name():
     return Faker().name()
 
-# FAST - pandas UDF (batch processing)
+# FAST -- Pandas UDF, batch processing
 @F.pandas_udf(StringType())
 def fast_fake_name(ids: pd.Series) -> pd.Series:
     fake = Faker()
     return pd.Series([fake.name() for _ in range(len(ids))])
 ```
 
+Scalar UDFs (`@F.udf`) invoke Python once per row with serialization overhead on each call. Pandas UDFs (`@F.pandas_udf`) process entire batches (typically thousands of rows) in a single call. For Faker-heavy generation, this is a 10-50x speedup.
 
+### Fix Out-of-Memory on Large Datasets
 
-
-
-
+> "My generation script runs out of memory at 5M rows. Fix it. Use Python with PySpark."
 
 ```python
-# For large datasets (1M+ rows)
-customers_df = spark.range(0, N_CUSTOMERS, numPartitions=64)  # Increase from default
+# Increase partitions to reduce per-partition memory
+customers_df = spark.range(0, 5_000_000, numPartitions=64)
 ```
 
+More partitions means smaller batches per executor. For datasets over 1M rows, use 64+ partitions. For 10M+, go to 128. The tradeoff is more task scheduling overhead, but that is negligible compared to OOM failures.
 
+### Fix F.window vs Window Confusion
 
-
-
-
-
-
-
-
-
-
-
+> "I get 'AttributeError: function object has no attribute partitionBy' when trying to use a window function. Fix it. Use Python with PySpark."
 
 ```python
-# Don't reuse context_id if you see strange errors
-# Let it create a new context
+# WRONG -- F.window is for streaming tumbling/sliding windows
+window_spec = F.window.partitionBy("account_id").orderBy("contact_id")
+# AttributeError: 'function' object has no attribute 'partitionBy'
+
+# CORRECT -- Window is for analytical window functions
+from pyspark.sql.window import Window
+window_spec = Window.partitionBy("account_id").orderBy("contact_id")
+
+contacts_df = contacts_df.withColumn(
+    "is_primary",
+    F.row_number().over(window_spec) == 1,
+)
 ```
 
+`F.window` is a streaming function for time-based tumbling/sliding windows. `Window` from `pyspark.sql.window` is for analytical operations like `row_number()`, `rank()`, `lead()`, and `lag()`. They are completely different things with similar names.
 
+### Fix Referential Integrity Issues
 
-
-
-
+> "My orders table has customer_id values that don't exist in the customers table. Fix the generation approach. Use Python with PySpark."
 
 ```python
-# 1. Generate and WRITE master table (do NOT use cache with serverless!)
-customers_df = spark.range(0, N_CUSTOMERS)...
+# 1. Generate and WRITE master table first
 customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
 
 # 2. Read back for FK lookups
 customer_lookup = spark.table(f"{CATALOG}.{SCHEMA}.customers").select("customer_id", "tier")
 
-# 3. Generate child table with valid FKs
-orders_df = spark.range(0, N_ORDERS).join(
-    customer_lookup,
-    on=<mapping_condition>,
-    how="left"
+# 3. Generate child table with valid FKs via join
+orders_df = (
+    spark.range(0, N_ORDERS, numPartitions=PARTITIONS)
+    .select(
+        F.concat(F.lit("ORD-"), F.lpad(F.col("id").cast("string"), 6, "0")).alias("order_id"),
+    )
+    .crossJoin(customer_lookup.sample(fraction=3.0, withReplacement=True).limit(N_ORDERS))
 )
 ```
 
-`.cache()``.persist()`
+Generating random customer_id strings for orders guarantees orphan records. Instead, write the customers table first, read it back, and join. The `.sample(withReplacement=True)` allows customers to have multiple orders while keeping every FK valid.
 
+## Watch Out For
 
-
-
-
-
-
-
-
-
-
-```python
-# BAD - uniform
-amounts = np.random.uniform(10, 1000, N)
-
-# GOOD - log-normal (realistic)
-amounts = np.random.lognormal(mean=5, sigma=0.8, N)
-```
-
-
-
-
-
-
-
-```python
-import holidays
-
-US_HOLIDAYS = holidays.US(years=[2024, 2025])
-
-def get_multiplier(date):
-    mult = 1.0
-    if date.weekday() >= 5:  # Weekend
-        mult *= 0.6
-    if date in US_HOLIDAYS:
-        mult *= 0.3
-    return mult
-```
-
-
-
-
-
-
-
-```python
-# Priority based on tier
-if tier == 'Enterprise':
-    priority = np.random.choice(['Critical', 'High'], p=[0.4, 0.6])
-else:
-    priority = np.random.choice(['Medium', 'Low'], p=[0.6, 0.4])
-
-# Resolution based on priority
-resolution_scale = {'Critical': 4, 'High': 12, 'Medium': 36, 'Low': 72}
-resolution_hours = np.random.exponential(scale=resolution_scale[priority])
-```
-
-
-
-
-
-
-
-```python
-# 1. Check row counts
-print(f"Customers: {customers_df.count():,}")
-print(f"Orders: {orders_df.count():,}")
-
-# 2. Verify distributions
-customers_df.groupBy("tier").count().show()
-orders_df.describe("amount").show()
-
-# 3. Check referential integrity
-orphans = orders_df.join(
-    customers_df,
-    orders_df.customer_id == customers_df.customer_id,
-    "left_anti"
-)
-print(f"Orphan orders: {orphans.count()}")
-
-# 4. Verify date range
-orders_df.select(F.min("order_date"), F.max("order_date")).show()
-```
+- **Using `.cache()` or `.persist()` on serverless** -- always fails. Write to Delta and read back. This is the single most common serverless error in data generation.
+- **Uniform distributions for financial data** -- `np.random.uniform(10, 1000)` produces flat data that looks nothing like real transactions. Use `np.random.lognormal` for amounts, `np.random.pareto` for heavy-tailed distributions, and `np.random.exponential` for time-to-event data.
+- **Missing weekend and holiday patterns** -- real business data drops on weekends and holidays. Without time-based weighting, your synthetic data has perfectly even daily counts, which is a clear tell.
+- **Skipping verification** -- always verify after generation. Check row counts, distributions (`groupBy("tier").count()`), and referential integrity (`left_anti` join to find orphans). A 30-second check saves hours of debugging downstream.

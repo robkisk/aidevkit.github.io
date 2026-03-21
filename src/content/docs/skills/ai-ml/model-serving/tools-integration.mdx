@@ -1,140 +1,90 @@
 ---
 title: Tools Integration
-description: Add Unity Catalog Functions and Vector Search to your agents.
+description: Give your agents access to Unity Catalog functions, Vector Search, and custom tools.
 sidebar:
   order: 4
 ---
 
+## What You Can Build
 
+You can give your agent the ability to query databases, search documents, call APIs, and execute arbitrary Python -- all through a standardized tool interface. Unity Catalog functions give you governed SQL and Python tools. Vector Search gives you semantic retrieval. Custom LangChain tools give you everything else. Combine them and the agent decides which tool to call based on the user's question.
 
+## In Action
 
-
-
-
-
+> "Add Unity Catalog functions as tools to my agent so it can look up customer data. Use Python."
 
 ```python
-from databricks_langchain import UCFunctionToolkit
+from databricks_langchain import ChatDatabricks, UCFunctionToolkit
 
-# Specify functions by name
+llm = ChatDatabricks(endpoint="databricks-meta-llama-3-3-70b-instruct")
+
 uc_toolkit = UCFunctionToolkit(
     function_names=[
-        "catalog.schema.my_function",
-        "catalog.schema.another_function",
-        "system.ai.python_exec",  # Built-in Python interpreter
+        "catalog.schema.get_customer_info",
+        "catalog.schema.lookup_order_status",
+        "system.ai.python_exec",
     ]
 )
 
-# Add to your tools list
 tools = []
 tools.extend(uc_toolkit.tools)
+
+llm_with_tools = llm.bind_tools(tools)
 ```
 
+**Key decisions:**
+- **Explicit function names** over wildcards (`catalog.schema.*`) -- list each function so you control exactly what the agent can access. Wildcards are convenient for development but risky in production.
+- **`system.ai.python_exec`** gives the agent a sandboxed Python interpreter. Powerful for computation but use with caution -- it can execute arbitrary code.
+- **`bind_tools`** attaches tool schemas to the LLM so it knows what tools are available and how to call them. This is a LangChain convention, not Databricks-specific.
+- UC functions are governed by Unity Catalog permissions, so the agent inherits the deployer's access level.
 
+## More Patterns
 
-```python
-# All functions in a schema
-uc_toolkit = UCFunctionToolkit(
-    function_names=["catalog.schema.*"]
-)
-```
+### Add Vector Search as a Retriever Tool
 
-
-
-
-
-`system.ai.python_exec`
-
-
-
-```sql
--- In a notebook or SQL editor
-CREATE OR REPLACE FUNCTION catalog.schema.get_customer_info(customer_id STRING)
-RETURNS TABLE(name STRING, email STRING, tier STRING)
-LANGUAGE SQL
-COMMENT 'Get customer information by ID'
-RETURN
-  SELECT name, email, tier
-  FROM catalog.schema.customers
-  WHERE id = customer_id;
-```
-
-
-
-
-
-```python
-from mlflow.models.resources import DatabricksFunction
-
-resources = []
-for tool in tools:
-    if hasattr(tool, "uc_function_name"):
-        resources.append(DatabricksFunction(function_name=tool.uc_function_name))
-```
-
-
-
-
-
-
+> "Give my agent a Vector Search index it can query for relevant documentation. Use Python."
 
 ```python
 from databricks_langchain import VectorSearchRetrieverTool
 
-# Create retriever tool
 vs_tool = VectorSearchRetrieverTool(
-    index_name="catalog.schema.my_vector_index",
+    index_name="catalog.schema.docs_index",
     num_results=5,
-    # Optional: filter results
-    # filters={"category": "documentation"}
 )
 
 tools = [vs_tool]
 ```
 
-
+The agent calls this tool when it needs to find relevant documents. `num_results` controls how many chunks come back. For more precise retrieval, add filters:
 
 ```python
 vs_tool = VectorSearchRetrieverTool(
     index_name="catalog.schema.docs_index",
     num_results=10,
     filters={"doc_type": "technical", "status": "published"},
-    columns=["content", "title", "url"],  # Columns to return
+    columns=["content", "title", "url"],
 )
 ```
 
+Filters narrow the search space before the vector similarity runs. Specifying `columns` reduces payload size by returning only what the agent needs.
 
+### Create Custom LangChain Tools
 
-
-
-```python
-from mlflow.models.resources import DatabricksServingEndpoint
-
-resources = [DatabricksServingEndpoint(endpoint_name=LLM_ENDPOINT)]
-
-for tool in tools:
-    if isinstance(tool, VectorSearchRetrieverTool):
-        resources.extend(tool.resources)  # Includes VS index and embedding endpoint
-```
-
-
-
-
+> "Build custom tools for my agent that get the current time and evaluate math expressions. Use Python."
 
 ```python
 from langchain_core.tools import tool
-from langchain_core.runnables import RunnableConfig
 
 @tool
 def get_current_time(timezone: str = "UTC") -> str:
     """Get the current time in the specified timezone.
-    
+
     Args:
         timezone: The timezone (e.g., 'UTC', 'America/New_York')
     """
     from datetime import datetime
     import pytz
-    
+
     tz = pytz.timezone(timezone)
     now = datetime.now(tz)
     return now.strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -142,12 +92,11 @@ def get_current_time(timezone: str = "UTC") -> str:
 @tool
 def calculate(expression: str) -> str:
     """Evaluate a mathematical expression.
-    
+
     Args:
         expression: A math expression like '2 + 2' or 'sqrt(16)'
     """
     import math
-    # Safe eval with math functions
     allowed = {k: v for k, v in math.__dict__.items() if not k.startswith('_')}
     try:
         result = eval(expression, {"__builtins__": {}}, allowed)
@@ -155,41 +104,25 @@ def calculate(expression: str) -> str:
     except Exception as e:
         return f"Error: {e}"
 
-# Add to tools
 tools = [get_current_time, calculate]
 ```
 
+Custom tools run inside the serving endpoint process -- they do not need resource declarations because they do not call external Databricks services. The docstring becomes the tool description the LLM sees, so write it clearly.
 
+### Combine All Tool Types
 
-
-
-```python
-@tool
-def get_user_preferences(config: RunnableConfig) -> str:
-    """Get preferences for the current user."""
-    user_id = config.get("configurable", {}).get("user_id")
-    if not user_id:
-        return "No user ID provided"
-    
-    # Fetch from database
-    # ...
-    return f"Preferences for {user_id}: ..."
-```
-
-
+> "Set up a tool list with UC functions, Vector Search, and custom tools, then bind them to my LLM. Use Python."
 
 ```python
 from databricks_langchain import ChatDatabricks, UCFunctionToolkit, VectorSearchRetrieverTool
 from langchain_core.tools import tool
 
-# LLM
 llm = ChatDatabricks(endpoint="databricks-meta-llama-3-3-70b-instruct")
 
-# All tools
 tools = []
 
 # 1. UC Functions
-uc_toolkit = UCFunctionToolkit(function_names=["catalog.schema.*"])
+uc_toolkit = UCFunctionToolkit(function_names=["catalog.schema.get_customer_info"])
 tools.extend(uc_toolkit.tools)
 
 # 2. Vector Search
@@ -204,46 +137,45 @@ def my_custom_tool(query: str) -> str:
 
 tools.append(my_custom_tool)
 
-# Bind to LLM
 llm_with_tools = llm.bind_tools(tools)
 ```
 
+Order does not matter in the tools list. The LLM picks which tool to call based on the user's question and the tool descriptions.
 
+### Declare Resources for Logging
 
-
+> "Build the resource list for log_model that covers all my agent's external dependencies. Use Python."
 
 ```python
 from mlflow.models.resources import (
     DatabricksServingEndpoint,
     DatabricksFunction,
-    DatabricksVectorSearchIndex,
 )
 from unitycatalog.ai.langchain.toolkit import UnityCatalogTool
+from databricks_langchain import VectorSearchRetrieverTool
 
 resources = [DatabricksServingEndpoint(endpoint_name=LLM_ENDPOINT)]
 
 for tool in tools:
-    # UC Functions
     if isinstance(tool, UnityCatalogTool):
         resources.append(DatabricksFunction(function_name=tool.uc_function_name))
-    # Vector Search
     elif isinstance(tool, VectorSearchRetrieverTool):
         resources.extend(tool.resources)
-    # Custom tools don't need resources (they run in the endpoint)
+    # Custom tools don't need resources -- they run in-process
 
-# Log model with resources
 mlflow.pyfunc.log_model(
     name="agent",
     python_model="agent.py",
     resources=resources,
-    # ...
+    pip_requirements=["mlflow==3.6.0", "databricks-langchain", "langgraph==0.3.4"],
 )
 ```
 
+Every external Databricks service your tools call must be declared in `resources` for the serving endpoint to configure auth passthrough. Custom LangChain tools are excluded because they execute inside the endpoint.
 
+## Watch Out For
 
-
-
-
-
-
+- **Missing resource declarations** -- UC functions and Vector Search indexes need explicit entries in `resources` when you call `log_model`. Without them, the serving endpoint cannot authenticate and you get permission errors at query time, not at deployment time.
+- **Wildcard function names in production** -- `UCFunctionToolkit(function_names=["catalog.schema.*"])` grabs every function in the schema. New functions added later become available to the agent without review. Use explicit names in production.
+- **Vague tool docstrings** -- the LLM uses the docstring to decide when to call a tool. A docstring like "Useful tool" gives the LLM no signal. Write specific descriptions: "Get customer information by customer ID from the CRM database."
+- **Forgetting `VectorSearchRetrieverTool.resources`** -- this tool wraps both a vector index and its embedding endpoint. Call `tool.resources` to get both resource declarations, not just the index.

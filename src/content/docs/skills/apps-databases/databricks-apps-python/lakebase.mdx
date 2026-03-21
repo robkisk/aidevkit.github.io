@@ -1,55 +1,17 @@
 ---
 title: Lakebase (PostgreSQL) Connectivity
-description: Lakebase provides low-latency transactional storage for Databricks Apps via a managed PostgreSQL interface.
+description: Connect your Databricks App to Lakebase for low-latency transactional storage via managed PostgreSQL.
 sidebar:
   order: 5
 ---
 
+## What You Can Build
 
+Databricks Apps can connect to Lakebase for low-latency transactional storage -- user sessions, application state, CRUD operations -- all backed by a managed PostgreSQL interface. The runtime injects connection credentials as environment variables, so your app connects the same way it would to any Postgres database. No secret management, no token rotation.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`PGHOST`
-`PGDATABASE`
-`PGUSER`
-`PGPASSWORD`
-`PGPORT`
-
-`app.yaml`
-
-```yaml
-env:
-  - name: DB_CONNECTION_STRING
-    valueFrom:
-      resource: database
-```
-
-
-
-
-
-
+> "Using Python and psycopg2, build a Databricks App that connects to Lakebase using the injected environment variables and queries a users table."
 
 ```python
 import os
@@ -64,32 +26,64 @@ conn = psycopg2.connect(
 )
 
 with conn.cursor() as cur:
-    cur.execute("SELECT * FROM my_table LIMIT 10")
+    cur.execute("SELECT user_id, email, created_at FROM users ORDER BY created_at DESC LIMIT 10")
     rows = cur.fetchall()
 
 conn.close()
 ```
 
+**Key decisions:**
+- The runtime injects `PGHOST`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and `PGPORT` automatically when your app has a Lakebase resource configured -- no manual secret setup
+- Wire the database resource in `app.yaml` so the runtime knows to inject credentials at deploy time
+- Use `psycopg2-binary` for synchronous apps (Streamlit, Dash, Flask) and `asyncpg` for async frameworks (FastAPI)
+- Always close connections explicitly or use context managers -- the Lakebase connection pool has a finite limit
 
+### app.yaml resource binding
+
+```yaml
+env:
+  - name: DB_CONNECTION_STRING
+    valueFrom:
+      resource: database
+```
+
+This tells the Databricks Apps runtime to provision a Lakebase database and inject the PG environment variables into your app's process. Without this, the `PG*` environment variables will be empty.
+
+## More Patterns
+
+### Async connections with FastAPI
+
+> "Using Python and asyncpg, connect a FastAPI app to Lakebase for non-blocking database queries."
 
 ```python
 import os
 import asyncpg
+from fastapi import FastAPI
 
-async def get_data():
-    conn = await asyncpg.connect(
+app = FastAPI()
+
+async def get_connection():
+    return await asyncpg.connect(
         host=os.getenv("PGHOST"),
         database=os.getenv("PGDATABASE"),
         user=os.getenv("PGUSER"),
         password=os.getenv("PGPASSWORD"),
         port=int(os.getenv("PGPORT", "5432")),
     )
-    rows = await conn.fetch("SELECT * FROM my_table LIMIT 10")
+
+@app.get("/api/orders")
+async def list_orders():
+    conn = await get_connection()
+    rows = await conn.fetch("SELECT * FROM orders ORDER BY created_at DESC LIMIT 50")
     await conn.close()
-    return rows
+    return [dict(row) for row in rows]
 ```
 
+FastAPI is async by default, so `asyncpg` avoids blocking the event loop during database calls. For production, replace the per-request connection with an `asyncpg.create_pool()` to reuse connections across requests.
 
+### SQLAlchemy engine for ORM-based apps
+
+> "Using Python and SQLAlchemy, set up an engine pointed at Lakebase for a Databricks App with models."
 
 ```python
 import os
@@ -101,14 +95,17 @@ DATABASE_URL = (
     f"/{os.getenv('PGDATABASE')}"
 )
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, pool_size=5, pool_recycle=3600)
 ```
 
+SQLAlchemy gives you an ORM layer and connection pooling out of the box. The `pool_recycle=3600` setting prevents stale connections from accumulating during idle periods.
 
+### Cached connection in Streamlit
 
-
+> "Using Python and Streamlit, cache the Lakebase connection so it survives reruns."
 
 ```python
+import os
 import streamlit as st
 import psycopg2
 
@@ -120,27 +117,18 @@ def get_db_connection():
         user=os.getenv("PGUSER"),
         password=os.getenv("PGPASSWORD"),
     )
+
+conn = get_db_connection()
+with conn.cursor() as cur:
+    cur.execute("SELECT count(*) FROM events")
+    st.metric("Total Events", cur.fetchone()[0])
 ```
 
+Without `@st.cache_resource`, Streamlit creates a new database connection on every user interaction. That exhausts the connection pool within minutes on a busy app. The cached connection persists across reruns and is shared by all users.
 
+## Watch Out For
 
-
-
-`psycopg2``asyncpg``requirements.txt`
-
-```
-psycopg2-binary
-```
-
-
-```
-asyncpg
-```
-
-
-
-
-
-
-`Can connect and create`
-
+- **Missing the `app.yaml` resource binding** -- without the `valueFrom: resource: database` entry, the runtime does not inject `PG*` environment variables. Your app starts with empty connection strings and fails on the first query.
+- **Using psycopg2 with FastAPI** -- psycopg2 is synchronous and blocks the event loop. Use `asyncpg` or `psycopg[async]` for async frameworks. Reserve psycopg2 for synchronous apps like Streamlit and Dash.
+- **Forgetting `@st.cache_resource` in Streamlit** -- Streamlit reruns the entire script on every interaction. Without caching, each click opens a new database connection and never closes the old one.
+- **Adding psycopg2 or asyncpg to `requirements.txt` without the binary suffix** -- use `psycopg2-binary` to avoid needing a C compiler in the runtime. Plain `psycopg2` requires `libpq-dev` headers which are not available.

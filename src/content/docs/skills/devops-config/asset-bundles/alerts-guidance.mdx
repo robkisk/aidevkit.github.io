@@ -1,102 +1,29 @@
 ---
-title: SQL Alerts Resources for Databricks Asset Bundles
-description: "ALWAYS start by inspecting the schema:"
+title: SQL Alerts in Asset Bundles
+description: Configure SQL alert resources in DABs with correct schema, evaluation operators, and notification subscriptions.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+SQL alerts let you monitor query results and get notified when a condition is met -- row counts dropping below a threshold, error rates spiking, SLA metrics drifting. Defining alerts as DABs resources means they deploy alongside your jobs and pipelines, with environment-specific thresholds and notification targets. The schema has several non-obvious fields that trip people up, so this page covers the correct structure.
 
+## In Action
 
-```bash
-databricks bundle schema | grep -A 100 'sql.AlertV2'
-```
-
-
-
-
-
-
-```yaml
-condition:                    # Should be "evaluation"
-  op: LESS_THAN
-  operand:
-    column:                   # Wrong nesting
-      name: "r"
-
-schedule:
-  cron_schedule:              # Should be direct fields under schedule
-    quartz_cron_expression: "..."
-
-subscriptions:                # Should be under evaluation.notification
-  - destination_type: "EMAIL"
-```
-
-
-```yaml
-evaluation:                   # Not "condition"
-  comparison_operator: 'LESS_THAN_OR_EQUAL'
-  source:                     # Not nested under "operand.column"
-    name: 'column_name'
-    display: 'column_name'
-  threshold:
-    value:
-      double_value: 100
-  notification:               # Subscriptions nested here
-    notify_on_ok: false
-    subscriptions:
-      - user_email: "${workspace.current_user.userName}"
-
-schedule:                     # Fields directly under schedule
-  pause_status: 'UNPAUSED'    # REQUIRED
-  quartz_cron_schedule: '0 38 16 * * ?'  # REQUIRED
-  timezone_id: 'America/Los_Angeles'     # REQUIRED
-```
-
-
-
-
-
-`GREATER_THAN`
-
-
-
-```yaml
-# ❌ WRONG - This triggers when count IS > 100
-comparison_operator: 'GREATER_THAN'
-
-# ✅ CORRECT - This triggers when count IS <= 100
-comparison_operator: 'LESS_THAN_OR_EQUAL'
-```
-
-
-
-```yaml
-evaluation:
-  notification:
-    subscriptions:
-      - user_email: "${workspace.current_user.userName}"
-```
-
-
-
-`second minute hour day-of-month month day-of-week``?``*`
-
-`'0 0 9 * * ?'``'0 */30 * * * ?'`
-
-
+> "Add a SQL alert to my DABs project that fires when the daily order count drops below 100, checking every morning at 9 AM Pacific."
 
 ```yaml
 resources:
   alerts:
-    alert_name:
-      display_name: "[${bundle.target}] Alert Name"     # REQUIRED
-      query_text: "SELECT count(*) c FROM table"        # REQUIRED
-      warehouse_id: ${var.warehouse_id}                 # REQUIRED
+    low_order_count:
+      display_name: "[${bundle.target}] Low Order Count"
+      query_text: "SELECT count(*) AS c FROM analytics.gold.daily_orders WHERE order_date = current_date"
+      warehouse_id: ${var.warehouse_id}
 
-      evaluation:                                        # REQUIRED
-        comparison_operator: 'LESS_THAN'                # REQUIRED
-        source:                                          # REQUIRED
+      evaluation:
+        comparison_operator: 'LESS_THAN'
+        source:
           name: 'c'
           display: 'c'
         threshold:
@@ -107,20 +34,101 @@ resources:
           subscriptions:
             - user_email: "${workspace.current_user.userName}"
 
-      schedule:                                          # REQUIRED
-        pause_status: 'UNPAUSED'                        # REQUIRED
-        quartz_cron_schedule: '0 0 9 * * ?'            # REQUIRED
-        timezone_id: 'America/Los_Angeles'             # REQUIRED
+      schedule:
+        pause_status: 'UNPAUSED'
+        quartz_cron_schedule: '0 0 9 * * ?'
+        timezone_id: 'America/Los_Angeles'
 
       permissions:
         - level: CAN_RUN
           group_name: "users"
 ```
 
+**Key decisions:**
+- The top-level key is `evaluation`, not `condition`. This is the most common mistake -- the older API used `condition` but the bundle schema uses `evaluation`.
+- The `source` field sits directly under `evaluation`, not nested under `operand.column`. The `name` must match a column alias from your `query_text`.
+- Notification subscriptions go inside `evaluation.notification`, not at the top level. This nesting is unintuitive but required by the schema.
+- All three `schedule` fields -- `pause_status`, `quartz_cron_schedule`, and `timezone_id` -- are required. Omitting any one causes a validation error.
 
+## More Patterns
 
-`EQUAL``NOT_EQUAL``GREATER_THAN``GREATER_THAN_OR_EQUAL``LESS_THAN``LESS_THAN_OR_EQUAL`
+### Verify the schema before writing
 
+> "Show me the alert schema so I know which fields are valid."
 
+```bash
+databricks bundle schema | grep -A 100 'sql.AlertV2'
+```
 
-`CAN_READ``CAN_RUN``CAN_EDIT``CAN_MANAGE`
+Run this before writing alert YAML from memory. The schema changes across CLI versions, and the field names do not match the REST API documentation exactly. This is the ground truth.
+
+### Understanding comparison operators
+
+> "I want to alert when the error count exceeds 50. Which operator do I use?"
+
+```yaml
+# Alert fires when the CONDITION IS TRUE
+# "GREATER_THAN" fires when the value IS greater than the threshold
+
+# To alert when errors exceed 50:
+evaluation:
+  comparison_operator: 'GREATER_THAN'
+  source:
+    name: 'error_count'
+    display: 'error_count'
+  threshold:
+    value:
+      double_value: 50
+```
+
+The operator reads as: "fire the alert when `source` IS `comparison_operator` `threshold`." Available operators: `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`.
+
+### Environment-specific alert thresholds
+
+> "Set a lower threshold in dev so I can test the alert without waiting for real failures."
+
+```yaml
+variables:
+  alert_threshold:
+    default: 100
+
+targets:
+  dev:
+    variables:
+      alert_threshold: 10
+  prod:
+    variables:
+      alert_threshold: 100
+
+resources:
+  alerts:
+    low_order_count:
+      display_name: "[${bundle.target}] Low Order Count"
+      query_text: "SELECT count(*) AS c FROM ${var.catalog}.gold.daily_orders"
+      warehouse_id: ${var.warehouse_id}
+      evaluation:
+        comparison_operator: 'LESS_THAN'
+        source:
+          name: 'c'
+          display: 'c'
+        threshold:
+          value:
+            double_value: ${var.alert_threshold}
+        notification:
+          notify_on_ok: false
+          subscriptions:
+            - user_email: "${workspace.current_user.userName}"
+      schedule:
+        pause_status: 'UNPAUSED'
+        quartz_cron_schedule: '0 0 9 * * ?'
+        timezone_id: 'America/Los_Angeles'
+```
+
+This pattern deploys the same alert to dev and prod with different thresholds. In dev you set the threshold low enough to trigger during testing. In prod you set it to the real business threshold.
+
+## Watch Out For
+
+- **Using `condition` instead of `evaluation`** -- the REST API docs and some older examples use `condition` with `operand.column` nesting. The bundle schema uses `evaluation` with `source` directly underneath. Running `databricks bundle validate` will catch this, but the error message is not always clear about the fix.
+- **Putting subscriptions at the top level** -- subscriptions must be nested under `evaluation.notification.subscriptions`, not as a sibling of `evaluation`. Top-level `subscriptions` is silently ignored, so your alert fires but nobody gets notified.
+- **Forgetting required schedule fields** -- `pause_status`, `quartz_cron_schedule`, and `timezone_id` are all required. Omitting `timezone_id` causes a deploy-time error. Omitting `pause_status` may default to `PAUSED`, which means your alert never runs.
+- **Quartz cron format confusion** -- the schedule uses six-field Quartz cron (seconds minutes hours day-of-month month day-of-week). Example: `'0 0 9 * * ?'` runs at 9:00 AM. The `?` in day-of-week is required when day-of-month is `*`.

@@ -1,64 +1,38 @@
 ---
 title: Data Generation Approaches
-description: Choose your approach based on scale and requirements.
+description: Choose between Spark + Pandas UDFs for scale or Polars for small local datasets.
 sidebar:
   order: 2
 ---
 
+## What You Can Build
 
+You can generate anything from 1,000 rows to 10 million rows using the right approach for the scale. Spark + Faker + Pandas UDFs is the default -- it runs on serverless compute, parallelizes across partitions, and writes directly to Unity Catalog. For small datasets under 10K rows where you want to stay local, Polars is the alternative. Both produce the same output formats.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "Generate 100,000 synthetic customers with realistic names, companies, and tier-based spending using Spark and Pandas UDFs. Use Python."
 
 ```python
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, DoubleType
-from faker import Faker
 import pandas as pd
 import numpy as np
 
-# Define Pandas UDFs for Faker data (batch processing for parallelism)
 @F.pandas_udf(StringType())
 def fake_name(ids: pd.Series) -> pd.Series:
+    from faker import Faker
     fake = Faker()
     return pd.Series([fake.name() for _ in range(len(ids))])
 
 @F.pandas_udf(StringType())
 def fake_company(ids: pd.Series) -> pd.Series:
+    from faker import Faker
     fake = Faker()
     return pd.Series([fake.company() for _ in range(len(ids))])
 
-@F.pandas_udf(StringType())
-def fake_email(ids: pd.Series) -> pd.Series:
-    fake = Faker()
-    return pd.Series([fake.email() for _ in range(len(ids))])
-
 @F.pandas_udf(DoubleType())
-def generate_lognormal_amount(tiers: pd.Series) -> pd.Series:
-    """Generate amount based on tier using log-normal distribution."""
+def generate_amount(tiers: pd.Series) -> pd.Series:
     amounts = []
     for tier in tiers:
         if tier == "Enterprise":
@@ -68,24 +42,16 @@ def generate_lognormal_amount(tiers: pd.Series) -> pd.Series:
         else:
             amounts.append(float(np.random.lognormal(mean=4.0, sigma=0.6)))
     return pd.Series(amounts)
-```
 
-
-
-```python
-# Configuration
 N_CUSTOMERS = 100_000
-PARTITIONS = 16  # Adjust based on data size: 8 for <100K, 32 for 1M+
-VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
+PARTITIONS = 16
 
-# Generate customers with Spark + Pandas UDFs
 customers_df = (
     spark.range(0, N_CUSTOMERS, numPartitions=PARTITIONS)
     .select(
         F.concat(F.lit("CUST-"), F.lpad(F.col("id").cast("string"), 5, "0")).alias("customer_id"),
         fake_name(F.col("id")).alias("name"),
         fake_company(F.col("id")).alias("company"),
-        fake_email(F.col("id")).alias("email"),
         F.when(F.rand() < 0.6, "Free")
          .when(F.rand() < 0.9, "Pro")
          .otherwise("Enterprise").alias("tier"),
@@ -96,49 +62,21 @@ customers_df = (
     )
 )
 
-# Add tier-based amount
-customers_df = customers_df.withColumn("arr", generate_lognormal_amount(F.col("tier")))
-
-# Write directly to Unity Catalog volume
-customers_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/customers")
+customers_df = customers_df.withColumn("arr", generate_amount(F.col("tier")))
+customers_df.write.mode("overwrite").parquet(f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/customers")
 ```
 
+**Key decisions:**
+- **Pandas UDFs over scalar UDFs** -- `@F.pandas_udf` processes entire batches (thousands of rows at once), making Faker generation fast enough for millions of rows. Scalar UDFs call Faker once per row and are 10-50x slower.
+- **`spark.range` with `numPartitions`** -- controls parallelism. Use 8 for &lt;100K rows, 16 for 100K-500K, 32-64 for 1M+.
+- **Import Faker inside the UDF** -- the Faker library must be importable on the executor, not just the driver. Importing inside the UDF ensures the managed dependency (`DatabricksEnv().withDependencies("faker")`) is resolved on the worker.
+- **Weighted `F.when` chains** for categorical columns produce non-uniform distributions without a UDF. The probabilities are cumulative: 60% Free, 30% Pro, 10% Enterprise.
 
+## More Patterns
 
+### Generate Locally with Polars
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```bash
-# Preferred: use uv for fast, reliable installs
-uv pip install polars faker numpy
-
-# Alternative if uv not available
-pip install polars faker numpy
-```
-
-
+> "Generate 5,000 synthetic customers locally with Polars for a quick prototype. Use Python."
 
 ```python
 import polars as pl
@@ -148,63 +86,53 @@ import numpy as np
 fake = Faker()
 N_CUSTOMERS = 5000
 
-# Generate with Polars
 customers = pl.DataFrame({
     "customer_id": [f"CUST-{i:05d}" for i in range(N_CUSTOMERS)],
     "name": [fake.name() for _ in range(N_CUSTOMERS)],
     "email": [fake.email() for _ in range(N_CUSTOMERS)],
-    "tier": np.random.choice(["Free", "Pro", "Enterprise"], N_CUSTOMERS, p=[0.6, 0.3, 0.1]).tolist(),
-    "region": np.random.choice(["North", "South", "East", "West"], N_CUSTOMERS, p=[0.4, 0.25, 0.2, 0.15]).tolist(),
+    "tier": np.random.choice(
+        ["Free", "Pro", "Enterprise"], N_CUSTOMERS, p=[0.6, 0.3, 0.1]
+    ).tolist(),
+    "region": np.random.choice(
+        ["North", "South", "East", "West"], N_CUSTOMERS, p=[0.4, 0.25, 0.2, 0.15]
+    ).tolist(),
 })
 
-# Save locally
 customers.write_parquet("./output/customers.parquet")
 ```
 
+Polars is single-machine, no cluster required. Use it for datasets under 10K rows where you want to iterate without waiting for compute. For anything larger, switch to Spark -- Polars will run out of memory or take too long with Faker.
 
+### Upload Local Data to a Volume
 
-
+> "Upload my locally generated Parquet files to a Unity Catalog volume. Use bash."
 
 ```bash
-# Create directory in volume if needed
-databricks fs mkdirs dbfs:/Volumes/<catalog>/<schema>/<volume>/source_data/
-
-# Upload local data to volume
-databricks fs cp -r ./output/customers.parquet dbfs:/Volumes/<catalog>/<schema>/<volume>/source_data/
-databricks fs cp -r ./output/orders.parquet dbfs:/Volumes/<catalog>/<schema>/<volume>/source_data/
+databricks fs mkdirs dbfs:/Volumes/<catalog>/<schema>/raw_data/
+databricks fs cp -r ./output/customers.parquet dbfs:/Volumes/<catalog>/<schema>/raw_data/
+databricks fs cp -r ./output/orders.parquet dbfs:/Volumes/<catalog>/<schema>/raw_data/
 ```
 
+This bridges the Polars local workflow to Databricks. Generate locally, upload to a Volume, then downstream pipelines (SDP, notebooks) read from the Volume as if the data were generated remotely.
 
+### Create Infrastructure Before Writing
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`spark.sql()`
+> "Create the schema and volume before writing data. Use Python with PySpark."
 
 ```python
-CATALOG = "<user-provided-catalog>"  # MUST ask user - never default
+CATALOG = "<user-provided-catalog>"  # Always ask the user -- never default
 SCHEMA = "<user-provided-schema>"
-VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
 
-# Note: Assume catalog exists - do NOT create it
+# Assume catalog exists -- do NOT create it
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.raw_data")
 ```
 
+Every generation script should start with these two statements. The schema might not exist yet, and the Volume definitely will not exist on the first run. Do not try to create the catalog -- that requires admin permissions the user probably does not have.
 
+## Watch Out For
+
+- **Using scalar UDFs for Faker** -- `@F.udf(returnType=StringType())` calls Faker once per row, making 1M rows painfully slow. Always use `@F.pandas_udf` which processes batches.
+- **Defaulting the catalog** -- never assume `main` or any other catalog. Always ask the user which catalog to use. Wrong catalog means data written to the wrong place or permission errors.
+- **Choosing Polars for large datasets** -- Polars is fast for pure computation, but Faker is inherently slow (string generation, locale handling). At 30K+ rows with Faker, Spark's parallelism across partitions wins.
+- **Forgetting infrastructure creation** -- `CREATE SCHEMA IF NOT EXISTS` and `CREATE VOLUME IF NOT EXISTS` should be in every generation script. Without them, the first run fails and the user has to manually create resources.

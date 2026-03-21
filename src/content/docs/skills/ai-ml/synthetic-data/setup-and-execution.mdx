@@ -1,93 +1,66 @@
 ---
-title: Setup and Execution Guide
-description: This guide covers all execution modes for synthetic data generation, organized by Databricks Connect version and Python version.
+title: Setup & Execution
+description: Configure Databricks Connect, serverless compute, and dependency management for synthetic data generation.
 sidebar:
   order: 1
 ---
 
+## What You Can Build
 
+You can run synthetic data generation scripts from your local machine against Databricks serverless compute -- no cluster management, no waiting for startup, and dependencies are automatically installed on the remote side. Databricks Connect 16.4+ with `DatabricksEnv` handles the entire setup in three lines of code.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-```bash
-# Preferred
-uv pip install "databricks-connect>=16.4,<17.4" faker numpy pandas holidays
-
-# Fallback if uv not available
-pip install "databricks-connect>=16.4,<17.4" faker numpy pandas holidays
-```
-
-
-```ini
-[DEFAULT]
-host = https://your-workspace.cloud.databricks.com/
-serverless_compute_id = auto
-auth_type = databricks-cli
-```
-
+> "Set up a Spark session with serverless compute and managed dependencies for Faker-based data generation. Use Python."
 
 ```python
 from databricks.connect import DatabricksSession, DatabricksEnv
 
-# Pass dependencies as simple package name strings
 env = DatabricksEnv().withDependencies("faker", "pandas", "numpy", "holidays")
 
-# Create session with managed dependencies
 spark = (
     DatabricksSession.builder
     .withEnvironment(env)
     .serverless(True)
     .getOrCreate()
 )
-
-# Spark operations now execute on serverless compute with managed dependencies
 ```
 
+**Key decisions:**
+- **Serverless over classic clusters** -- instant start, no idle cost, no cluster management. The only reason to use a classic cluster is if your workspace does not support serverless.
+- **`DatabricksEnv().withDependencies()`** installs packages on the remote serverless compute automatically. No `%pip install`, no library management, no restarts.
+- **Databricks Connect 16.4+** is required for `DatabricksEnv`. Earlier versions do not support managed dependencies on serverless.
+- Auth reads from `~/.databrickscfg` by default -- set `serverless_compute_id = auto` in the profile.
 
-```python
-import importlib.metadata
+## More Patterns
 
-def get_databricks_connect_version():
-    """Get databricks-connect version as (major, minor) tuple."""
-    try:
-        version_str = importlib.metadata.version('databricks-connect')
-        parts = version_str.split('.')
-        return (int(parts[0]), int(parts[1]))
-    except Exception:
-        return None
+### Configure the Databricks Profile
 
-db_version = get_databricks_connect_version()
-if db_version and db_version >= (16, 4):
-    # Use DatabricksEnv with withDependencies
-    pass
+> "Set up my local Databricks profile for serverless compute. Use ini format."
+
+```ini
+# ~/.databrickscfg
+[DEFAULT]
+host = https://your-workspace.cloud.databricks.com/
+serverless_compute_id = auto
+auth_type = databricks-cli
 ```
 
+The `serverless_compute_id = auto` setting tells Databricks Connect to use serverless compute without specifying a cluster ID. The `auth_type = databricks-cli` uses tokens from `databricks auth login`.
 
+### Install Databricks Connect Locally
 
+> "Install the right version of Databricks Connect for serverless with managed dependencies. Use bash."
 
+```bash
+uv pip install "databricks-connect>=16.4,<17.4" faker numpy pandas holidays
+```
 
+The local install needs `databricks-connect` for the Spark session and the generation libraries (faker, numpy, pandas) for local imports. The remote side gets its copies through `withDependencies`.
 
+### Run as a Serverless Job
 
-
-
-
-
-`DatabricksEnv()``withEnvironment()`
-
-
-
-`"client": "4"`
+> "Deploy my generation script as a serverless job with environment dependencies. Use JSON."
 
 ```json
 {
@@ -95,36 +68,17 @@ if db_version and db_version >= (16, 4):
     "environment_key": "datagen_env",
     "spec": {
       "client": "4",
-      "dependencies": ["faker", "numpy", "pandas"]
+      "dependencies": ["faker", "numpy", "pandas", "holidays"]
     }
   }]
 }
 ```
 
-`"client": "1"`
+The `"client": "4"` setting is required for serverless jobs -- it tells the job to use the environment-based dependency model. Without it, the job runs with a bare Python environment and `ModuleNotFoundError` on Faker.
 
+### Deploy with Databricks Asset Bundles
 
-
-
-
-```bash
-databricks workspace import /Users/<user>@databricks.com/scripts/my_script.py \
-  --file ./my_script.py --format AUTO
-
-databricks workspace list /Users/<user>@databricks.com/scripts/
-```
-
-
-
-```json
-{
-  "spark_python_task": {
-    "python_file": "/Users/<user>@databricks.com/scripts/my_script.py"
-  },
-  "environment_key": "datagen_env"
-}
-```
-
+> "Set up a DAB project for scheduled synthetic data generation. Use YAML."
 
 ```yaml
 # databricks.yml
@@ -152,119 +106,49 @@ environments:
         - holidays
 ```
 
+DABs are the production path for scheduled generation. The `environments` block handles dependency installation and the `spark_python_task` runs your script on serverless compute.
 
+### Fall Back to a Classic Cluster
 
-
-
-
-
-
+> "Set up data generation on a classic cluster when serverless is not available. Use bash and Python."
 
 ```bash
-# Check local Python
-uv run python --version  # or: python --version
-
-# Check cluster DBR version → Python version
-# DBR 17.x = Python 3.12
-# DBR 15.4 LTS = Python 3.11
-# DBR 14.3 LTS = Python 3.10
-databricks clusters get <cluster-id> | grep spark_version
-```
-
-
-
-```bash
-# Install matching databricks-connect version (must match DBR major.minor)
-uv pip install "databricks-connect==17.3.*" faker numpy pandas holidays
-```
-
-```bash
-# Install libraries on cluster
-`databricks libraries install --json '{"cluster_id": "<cluster_id>", "libraries": [{"pypi": {"package": "faker"}}, {"pypi": {"package": "holidays"}}]}'`
+# Install libraries on the cluster
+databricks libraries install --json '{"cluster_id": "<cluster_id>", "libraries": [{"pypi": {"package": "faker"}}, {"pypi": {"package": "holidays"}}]}'
 
 # Wait for INSTALLED status
 databricks libraries cluster-status <cluster-id>
 ```
 
 ```python
-# Run locally via Databricks Connect
 from databricks.connect import DatabricksSession
 
 spark = DatabricksSession.builder.clusterId("<cluster-id>").getOrCreate()
-# Your Spark code runs on the cluster
 ```
 
+Classic clusters require library installation via the CLI and a matching `databricks-connect` version (must match the DBR major.minor). Python version must also match between local and cluster -- DBR 17.x uses Python 3.12, DBR 15.4 LTS uses Python 3.11.
 
+### Auto-Detect the Best Execution Mode
 
-
-
-
-```bash
-# Upload script to workspace
-databricks workspace import /Users/you@company.com/scripts/generate_data.py \
-  --file generate_data.py --format AUTO --overwrite
-
-# Submit job to run on cluster
-databricks jobs submit --json '{
-  "run_name": "Generate Data",
-  "tasks": [{
-    "task_key": "generate",
-    "existing_cluster_id": "<cluster-id>",
-    "spark_python_task": {
-      "python_file": "/Users/you@company.com/scripts/generate_data.py"
-    }
-  }]
-}'
-```
-
-
-
-```
-Local Python == Cluster Python?
-  ├─ YES → Install libs on cluster, run via Databricks Connect
-  └─ NO  → Ask user: "Submit as job instead?"
-           └─ Upload script + submit job
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "Write a setup block that uses DatabricksEnv if available and falls back gracefully. Use Python."
 
 ```python
 import os
 import importlib.metadata
 
-def is_databricks_runtime():
-    """Check if running on Databricks Runtime vs locally."""
-    return "DATABRICKS_RUNTIME_VERSION" in os.environ
-
-def get_databricks_connect_version():
-    """Get databricks-connect version as (major, minor) tuple or None."""
+def get_db_connect_version():
     try:
-        version_str = importlib.metadata.version('databricks-connect')
-        parts = version_str.split('.')
+        v = importlib.metadata.version('databricks-connect')
+        parts = v.split('.')
         return (int(parts[0]), int(parts[1]))
     except Exception:
         return None
 
-on_runtime = is_databricks_runtime()
-db_version = get_databricks_connect_version()
+on_runtime = "DATABRICKS_RUNTIME_VERSION" in os.environ
+db_version = get_db_connect_version()
+use_managed_deps = (not on_runtime) and db_version and db_version >= (16, 4)
 
-# Use DatabricksEnv if: locally + databricks-connect >= 16.4
-use_auto_dependencies = (not on_runtime) and db_version and db_version >= (16, 4)
-
-if use_auto_dependencies:
+if use_managed_deps:
     from databricks.connect import DatabricksSession, DatabricksEnv
     env = DatabricksEnv().withDependencies("faker", "pandas", "numpy", "holidays")
     spark = DatabricksSession.builder.withEnvironment(env).serverless(True).getOrCreate()
@@ -273,11 +157,11 @@ else:
     spark = DatabricksSession.builder.serverless(True).getOrCreate()
 ```
 
+This block handles three cases: local with DB Connect 16.4+ (managed deps), local with older DB Connect (no managed deps), and running directly on a Databricks Runtime (no DB Connect needed). Use this as the boilerplate header for generation scripts that need to run in multiple environments.
 
+## Watch Out For
 
-
-
-`ModuleNotFoundError: faker`
-`DatabricksEnv not found`
-`serverless_compute_id``serverless_compute_id = auto`
-
+- **Missing `serverless_compute_id = auto` in profile** -- without this setting, `DatabricksSession.builder.serverless(True)` fails with a connection error. Add it to `~/.databrickscfg`.
+- **Using DB Connect &lt; 16.4 with `DatabricksEnv`** -- `DatabricksEnv` does not exist in older versions. You get `ImportError: cannot import name 'DatabricksEnv'`. Upgrade to 16.4+ or use the classic cluster path.
+- **Missing `"client": "4"` in job environments** -- serverless jobs require this field. Without it, the environment spec is ignored and dependencies are not installed.
+- **Python version mismatch on classic clusters** -- your local Python must match the cluster's DBR Python version. DBR 17.x = Python 3.12, DBR 15.4 LTS = Python 3.11, DBR 14.3 LTS = Python 3.10. A mismatch causes serialization errors in Databricks Connect.

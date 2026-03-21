@@ -1,49 +1,35 @@
 ---
-title: "Logging & Registration"
-description: Log models to MLflow and register to Unity Catalog.
+title: Logging & Registration
+description: Log models to MLflow and register them to Unity Catalog for deployment.
 sidebar:
   order: 6
 ---
 
+## What You Can Build
 
+You can take a tested agent or model and make it deployable -- log it to MLflow with its dependencies, resource declarations, and input examples, then register it to Unity Catalog so it has a stable three-level name that serving endpoints can reference. This is the bridge between "it works on a cluster" and "it runs behind an API."
 
+## In Action
 
-
-
+> "Log my agent to MLflow with its LLM endpoint dependency and register it to Unity Catalog. Use Python."
 
 ```python
 # log_model.py
 import mlflow
-from agent import AGENT, LLM_ENDPOINT
-from mlflow.models.resources import DatabricksServingEndpoint, DatabricksFunction
-from unitycatalog.ai.langchain.toolkit import UnityCatalogTool
-from databricks_langchain import VectorSearchRetrieverTool
+from mlflow.models.resources import DatabricksServingEndpoint
 
 mlflow.set_registry_uri("databricks-uc")
 
-# Collect resources for auto authentication
-resources = [DatabricksServingEndpoint(endpoint_name=LLM_ENDPOINT)]
+resources = [
+    DatabricksServingEndpoint(endpoint_name="databricks-meta-llama-3-3-70b-instruct"),
+]
 
-# Add UC function resources
-from agent import tools  # If your agent exports tools
-for tool in tools:
-    if isinstance(tool, UnityCatalogTool):
-        resources.append(DatabricksFunction(function_name=tool.uc_function_name))
-    elif isinstance(tool, VectorSearchRetrieverTool):
-        resources.extend(tool.resources)
-
-# Input example
-input_example = {
-    "input": [{"role": "user", "content": "What is Databricks?"}]
-}
-
-# Log model
 with mlflow.start_run():
     model_info = mlflow.pyfunc.log_model(
         name="agent",
-        python_model="agent.py",  # File path
-        input_example=input_example,
+        python_model="agent.py",
         resources=resources,
+        input_example={"input": [{"role": "user", "content": "What is Databricks?"}]},
         pip_requirements=[
             "mlflow==3.6.0",
             "databricks-langchain",
@@ -51,163 +37,97 @@ with mlflow.start_run():
             "pydantic",
         ],
     )
-    print(f"Model URI: {model_info.model_uri}")
 
 # Register to Unity Catalog
-catalog = "main"
-schema = "agents"
-model_name = "my_agent"
-
 uc_model_info = mlflow.register_model(
     model_uri=model_info.model_uri,
-    name=f"{catalog}.{schema}.{model_name}"
+    name="main.agents.my_agent",
 )
 print(f"Registered: {uc_model_info.name} version {uc_model_info.version}")
 ```
 
+**Key decisions:**
+- **`resources` declares external dependencies** -- listing the LLM endpoint enables automatic auth passthrough at serving time. Missing resources cause permission errors at deployment, not at logging time.
+- **`python_model="agent.py"`** uses the file-based pattern (MLflow 3) instead of passing a class instance. This captures the full module including imports.
+- **Separate logging from registration** -- `log_model` creates a versioned artifact; `register_model` gives it a stable UC name. You can log many experimental runs and only register the one you want to deploy.
+- **Pin `pip_requirements` versions** -- loose versions cause dependency resolution failures on the serving endpoint. Pin `mlflow` and `langgraph` exactly; `databricks-langchain` tracks the runtime.
 
+## More Patterns
 
-```
-run_python_file_on_databricks(file_path="./my_agent/log_model.py")
-```
+### Declare All Resource Types
 
-
-
-
-
-
-
-`DatabricksServingEndpoint``mlflow.models.resources`
-`DatabricksFunction``mlflow.models.resources`
-`DatabricksVectorSearchIndex``mlflow.models.resources`
-`DatabricksLakebase``mlflow.models.resources`
+> "My agent uses a foundation model, UC functions, and a vector search index. Log it with all resource declarations. Use Python."
 
 ```python
 from mlflow.models.resources import (
     DatabricksServingEndpoint,
     DatabricksFunction,
     DatabricksVectorSearchIndex,
-    DatabricksLakebase,
 )
 
 resources = [
     DatabricksServingEndpoint(endpoint_name="databricks-meta-llama-3-3-70b-instruct"),
-    DatabricksFunction(function_name="catalog.schema.my_function"),
-    DatabricksVectorSearchIndex(index_name="catalog.schema.my_index"),
-    DatabricksLakebase(database_instance_name="my-lakebase"),
+    DatabricksFunction(function_name="catalog.schema.get_customer_info"),
+    DatabricksVectorSearchIndex(index_name="catalog.schema.docs_index"),
 ]
 ```
 
+Every Databricks resource your agent calls at inference time must be listed. The serving endpoint uses this list to configure automatic authentication passthrough.
 
+### Auto-Collect Resources from Tools
 
-
+> "Automatically gather resource declarations from my agent's tool list instead of hardcoding them. Use Python."
 
 ```python
-pip_requirements=[
-    "mlflow==3.6.0",
-    "databricks-langchain",  # Latest
-    "langgraph==0.3.4",
-    "pydantic",
-    "databricks-agents",
-]
+from mlflow.models.resources import DatabricksServingEndpoint, DatabricksFunction
+from unitycatalog.ai.langchain.toolkit import UnityCatalogTool
+from databricks_langchain import VectorSearchRetrieverTool
+
+resources = [DatabricksServingEndpoint(endpoint_name=LLM_ENDPOINT)]
+
+for tool in tools:
+    if isinstance(tool, UnityCatalogTool):
+        resources.append(DatabricksFunction(function_name=tool.uc_function_name))
+    elif isinstance(tool, VectorSearchRetrieverTool):
+        resources.extend(tool.resources)
 ```
 
+This pattern scales with your agent -- add a new tool and its resources are automatically captured at logging time. Custom LangChain tools do not need resource declarations because they run inside the endpoint process.
 
+### Pin Versions from the Current Environment
 
-```python
-pip_requirements=[
-    "mlflow==3.6.0",
-    "databricks-langchain[memory]",  # Includes Lakebase support
-    "langgraph==0.3.4",
-]
-```
-
-
+> "Capture the exact package versions installed on my cluster for reproducible logging. Use Python."
 
 ```python
 from pkg_resources import get_distribution
 
-pip_requirements=[
+pip_requirements = [
     f"mlflow=={get_distribution('mlflow').version}",
     f"databricks-langchain=={get_distribution('databricks-langchain').version}",
+    f"langgraph=={get_distribution('langgraph').version}",
 ]
 ```
 
+This eliminates version drift between your development cluster and the serving endpoint. Especially useful when `databricks-langchain` has frequent releases.
 
+### Validate Before Registering
 
-
+> "Run a full environment validation of my logged model before registering it. Use Python."
 
 ```python
-# Validate locally (uses uv for fast env creation)
-mlflow.models.predict(
+result = mlflow.models.predict(
     model_uri=model_info.model_uri,
     input_data={"input": [{"role": "user", "content": "Test"}]},
-    env_manager="uv",
-)
-```
-
-
-
-```python
-# validate_model.py
-import mlflow
-
-# Get model URI from previous step
-model_uri = "runs:/<run_id>/agent"  # Or from UC: "models:/catalog.schema.model/1"
-
-result = mlflow.models.predict(
-    model_uri=model_uri,
-    input_data={"input": [{"role": "user", "content": "Hello"}]},
     env_manager="uv",
 )
 print("Validation result:", result)
 ```
 
+`mlflow.models.predict` with `env_manager="uv"` installs your declared `pip_requirements` in an isolated environment and runs a prediction. If this fails, the serving endpoint will fail too -- fix the issue before registering.
 
+## Watch Out For
 
-
-
-```python
-import mlflow
-import mlflow.sklearn
-
-mlflow.sklearn.autolog(
-    log_input_examples=True,
-    registered_model_name="main.models.my_model"
-)
-
-# Train - automatically logged and registered
-model.fit(X_train, y_train)
-```
-
-
-
-
-
-```python
-import mlflow
-
-mlflow.set_registry_uri("databricks-uc")
-
-# From run
-mlflow.register_model(
-    model_uri="runs:/<run_id>/agent",
-    name="main.agents.my_agent"
-)
-
-# From logged model info
-mlflow.register_model(
-    model_uri=model_info.model_uri,
-    name="main.agents.my_agent"
-)
-```
-
-
-
-
-
-`pip_requirements`
-`resources`
-`input_example`
-`env_manager="uv"`
-`code_paths=["file.py"]`
+- **Missing `resources` for external endpoints** -- your agent calls a foundation model endpoint at inference time, but without declaring it in `resources`, the serving endpoint cannot authenticate. You get a permission error after a 15-minute deployment wait.
+- **Forgetting `input_example`** -- without it, the MLflow UI cannot display expected payload format and pre-deployment validation cannot run. Always include one.
+- **Logging without `mlflow.set_registry_uri("databricks-uc")`** -- models default to the workspace model registry (legacy). Set the URI to `databricks-uc` before any logging or registration calls to target Unity Catalog.
+- **Loose dependency versions** -- `pip_requirements=["mlflow", "langgraph"]` resolves differently on the serving endpoint than on your cluster. Pin exact versions or capture them from the running environment.

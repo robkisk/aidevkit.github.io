@@ -1,355 +1,160 @@
 ---
-title: Advanced Pipeline Configuration (extra_settings)
-description: By default, pipelines are created with serverless compute and Unity Catalog.
+title: Advanced Configuration
+description: Configure development mode, continuous execution, classic clusters, notifications, Python dependencies, and run-as permissions.
 sidebar:
   order: 7
 ---
 
-`extra_settings`
+## What You Can Build
 
-`extra_settings``serverless=false`
+Beyond the defaults, pipelines need configuration for development mode, continuous execution, failure notifications, Python dependencies, and classic cluster overrides. Ask your AI coding assistant for any of these settings and it will generate the right `extra_settings` JSON or Asset Bundle YAML — with the correct parameter names and types that differ between serverless and classic compute.
 
+## In Action
 
-
-
-`extra_settings`
-
-
-
-
-
-
-
-
-`extra_settings`
-
-
-
-
-
-`serverless``true``false`
-`continuous``false``true``false`
-`development``false`
-`photon``false`
-`edition``"CORE"``"CORE"``"PRO"``"ADVANCED"`
-`channel``"CURRENT"``"CURRENT"``"PREVIEW"`
-`clusters``[]``serverless=false`
-`configuration``{}`
-`tags``{}`
-`event_log`
-`notifications``[]`
-`id`
-`allow_duplicate_names``false`
-`budget_policy_id`
-`storage`
-`target``schema`
-`dry_run``false`
-`run_as`
-`restart_window`
-`filters`
-`trigger``continuous`
-`deployment`
-`environment`
-`gateway_definition`
-`ingestion_definition`
-`usage_policy_id`
-
-`clusters`
-
-
-
-
-
-`label``"default"``"maintenance"`
-`num_workers`
-`autoscale``{"min_workers": 1, "max_workers": 4, "mode": "ENHANCED"}`
-`node_type_id``"i3.xlarge"``"Standard_DS3_v2"`
-`driver_node_type_id`
-`instance_pool_id`
-`driver_instance_pool_id`
-`spark_conf`
-`spark_env_vars`
-`custom_tags`
-`init_scripts`
-`aws_attributes``{"availability": "SPOT", "zone_id": "us-west-2a"}`
-`azure_attributes``{"availability": "SPOT_AZURE"}`
-`gcp_attributes`
-
-`"LEGACY"``"ENHANCED"`
-
-`event_log`
-
-
-
-`catalog`
-`schema`
-`name`
-
-`notifications`
-
-
-
-
-
-`email_recipients`
-`alerts``"on-update-success"``"on-update-failure"``"on-update-fatal-failure"``"on-flow-failure"`
-
-`configuration`
-
-
-
-
-
-`spark.sql.shuffle.partitions``"auto"`
-`pipelines.numRetries`
-`pipelines.trigger.interval``"1 hour"`
-`spark.databricks.delta.preview.enabled``"true"`
-
-`run_as`
-
-
-
-
-
-`user_name`
-`service_principal_name`
-
-`user_name``service_principal_name`
-
-`restart_window`
-
-
-
-
-
-`start_hour`
-`days_of_week``"MONDAY"``"TUESDAY"`
-`time_zone_id``"America/Los_Angeles"`
-
-`filters`
-
-
-
-
-
-`include`
-`exclude`
-
-`environment`
-
-
-
-
-
-`dependencies``["pandas==2.0.0", "requests"]`
-
-`deployment`
-
-
-
-`kind``"BUNDLE"``"DEFAULT"`
-`metadata_file_path`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`create_or_update_pipeline`
-`name`
-`root_path`
-`catalog`
-`schema`
-`workspace_file_paths`
-`start_run`
-`extra_settings`
-```json
-{
-    "development": true,
-    "tags": {"environment": "development", "owner": "data-team"}
-}
-```
-
-
-
-`create_or_update_pipeline``extra_settings`
-```json
-{
-    "serverless": false,
-    "clusters": [{
-        "label": "default",
-        "num_workers": 4,
-        "node_type_id": "i3.xlarge",
-        "custom_tags": {"cost_center": "analytics"}
-    }],
-    "photon": true,
-    "edition": "ADVANCED"
-}
-```
-
-
-
-`create_or_update_pipeline``extra_settings`
-```json
-{
-    "continuous": true,
-    "configuration": {
-        "spark.sql.shuffle.partitions": "auto"
-    }
-}
-```
-
-
-
-`create_or_update_pipeline``extra_settings`
-```json
-{
-    "serverless": false,
-    "clusters": [{
-        "label": "default",
-        "instance_pool_id": "0727-104344-hauls13-pool-xyz",
-        "num_workers": 2,
-        "custom_tags": {"project": "analytics"}
-    }]
-}
-```
-
-
-
-`create_or_update_pipeline``extra_settings`
-```json
-{
-    "event_log": {
-        "catalog": "audit_catalog",
-        "schema": "pipeline_logs",
-        "name": "my_pipeline_events"
-    }
-}
-```
-
-
-
-`create_or_update_pipeline``extra_settings`
-```json
-{
-    "notifications": [{
-        "email_recipients": ["team@example.com", "oncall@example.com"],
-        "alerts": ["on-update-failure", "on-update-fatal-failure", "on-flow-failure"]
-    }]
-}
-```
-
-
-
-`create_or_update_pipeline``extra_settings`
-```json
-{
-    "serverless": false,
-    "development": false,
-    "photon": true,
-    "edition": "ADVANCED",
-    "clusters": [{
-        "label": "default",
-        "autoscale": {
-            "min_workers": 2,
-            "max_workers": 8,
-            "mode": "ENHANCED"
-        },
-        "node_type_id": "i3.xlarge",
-        "spark_conf": {
-            "spark.sql.adaptive.enabled": "true"
-        },
-        "custom_tags": {"environment": "production"}
-    }],
-    "notifications": [{
-        "email_recipients": ["data-team@example.com"],
-        "alerts": ["on-update-failure"]
-    }]
-}
-```
-
-
-
-`create_or_update_pipeline``extra_settings`
-```json
-{
-    "run_as": {
-        "service_principal_name": "00000000-0000-0000-0000-000000000000"
-    }
-}
-```
-
-
-
-`create_or_update_pipeline``extra_settings`
-```json
-{
-    "continuous": true,
-    "restart_window": {
-        "start_hour": 2,
-        "days_of_week": ["SATURDAY", "SUNDAY"],
-        "time_zone_id": "America/Los_Angeles"
-    }
-}
-```
-
-
-
-`create_or_update_pipeline``extra_settings`
-```json
-{
-    "serverless": true,
-    "environment": {
-        "dependencies": [
-            "scikit-learn==1.3.0",
-            "pandas>=2.0.0",
-            "requests"
-        ]
-    }
-}
-```
-
-
-
-`id``extra_settings`
-```json
-{
-    "id": "554f4497-4807-4182-bff0-ffac4bb4f0ce"
-}
-```
-
-
-
-`extra_settings``pipeline_type`
+> "Configure a pipeline for production with failure notifications, a service principal run-as identity, and autoscaling classic clusters"
 
 ```json
 {
-    "id": "554f4497-4807-4182-bff0-ffac4bb4f0ce",
-    "pipeline_type": "WORKSPACE",
-    "continuous": false,
-    "development": true,
-    "photon": false,
-    "edition": "ADVANCED",
-    "channel": "CURRENT",
-    "clusters": [{
-        "label": "default",
-        "num_workers": 1,
-        "instance_pool_id": "0727-104344-pool-xyz"
-    }],
-    "configuration": {
-        "catalog": "main",
-        "schema": "my_schema"
-    }
+  "serverless": false,
+  "development": false,
+  "photon": true,
+  "edition": "ADVANCED",
+  "clusters": [{
+    "label": "default",
+    "autoscale": {
+      "min_workers": 2,
+      "max_workers": 8,
+      "mode": "ENHANCED"
+    },
+    "node_type_id": "i3.xlarge",
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "true"
+    },
+    "custom_tags": {"environment": "production"}
+  }],
+  "notifications": [{
+    "email_recipients": ["data-team@example.com"],
+    "alerts": ["on-update-failure", "on-update-fatal-failure"]
+  }],
+  "run_as": {
+    "service_principal_name": "00000000-0000-0000-0000-000000000000"
+  }
 }
 ```
 
-`name``root_path``catalog``schema``workspace_file_paths``extra_settings`
+**Key decisions:**
+- **`serverless: false` only when required** — classic clusters are needed for R language, Spark RDD APIs, or JAR libraries. Everything else should stay serverless.
+- **`edition: "ADVANCED"` for CDC** — Auto CDC and SCD Type 2 require Pro or Advanced edition. Serverless pipelines get this automatically; classic clusters need it explicitly.
+- **`run_as` with a service principal** — production pipelines should not run as a human user. Service principals provide stable identity and auditable access.
+- **`ENHANCED` autoscale mode** — faster scaling decisions than `LEGACY` mode, reducing cost for bursty workloads.
+
+## More Patterns
+
+### Development mode for fast iteration
+> "Set up a pipeline in development mode with tags for cost tracking"
+
+```json
+{
+  "development": true,
+  "tags": {
+    "environment": "development",
+    "owner": "data-team",
+    "cost_center": "analytics"
+  }
+}
+```
+
+Development mode reuses clusters between runs and does not terminate them after completion, cutting iteration time from minutes to seconds. Tags are free-form key-value pairs that show up in cloud billing reports. Always tag with at least environment and owner.
+
+### Continuous execution with a restart window
+> "Configure a pipeline for continuous streaming with a weekend maintenance restart window"
+
+```json
+{
+  "continuous": true,
+  "restart_window": {
+    "start_hour": 2,
+    "days_of_week": ["SATURDAY", "SUNDAY"],
+    "time_zone_id": "America/Los_Angeles"
+  },
+  "configuration": {
+    "spark.sql.shuffle.partitions": "auto"
+  }
+}
+```
+
+Continuous mode keeps the pipeline running and processing new data as it arrives. The `restart_window` schedules automatic restarts for maintenance (applying updates, clearing state) during low-traffic hours. Without a restart window, continuous pipelines run until manually stopped or until they hit a failure.
+
+### Python dependencies for serverless pipelines
+> "Add scikit-learn and pandas as runtime dependencies for a serverless Python pipeline"
+
+```json
+{
+  "serverless": true,
+  "environment": {
+    "dependencies": [
+      "scikit-learn==1.3.0",
+      "pandas>=2.0.0",
+      "requests"
+    ]
+  }
+}
+```
+
+The `environment.dependencies` list installs Python packages at pipeline startup. Pin exact versions for ML libraries to avoid model drift. For Asset Bundle projects, these dependencies also go in `pyproject.toml` and the pipeline YAML references them with `--editable $\{workspace.file_path\}`.
+
+### Instance pool configuration for cost control
+> "Use a pre-warmed instance pool with 2 workers for faster cluster startup on classic compute"
+
+```json
+{
+  "serverless": false,
+  "clusters": [{
+    "label": "default",
+    "instance_pool_id": "0727-104344-hauls13-pool-xyz",
+    "num_workers": 2,
+    "custom_tags": {"project": "analytics"}
+  }]
+}
+```
+
+Instance pools keep VMs warm so clusters start in seconds instead of minutes. Use them for development pipelines where startup time matters. The pool must already exist in the workspace — the pipeline config references it by ID.
+
+### Custom event log location
+> "Route pipeline event logs to a dedicated audit catalog and schema"
+
+```json
+{
+  "event_log": {
+    "catalog": "audit_catalog",
+    "schema": "pipeline_logs",
+    "name": "orders_pipeline_events"
+  }
+}
+```
+
+By default, event logs go to the pipeline's target schema. Routing them to a dedicated audit location keeps operational logs separate from business data and makes it easier to apply different retention policies and access controls.
+
+### Failure notifications
+> "Send email notifications to the team when the pipeline fails or a flow fails"
+
+```json
+{
+  "notifications": [{
+    "email_recipients": ["team@example.com", "oncall@example.com"],
+    "alerts": [
+      "on-update-failure",
+      "on-update-fatal-failure",
+      "on-flow-failure"
+    ]
+  }]
+}
+```
+
+The four alert types are `on-update-success`, `on-update-failure`, `on-update-fatal-failure`, and `on-flow-failure`. Fatal failures indicate unrecoverable errors (bad config, missing tables). Flow failures are per-table errors that may self-resolve on retry. Most teams subscribe to failures only and skip success notifications.
+
+## Watch Out For
+- **`clusters` config ignored on serverless** — if `serverless: true`, the `clusters` array is silently ignored. Do not add cluster configs unless you explicitly set `serverless: false`.
+- **`edition` defaults to `"CORE"` on classic** — CORE does not support CDC or SCD. If your pipeline uses Auto CDC and runs on classic compute, you must set `edition: "PRO"` or `"ADVANCED"`.
+- **`continuous: true` with triggered schedule** — these are mutually exclusive. A continuous pipeline processes data as it arrives. A triggered pipeline runs on a schedule or on-demand. Setting both causes undefined behavior.
+- **`development: true` in production** — development mode disables retries and keeps clusters running after failure. Always set `development: false` for production deployments. Asset Bundles handle this automatically with `mode: development` vs `mode: production` targets.

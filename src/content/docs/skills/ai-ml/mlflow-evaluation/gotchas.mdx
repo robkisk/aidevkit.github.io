@@ -1,147 +1,81 @@
 ---
-title: "MLflow 3 GenAI - GOTCHAS & Common Mistakes"
-description: "CRITICAL: Read this before writing any evaluation code."
+title: Common Mistakes & Gotchas
+description: The 15+ mistakes that break MLflow GenAI evaluation code -- read this before writing anything.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+You can avoid the silent failures, wrong imports, and data format errors that waste hours of debugging time. Every item here has bitten someone in production. Skim this page before writing evaluation code, and your AI coding assistant will generate working code on the first attempt.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "Set up an MLflow GenAI evaluation with the correct imports, data format, and scorer configuration. Use Python."
 
 ```python
-# ❌ WRONG - Don't use model serving endpoints during development
-from databricks.sdk import WorkspaceClient
-
-w = WorkspaceClient()
-client = w.serving_endpoints.get_open_ai_client()
-
-def predict_fn(messages):
-    response = client.chat.completions.create(
-        model="my-agent-endpoint",  # Deployed endpoint
-        messages=messages
-    )
-    return {"response": response.choices[0].message.content}
-```
-
-
-```python
-# ✅ CORRECT - Import agent directly for fast iteration
-from plan_execute_agent import AGENT  # Your local agent module
-
-def predict_fn(messages):
-    result = AGENT.predict({"messages": messages})
-    # Extract response from ResponsesAgent format
-    if isinstance(result, dict) and "messages" in result:
-        for msg in reversed(result["messages"]):
-            if msg.get("role") == "assistant":
-                return {"response": msg.get("content", "")}
-    return {"response": str(result)}
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```python
-# ❌ WRONG - These don't exist in MLflow 3 GenAI
-from mlflow.evaluate import evaluate
-from mlflow.metrics import genai
-import mlflow.llm
-```
-
-
-```python
-# ✅ CORRECT
+# CORRECT - MLflow 3 GenAI evaluation
 import mlflow.genai
 from mlflow.genai.scorers import Guidelines, Safety, Correctness, scorer
 from mlflow.genai.judges import meets_guidelines, is_correct, make_judge
 from mlflow.entities import Feedback, Trace
-```
 
+eval_data = [
+    {
+        "inputs": {"query": "What is MLflow?"},
+        "expectations": {"expected_facts": ["MLflow is open-source"]}
+    }
+]
 
-
-
-
-
-```python
-# ❌ WRONG - This is the old API for classic ML
-results = mlflow.evaluate(
-    model=my_model,
-    data=eval_data,
-    model_type="text"
-)
-```
-
-
-```python
-# ✅ CORRECT - MLflow 3 GenAI evaluation
 results = mlflow.genai.evaluate(
-    data=eval_dataset,
+    data=eval_data,
     predict_fn=my_app,
-    scorers=[Guidelines(name="test", guidelines="...")]
+    scorers=[
+        Safety(),
+        Guidelines(name="helpful", guidelines="Response must be helpful"),
+        Correctness()
+    ]
 )
 ```
 
+**Key decisions:**
+- **`mlflow.genai.evaluate()`** is the only correct entry point -- `mlflow.evaluate()` is the legacy API for classic ML
+- **Nested `inputs` key is required** -- `\{"query": "..."\}` without the `inputs` wrapper causes silent failures
+- **`predict_fn` receives kwargs** -- the function signature must match the keys inside `inputs`
+- **`@scorer` decorator is mandatory** -- a plain function without it will not register as a scorer
 
+## More Patterns
 
+### Wrong API and Wrong Imports
 
-
+> "What are the incorrect and correct import paths for MLflow 3 GenAI evaluation? Use Python."
 
 ```python
-# ❌ WRONG - Missing nested structure
+# WRONG - These don't exist in MLflow 3 GenAI
+from mlflow.evaluate import evaluate
+from mlflow.metrics import genai
+import mlflow.llm
+
+# CORRECT
+import mlflow.genai
+from mlflow.genai.scorers import Guidelines, Safety, scorer
+from mlflow.genai.judges import meets_guidelines, make_judge
+from mlflow.entities import Feedback, Trace
+```
+
+The legacy `mlflow.evaluate()` API uses different data formats and scorer interfaces. If you see `model_type="text"` in code, it is the old API. GenAI evaluation lives entirely under `mlflow.genai`.
+
+### Flat Input Dicts
+
+> "Why does my evaluation silently produce no results?"
+
+```python
+# WRONG - Missing nested structure
 eval_data = [
     {"query": "What is X?", "expected": "X is..."}
 ]
-```
 
-
-```python
-# ✅ CORRECT - Must have 'inputs' key
+# CORRECT - Must have 'inputs' key
 eval_data = [
     {
         "inputs": {"query": "What is X?"},
@@ -150,21 +84,19 @@ eval_data = [
 ]
 ```
 
+This is the most common silent failure. The evaluate function does not raise an error -- it just produces empty or incorrect results.
 
+### predict_fn Signature Mismatch
 
-
-
+> "Why does my predict function get called with unexpected arguments?"
 
 ```python
-# ❌ WRONG - predict_fn receives **unpacked inputs
+# WRONG - predict_fn receives **unpacked inputs
 def my_app(inputs):  # Receives dict
     query = inputs["query"]
     return {"response": "..."}
-```
 
-
-```python
-# ✅ CORRECT - inputs are unpacked as kwargs
+# CORRECT - inputs are unpacked as kwargs
 def my_app(query, context=None):  # Receives individual keys
     return {"response": f"Answer to {query}"}
 
@@ -172,169 +104,47 @@ def my_app(query, context=None):  # Receives individual keys
 # Then my_app is called as: my_app(query="What is X?", context="...")
 ```
 
+Your function parameters must match the keys inside `inputs`. The evaluate framework unpacks the dict and passes each key as a keyword argument.
 
+### Scorer Return Types
 
-
-
-
-```python
-# ❌ WRONG - This won't work as a scorer
-def my_scorer(inputs, outputs):
-    return True
-```
-
+> "What can a custom scorer return and what breaks?"
 
 ```python
-# ✅ CORRECT
 from mlflow.genai.scorers import scorer
-
-@scorer
-def my_scorer(inputs, outputs):
-    return True
-```
-
-
-
-
-
-
-```python
-@scorer
-def bad_scorer(outputs):
-    # ❌ WRONG - Can't return dict
-    return {"score": 0.5, "reason": "..."}
-    
-    # ❌ WRONG - Can't return tuple
-    return (True, "rationale")
-```
-
-
-```python
 from mlflow.entities import Feedback
 
 @scorer
+def bad_scorer(outputs):
+    return {"score": 0.5, "reason": "..."}  # WRONG - can't return dict
+    return (True, "rationale")               # WRONG - can't return tuple
+
+@scorer
 def good_scorer(outputs):
-    # ✅ CORRECT - Return primitive
-    return True
-    return 0.85
-    return "yes"
-    
-    # ✅ CORRECT - Return Feedback object
-    return Feedback(
-        value=True,
-        rationale="Explanation"
-    )
-    
-    # ✅ CORRECT - Return list of Feedbacks
-    return [
+    return True                              # bool
+    return 0.85                              # float
+    return "yes"                             # str
+    return Feedback(value=True, rationale="Explanation")  # Feedback object
+    return [                                 # list of Feedback
         Feedback(name="metric_1", value=True),
         Feedback(name="metric_2", value=0.9)
     ]
 ```
 
+Dicts and tuples are not valid return types. When returning a list of `Feedback` objects, each must have a unique `name` -- otherwise they collide silently.
 
+### Missing RETRIEVER Span Type
 
-
-
-
-```python
-# ❌ WRONG - Missing 'name' parameter
-scorer = Guidelines(guidelines="Must be professional")
-```
-
+> "Why does RetrievalGroundedness return no score?"
 
 ```python
-# ✅ CORRECT
-scorer = Guidelines(
-    name="professional_tone",  # REQUIRED
-    guidelines="The response must be professional"  # REQUIRED
-)
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - Missing prefix
-mlflow.search_traces("status = 'OK'")
-
-# ❌ WRONG - Using double quotes
-mlflow.search_traces('attributes.status = "OK"')
-
-# ❌ WRONG - Missing backticks for dotted names
-mlflow.search_traces("tags.mlflow.traceName = 'my_app'")
-
-# ❌ WRONG - Using OR (not supported)
-mlflow.search_traces("attributes.status = 'OK' OR attributes.status = 'ERROR'")
-```
-
-
-```python
-# ✅ CORRECT - Use prefix and single quotes
-mlflow.search_traces("attributes.status = 'OK'")
-
-# ✅ CORRECT - Backticks for dotted names
-mlflow.search_traces("tags.`mlflow.traceName` = 'my_app'")
-
-# ✅ CORRECT - AND is supported
-mlflow.search_traces("attributes.status = 'OK' AND tags.env = 'prod'")
-
-# ✅ CORRECT - Time in milliseconds
-import time
-cutoff = int((time.time() - 3600) * 1000)  # 1 hour ago
-mlflow.search_traces(f"attributes.timestamp_ms > {cutoff}")
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - Correctness requires expected_facts or expected_response
-eval_data = [
-    {"inputs": {"query": "What is X?"}}
-]
-results = mlflow.genai.evaluate(
-    data=eval_data,
-    predict_fn=my_app,
-    scorers=[Correctness()]  # Will fail - no ground truth!
-)
-```
-
-
-```python
-# ✅ CORRECT
-eval_data = [
-    {
-        "inputs": {"query": "What is X?"},
-        "expectations": {
-            "expected_facts": ["X is a platform", "X is open-source"]
-        }
-    }
-]
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - App has no RETRIEVER span type
+# WRONG - App has no RETRIEVER span type
 @mlflow.trace
 def my_rag_app(query):
     docs = get_documents(query)  # Not marked as retriever
     return generate_response(docs, query)
 
-# RetrievalGroundedness will fail - can't find retriever spans
-```
-
-
-```python
-# ✅ CORRECT - Use span_type="RETRIEVER"
+# CORRECT - Use span_type="RETRIEVER"
 @mlflow.trace(span_type="RETRIEVER")
 def retrieve_documents(query):
     return [doc1, doc2]
@@ -345,475 +155,112 @@ def my_rag_app(query):
     return generate_response(docs, query)
 ```
 
+`RetrievalGroundedness` silently returns no score if it cannot find a span annotated with the `RETRIEVER` type. The scorer has no retrieval context to evaluate against.
 
+### Search Traces Filter Syntax
 
-
-
+> "Why do my trace search queries keep failing?"
 
 ```python
-# ❌ WRONG for production monitoring - external import outside function
+# WRONG - Missing prefix
+mlflow.search_traces("status = 'OK'")
+
+# WRONG - Using double quotes for values
+mlflow.search_traces('attributes.status = "OK"')
+
+# WRONG - Missing backticks for dotted names
+mlflow.search_traces("tags.mlflow.traceName = 'my_app'")
+
+# WRONG - Using OR (not supported)
+mlflow.search_traces("attributes.status = 'OK' OR attributes.status = 'ERROR'")
+
+# CORRECT
+mlflow.search_traces("attributes.status = 'OK'")
+mlflow.search_traces("tags.`mlflow.traceName` = 'my_app'")
+mlflow.search_traces("attributes.status = 'OK' AND tags.env = 'prod'")
+```
+
+Filters require `attributes.` prefix for status/timestamp/execution_time. Values use single quotes. Dotted tag names need backticks. Only `AND` is supported.
+
+### Production Scorer Serialization
+
+> "Why does my scorer work locally but fail in production monitoring?"
+
+```python
+# WRONG for production monitoring - external import outside function
 import my_custom_library
 
 @scorer
 def production_scorer(outputs):
     return my_custom_library.process(outputs)
-```
 
-
-```python
-# ✅ CORRECT - Import inside function for serialization
+# CORRECT - Import inside function for serialization
 @scorer
 def production_scorer(outputs):
     import json  # Import inside for production monitoring
     return len(json.dumps(outputs)) > 100
 ```
 
+Production monitoring serializes scorer functions. External imports at the top level break serialization. Move imports inside the function body. Also avoid complex type hints -- `List[str]` breaks serialization while `dict` works fine.
 
+### Label Schema Name Mismatch (Judge Alignment)
 
-
-
-
-```python
-# ❌ WRONG - Type hints break serialization for production monitoring
-from typing import List
-
-@scorer
-def bad_scorer(outputs: List[str]) -> bool:
-    return True
-```
-
+> "Why does align() produce incorrect results after expert labeling?"
 
 ```python
-# ✅ CORRECT - Simple types work
-@scorer
-def good_scorer(outputs):
-    return True
-
-# ✅ CORRECT - dict is fine
-@scorer
-def good_scorer(outputs: dict) -> bool:
-    return True
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - Need Spark for MLflow-managed datasets
-import mlflow.genai.datasets
-
-dataset = mlflow.genai.datasets.create_dataset(
-    uc_table_name="catalog.schema.my_dataset"
-)
-# Error: No Spark session available
-```
-
-
-```python
-# ✅ CORRECT
-from databricks.connect import DatabricksSession
-
-spark = DatabricksSession.builder.remote(serverless=True).getOrCreate()
-
-dataset = mlflow.genai.datasets.create_dataset(
-    uc_table_name="catalog.schema.my_dataset"
-)
-```
-
-
-
-
-
-
-```python
-@scorer
-def bad_multi_scorer(outputs):
-    # ❌ WRONG - Feedbacks will conflict
-    return [
-        Feedback(value=True),
-        Feedback(value=0.8)
-    ]
-```
-
-
-```python
-@scorer
-def good_multi_scorer(outputs):
-    # ✅ CORRECT - Each has unique name
-    return [
-        Feedback(name="check_1", value=True),
-        Feedback(name="check_2", value=0.8)
-    ]
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - Guidelines use 'request' and 'response', not custom keys
-Guidelines(
-    name="check",
-    guidelines="The output must address the query"  # 'output' and 'query' not available
-)
-```
-
-
-```python
-# ✅ CORRECT - These are auto-extracted
-Guidelines(
-    name="check",
-    guidelines="The response must address the request"
-)
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - Registered but not started
-from mlflow.genai.scorers import Safety
-
-safety = Safety().register(name="safety_check")
-# Scorer exists but isn't running!
-```
-
-
-```python
-# ✅ CORRECT - Both register and start
-from mlflow.genai.scorers import Safety, ScorerSamplingConfig
-
-safety = Safety().register(name="safety_check")
-safety = safety.start(
-    sampling_config=ScorerSamplingConfig(sample_rate=0.5)
-)
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - Missing provider prefix
-Guidelines(name="test", guidelines="...", model="gpt-4o")
-
-# ❌ WRONG - Wrong separator
-Guidelines(name="test", guidelines="...", model="databricks:gpt-4o")
-```
-
-
-```python
-# ✅ CORRECT - Use :/ separator
-Guidelines(name="test", guidelines="...", model="databricks:/my-endpoint")
-Guidelines(name="test", guidelines="...", model="openai:/gpt-4o")
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - p50, p99, sum are not valid
-@scorer(aggregations=["mean", "p50", "p99", "sum"])
-def my_scorer(outputs) -> float:
-    return 0.5
-```
-
-
-```python
-# ✅ CORRECT - Only these 6 are valid
-@scorer(aggregations=["min", "max", "mean", "median", "variance", "p90"])
-def my_scorer(outputs) -> float:
-    return 0.5
-```
-
-
-`min`
-`max`
-`mean`
-`median``p50`
-`variance`
-`p90`
-
-
-
-
-
-
-```sql
--- ❌ WRONG - ALL_PRIVILEGES does NOT include required permissions
-GRANT ALL_PRIVILEGES ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_spans
-  TO `user@company.com`;
-```
-
-
-```sql
--- ✅ CORRECT - Explicit MODIFY and SELECT required
-GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_spans
-  TO `user@company.com`;
-GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_logs
-  TO `user@company.com`;
-GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_metrics
-  TO `user@company.com`;
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - Missing schema or wrong separator
-os.environ["MLFLOW_TRACING_DESTINATION"] = "my_catalog"
-os.environ["MLFLOW_TRACING_DESTINATION"] = "my_catalog/my_schema"
-```
-
-
-```python
-# ✅ CORRECT - Dot-separated catalog.schema
-os.environ["MLFLOW_TRACING_DESTINATION"] = "my_catalog.my_schema"
-```
-
-
-
-
-
-
-```bash
-# ❌ WRONG - Trace ingestion requires 3.9.0+
-pip install mlflow[databricks]>=3.1.0
-```
-
-
-```bash
-# ✅ CORRECT
-pip install "mlflow[databricks]>=3.9.0" --upgrade --force-reinstall
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - No SQL warehouse configured
-mlflow.set_tracking_uri("databricks")
-# Missing: os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "..."
-set_experiment_trace_location(location=UCSchemaLocation(...), ...)
-```
-
-
-```python
-# ✅ CORRECT - Set warehouse ID first
-mlflow.set_tracking_uri("databricks")
-os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<SQL_WAREHOUSE_ID>"
-set_experiment_trace_location(location=UCSchemaLocation(...), ...)
-```
-
-
-
-
-
-
-```python
-# ❌ WRONG - Judge name and label schema name don't match
-# Judge is registered as "domain_quality_base" in evaluate()
+# WRONG - Judge name and label schema name don't match
 domain_quality_judge = make_judge(name="domain_quality_base", ...)
-registered_base_judge = domain_quality_judge.register(experiment_id=EXPERIMENT_ID)
-
-# But label schema uses a different name
 feedback_schema = label_schemas.create_label_schema(
-    name="domain_quality_rating",    # ❌ Does not match judge name
-    type="feedback",
+    name="domain_quality_rating",  # Does not match judge name
     ...
 )
-# align() will not be able to pair SME feedback with LLM judge scores
-```
 
-
-```python
-# ✅ CORRECT - Judge name and label schema name are identical
+# CORRECT - Names must be identical
 JUDGE_NAME = "domain_quality_base"
-
 domain_quality_judge = make_judge(name=JUDGE_NAME, ...)
-registered_base_judge = domain_quality_judge.register(experiment_id=EXPERIMENT_ID)
-
 feedback_schema = label_schemas.create_label_schema(
-    name=JUDGE_NAME,                 # ✅ Matches judge name exactly
-    type="feedback",
+    name=JUDGE_NAME,  # Matches judge name exactly
     ...
 )
 ```
 
-`align()``align()`
+`align()` pairs SME feedback with LLM judge scores using the `name` field. A mismatch means alignment cannot find the matching scores, and it fails silently or produces incorrect results.
 
+### GEPA Optimization Missing Expectations
 
-
-
-
-
-```python
-# ❌ WRONG interpretation - panicking because aligned judge gives lower scores
-# Unaligned judge: 4.2/5.0 average
-# Aligned judge:   3.1/5.0 average
-# "The agent regressed!" — No, the judge got more accurate.
-```
-
+> "Why does optimize_prompts() produce poor results?"
 
 ```python
-# ✅ CORRECT interpretation
-# The aligned judge now evaluates with domain-expert standards rather than generic best practices.
-# A lower score from a more accurate judge is a better signal than an inflated score from
-# a judge that doesn't understand your domain. The unaligned judge was underspecified.
-# Use optimize_prompts() with the aligned judge to improve the agent against this standard.
-```
-
-`optimize_prompts()`
-
-
-
-
-
-
-```python
-# ❌ COSTLY - Default embedding model may be expensive for large trace sets
-optimizer = MemAlignOptimizer(
-    reflection_lm=REFLECTION_MODEL,
-    retrieval_k=5,
-    # No embedding_model specified → defaults to "openai/text-embedding-3-small"
-)
-```
-
-
-```python
-# ✅ CORRECT - Use a hosted model to control costs; scope trace set to labeled traces only
-optimizer = MemAlignOptimizer(
-    reflection_lm=REFLECTION_MODEL,
-    retrieval_k=5,
-    embedding_model="databricks:/databricks-gte-large-en",
-)
-
-# ✅ ALSO CORRECT - Filter to only labeled/tagged traces, not all experiment traces
-traces = mlflow.search_traces(
-    locations=[EXPERIMENT_ID],
-    filter_string="tag.eval = 'complete'",  # Scope to relevant traces only
-    return_type="list",
-)
-aligned_judge = base_judge.align(traces=traces, optimizer=optimizer)
-```
-
-`retrieval_k``databricks:/databricks-gte-large-en`
-
-
-
-
-
-
-```python
-# ❌ WRONG - Episodic memory appears empty, looks like alignment didn't work
-retrieved_judge = get_scorer(name="domain_quality_base", experiment_id=EXPERIMENT_ID)
-print(retrieved_judge._episodic_memory)  # Prints: [] — misleading!
-print(retrieved_judge._semantic_memory)  # Prints: [] — also empty!
-```
-
-
-```python
-# ✅ CORRECT - Semantic guidelines ARE loaded; episodic memory loads on first use
-retrieved_judge = get_scorer(name="domain_quality_base", experiment_id=EXPERIMENT_ID)
-
-# The instructions field already contains the distilled guidelines — inspect this instead
-print(retrieved_judge.instructions)  # ✅ Shows full aligned instructions with guidelines
-
-# To verify episodic memory, run the judge on a sample first, then inspect
-# Memory loads lazily when the judge retrieves similar examples during scoring
-```
-
-`_episodic_memory``instructions``get_scorer()`
-
-
-
-
-
-
-```python
-# ❌ WRONG - GEPA requires expectations; optimization will fail or produce poor results
+# WRONG - Missing expectations
 optimization_dataset = [
-    {"inputs": {"input": [{"role": "user", "content": "How does the offense attack the blitz?"}]}},
-    {"inputs": {"input": [{"role": "user", "content": "What are 3rd down tendencies?"}]}},
+    {"inputs": {"input": [{"role": "user", "content": "Question?"}]}}
 ]
 
-result = mlflow.genai.optimize_prompts(
-    predict_fn=predict_fn,
-    train_data=optimization_dataset,   # ❌ Missing expectations
-    prompt_uris=[prompt.uri],
-    optimizer=GepaPromptOptimizer(...),
-    scorers=[aligned_judge],
-)
-```
-
-
-```python
-# ✅ CORRECT - Each record must have both inputs AND expectations
+# CORRECT - Each record must have both inputs AND expectations
 optimization_dataset = [
     {
         "inputs": {
-            "input": [{"role": "user", "content": "How does the offense attack the blitz?"}]
+            "input": [{"role": "user", "content": "Question?"}]
         },
         "expectations": {
-            "expected_response": (
-                "The agent should analyze blitz performance metrics, compare success "
-                "rates across pressure packages, and provide concrete tactical recommendations."
-            )
+            "expected_response": "The agent should analyze the data and give recommendations."
         }
-    },
-    {
-        "inputs": {
-            "input": [{"role": "user", "content": "What are 3rd down tendencies?"}]
-        },
-        "expectations": {
-            "expected_response": (
-                "The agent should call the appropriate tool with down=3 parameters, "
-                "summarize the play distribution, and give defensive recommendations."
-            )
-        }
-    },
+    }
 ]
 ```
 
-`expectations``expectations`
+`optimize_prompts()` requires `expectations` per record. An evaluation dataset with only `inputs` works for `evaluate()` but not for optimization. This is a different requirement from standard evaluation.
 
+## Watch Out For
 
-
-
-
-
-
-`mlflow.genai.evaluate()``mlflow.evaluate()`
-`inputs`
-`predict_fn`
-`@scorer`
-`name``guidelines`
-`expectations.expected_facts``expected_response`
-`RETRIEVER`
-`attributes.`
-
-
-
-`mlflow[databricks]>=3.9.0`
-
-`MLFLOW_TRACING_SQL_WAREHOUSE_ID`
-`MLFLOW_TRACING_DESTINATION``catalog.schema`
-
-`embedding_model`
-`get_scorer()``.instructions``._episodic_memory`
-`train_data``inputs``expectations`
-`name``name``evaluate()``align()`
-
-`feedback_value_type`
+- **Using `mlflow.evaluate()` instead of `mlflow.genai.evaluate()`** -- different API, different data format, different scorers
+- **`Guidelines` missing `name` parameter** -- `Guidelines(guidelines="...")` fails. Both `name` and `guidelines` are required.
+- **Registered scorer not started** -- `.register()` creates the record, but `.start()` activates monitoring. Both steps are needed.
+- **`Correctness` without expectations** -- requires `expected_facts` or `expected_response` in the data. Without them, evaluation fails.
+- **MLflow version for trace ingestion** -- UC trace features require `mlflow[databricks]>=3.9.0`, not `>=3.1.0`
+- **Missing SQL warehouse for UC traces** -- `MLFLOW_TRACING_SQL_WAREHOUSE_ID` must be set before calling `set_experiment_trace_location()`
+- **UC trace destination format** -- must be `catalog.schema` with a dot separator, not `catalog/schema`
+- **UC permissions** -- `ALL_PRIVILEGES` does not include the required `MODIFY` and `SELECT`. Grant them explicitly on each `mlflow_experiment_trace_*` table.
+- **Aligned judge giving lower scores** -- this is expected. The aligned judge evaluates with domain-expert standards, not generic ones. A lower score from an accurate judge is better signal.
+- **MemAlign default embedding model** -- defaults to `openai/text-embedding-3-small`. On Databricks, set `embedding_model="databricks:/databricks-gte-large-en"` explicitly.
+- **Episodic memory appears empty** -- `get_scorer()` lazily loads memory. Inspect `.instructions` to see the distilled guidelines, not `._episodic_memory`.

@@ -1,143 +1,27 @@
 ---
 title: Output Formats Guide
-description: Where and how to save generated synthetic data.
+description: Save synthetic data as Delta tables, Parquet, JSON, or CSV with proper metadata and comments.
 sidebar:
   order: 5
 ---
 
+## What You Can Build
 
+You can save generated data in whatever format your downstream pipeline needs -- Delta tables for analytics and dashboards, Parquet for SDP pipeline ingestion, JSON for streaming workloads, or CSV for legacy systems. The format you choose determines how the data is discoverable in Unity Catalog, whether schema evolution works, and how downstream consumers read it.
 
+## In Action
 
-
-`spark.sql()`
+> "Save my generated customers as a Delta table with table and column comments so it's discoverable in Unity Catalog. Use Python with PySpark."
 
 ```python
-CATALOG = "<user-provided-catalog>"  # MUST ask user - never default
+CATALOG = "<user-provided-catalog>"
 SCHEMA = "<user-provided-schema>"
-VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
 
-# Note: Assume catalog exists - do NOT create it
+# Create infrastructure
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA} COMMENT 'Synthetic data for demo scenario'")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.raw_data")
-```
 
-`COMMENT`
-
-
-
-
-
-
-
-`.parquet`
-`.json`
-`.csv`
-
-
-
-
-
-
-
-
-```python
-VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
-
-# Save as parquet files (directory format)
-customers_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/customers")
-orders_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/orders")
-tickets_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/tickets")
-```
-
-
-`.parquet`
-
-`mode("overwrite")`
-`mode("append")`
-
-
-
-
-
-
-
-```python
-VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
-
-# Save as JSON files
-customers_df.write.mode("overwrite").json(f"{VOLUME_PATH}/customers_json")
-orders_df.write.mode("overwrite").json(f"{VOLUME_PATH}/orders_json")
-```
-
-
-
-
-
-
-
-
-
-
-
-
-```python
-VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
-
-# Save as CSV with headers
-customers_df.write.mode("overwrite").option("header", "true").csv(f"{VOLUME_PATH}/customers_csv")
-orders_df.write.mode("overwrite").option("header", "true").csv(f"{VOLUME_PATH}/orders_csv")
-```
-
-
-```python
-# Full options for CSV
-df.write \
-    .mode("overwrite") \
-    .option("header", "true") \
-    .option("delimiter", ",") \
-    .option("quote", '"') \
-    .option("escape", "\\") \
-    .csv(f"{VOLUME_PATH}/data_csv")
-```
-
-
-
-
-
-
-
-
-
-
-
-
-```python
-# Ensure schema exists
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
-
-# Save as managed Delta tables
-customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
-orders_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.orders")
-
-# With additional options
-customers_df.write \
-    .mode("overwrite") \
-    .option("overwriteSchema", "true") \
-    .saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
-```
-
-
-
-
-
-
-
-
-
-
-
-```python
-# Create table with inline column comments and table comment
+# Create table with column comments
 spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {CATALOG}.{SCHEMA}.customers (
         customer_id STRING COMMENT 'Unique customer identifier (CUST-XXXXX)',
@@ -150,90 +34,126 @@ spark.sql(f"""
     COMMENT 'Synthetic customer data for e-commerce demo'
 """)
 
-# Then write data into the pre-defined table
+# Write data into the pre-defined table
 customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
 ```
 
+**Key decisions:**
+- **Delta tables are the default** for analytics workloads -- they show up in Unity Catalog with full metadata, support time travel, and work with every Databricks compute type
+- **Define the table first with comments** using `CREATE TABLE`, then write data into it. This ensures column comments survive `mode("overwrite")`.
+- **`COMMENT` on the schema** makes the entire dataset self-documenting in the catalog browser
+- **`CREATE VOLUME IF NOT EXISTS`** is still needed for cases where you also write raw files (Parquet/JSON/CSV) alongside the Delta table
+
+## More Patterns
+
+### Write Parquet to a Volume
+
+> "Save my generated data as Parquet files in a Unity Catalog volume for SDP pipeline ingestion. Use Python."
 
 ```python
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
 
-schema = StructType([
-    StructField("customer_id", StringType(), True, metadata={"comment": "Unique customer identifier (CUST-XXXXX)"}),
-    StructField("name", StringType(), True, metadata={"comment": "Full customer name"}),
-    StructField("email", StringType(), True, metadata={"comment": "Customer email address"}),
-    StructField("tier", StringType(), True, metadata={"comment": "Customer tier: Free, Pro, Enterprise"}),
-    StructField("region", StringType(), True, metadata={"comment": "Geographic region"}),
-    StructField("arr", DoubleType(), True, metadata={"comment": "Annual recurring revenue in USD"}),
-])
-
-# Apply schema when creating the DataFrame, comments persist when saved as Delta
-customers_df = spark.createDataFrame(data, schema)
-customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
+customers_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/customers")
+orders_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/orders")
+tickets_df.write.mode("overwrite").parquet(f"{VOLUME_PATH}/tickets")
 ```
 
+Parquet is the default for raw file ingestion. SDP pipelines and Auto Loader expect files in a Volume directory, not Delta tables. Each `.write.parquet()` creates a directory of part files, not a single file.
+
+### Write JSON for Streaming Ingestion
+
+> "Save my generated data as JSON files for a streaming ingestion pipeline. Use Python."
 
 ```python
-# Write first, then add comments
-customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers")
+VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
 
+customers_df.write.mode("overwrite").json(f"{VOLUME_PATH}/customers_json")
+orders_df.write.mode("overwrite").json(f"{VOLUME_PATH}/orders_json")
+```
+
+JSON output produces one JSON object per line (JSONL format). Use this when feeding into streaming pipelines or log-ingestion systems that expect newline-delimited JSON.
+
+### Write CSV for Legacy Systems
+
+> "Export my generated data as CSV with headers for a legacy system that only reads CSV. Use Python."
+
+```python
+VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
+
+customers_df.write.mode("overwrite").option("header", "true").csv(
+    f"{VOLUME_PATH}/customers_csv"
+)
+
+# Full options for specific delimiter/quoting requirements
+orders_df.write \
+    .mode("overwrite") \
+    .option("header", "true") \
+    .option("delimiter", ",") \
+    .option("quote", '"') \
+    .option("escape", "\\") \
+    .csv(f"{VOLUME_PATH}/orders_csv")
+```
+
+CSV loses type information (everything becomes strings) and does not support nested structures. Use it only when the downstream system requires it.
+
+### Add Comments After Writing
+
+> "Add table and column comments to a Delta table I already wrote. Use Python with PySpark."
+
+```python
 # Add table comment
-spark.sql(f"COMMENT ON TABLE {CATALOG}.{SCHEMA}.customers IS 'Synthetic customer data for e-commerce demo'")
+spark.sql(
+    f"COMMENT ON TABLE {CATALOG}.{SCHEMA}.customers IS 'Synthetic customer data for e-commerce demo'"
+)
 
 # Add column comments
-spark.sql(f"ALTER TABLE {CATALOG}.{SCHEMA}.customers ALTER COLUMN customer_id COMMENT 'Unique customer identifier (CUST-XXXXX)'")
-spark.sql(f"ALTER TABLE {CATALOG}.{SCHEMA}.customers ALTER COLUMN tier COMMENT 'Customer tier: Free, Pro, Enterprise'")
+spark.sql(
+    f"ALTER TABLE {CATALOG}.{SCHEMA}.customers ALTER COLUMN customer_id COMMENT 'Unique customer identifier (CUST-XXXXX)'"
+)
+spark.sql(
+    f"ALTER TABLE {CATALOG}.{SCHEMA}.customers ALTER COLUMN tier COMMENT 'Customer tier: Free, Pro, Enterprise'"
+)
 ```
 
+If you already wrote the table without comments, add them after the fact with `COMMENT ON TABLE` and `ALTER COLUMN ... COMMENT`. This is the simplest approach when retrofitting existing tables.
 
+### Incremental Append Mode
 
-
-
-
-
-
-
-`overwrite`
-`append`
-`ignore`
-`error`
-
-
+> "Set up my generation script to append new records instead of overwriting on each run. Use Python."
 
 ```python
-WRITE_MODE = "append"  # For scheduled jobs
-
-# Only generate new records since last run
 from datetime import datetime, timedelta
 
+WRITE_MODE = "append"
 LAST_RUN = datetime.now() - timedelta(days=1)
 END_DATE = datetime.now()
 
-# Generate only new data
 new_orders_df = generate_orders(start_date=LAST_RUN, end_date=END_DATE)
 new_orders_df.write.mode(WRITE_MODE).parquet(f"{VOLUME_PATH}/orders")
 ```
 
+Use `append` for scheduled jobs that add new synthetic records on each run. Use `overwrite` for one-time generation or when you want a clean slate each time.
 
+### Verify After Writing
 
-
-
-
+> "Read back my generated data and verify row counts and distributions. Use Python with PySpark."
 
 ```python
-# Read back and verify
 customers_check = spark.read.parquet(f"{VOLUME_PATH}/customers")
 orders_check = spark.read.parquet(f"{VOLUME_PATH}/orders")
 
 print(f"Customers: {customers_check.count():,} rows")
 print(f"Orders: {orders_check.count():,} rows")
 
-# Verify distributions
 customers_check.groupBy("tier").count().show()
 orders_check.describe("amount").show()
 ```
 
-`get_volume_folder_details`
-`volume_path`
-`format`
-`table_stat_level`
+Always verify after writing. Check row counts match expectations, tier distributions are non-uniform, and amount statistics look reasonable (mean, stddev, min, max).
+
+## Watch Out For
+
+- **Missing table and column comments** -- without them, the synthetic data is undiscoverable in Unity Catalog. Users browsing the catalog see column names but no descriptions. Add comments to make the data self-documenting.
+- **Using `overwrite` when you meant `append`** -- `mode("overwrite")` deletes all existing data before writing. For scheduled generation jobs, use `mode("append")` to accumulate data over time.
+- **Forgetting `option("header", "true")` on CSV** -- without it, the first row of data becomes the header, shifting all values by one row. Every downstream consumer will misinterpret the data.
+- **Writing Delta tables without creating infrastructure first** -- `saveAsTable` creates the table but not the schema. Always run `CREATE SCHEMA IF NOT EXISTS` before writing. Do not try to create the catalog.

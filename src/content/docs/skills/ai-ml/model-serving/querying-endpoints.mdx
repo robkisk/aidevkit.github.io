@@ -1,96 +1,17 @@
 ---
 title: Querying Endpoints
-description: Send requests to deployed Model Serving endpoints.
+description: Send requests to deployed model serving endpoints using the SDK, REST API, or OpenAI-compatible clients.
 sidebar:
   order: 8
 ---
 
+## What You Can Build
 
+You can call any deployed model serving endpoint -- chat agents, classical ML models, embedding models -- from Python, bash, or any HTTP client. Databricks endpoints speak the OpenAI chat completions format for agents and a DataFrame-based format for traditional ML, so you can integrate them into existing applications without custom serialization.
 
+## In Action
 
-
-
-
-
-
-
-
-```
-get_serving_endpoint_status(name="my-agent-endpoint")
-```
-
-
-```json
-{
-    "name": "my-agent-endpoint",
-    "state": "READY",
-    "served_entities": [
-        {"name": "my_agent-1", "entity_name": "main.agents.my_agent", "deployment_state": "READY"}
-    ]
-}
-```
-
-
-
-```
-query_serving_endpoint(
-    name="my-agent-endpoint",
-    messages=[
-        {"role": "user", "content": "What is Databricks?"}
-    ],
-    max_tokens=500,
-    temperature=0.7
-)
-```
-
-
-```json
-{
-    "choices": [
-        {
-            "message": {
-                "role": "assistant",
-                "content": "Databricks is a unified data intelligence platform..."
-            },
-            "finish_reason": "stop"
-        }
-    ],
-    "usage": {
-        "prompt_tokens": 10,
-        "completion_tokens": 150,
-        "total_tokens": 160
-    }
-}
-```
-
-
-
-```
-query_serving_endpoint(
-    name="sklearn-classifier",
-    dataframe_records=[
-        {"age": 25, "income": 50000, "credit_score": 720},
-        {"age": 35, "income": 75000, "credit_score": 680}
-    ]
-)
-```
-
-
-```json
-{
-    "predictions": [0.85, 0.72]
-}
-```
-
-
-
-```
-list_serving_endpoints(limit=20)
-```
-
-
-
-
+> "Query my deployed agent endpoint with a chat message using the Databricks SDK. Use Python."
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -102,53 +23,62 @@ response = w.serving_endpoints.query(
     messages=[
         {"role": "user", "content": "What is Databricks?"}
     ],
-    max_tokens=500
+    max_tokens=500,
 )
 
 print(response.choices[0].message.content)
 ```
 
+**Key decisions:**
+- **`WorkspaceClient()`** reads auth from environment variables or `~/.databrickscfg` -- no hardcoded tokens in your code
+- **`messages` format** follows the OpenAI chat completions spec, so agents and foundation model endpoints use the same interface
+- **`max_tokens`** caps response length. Omit it for agents that need to produce longer outputs (tool-calling loops can be verbose).
+- For traditional ML models, use `dataframe_records` instead of `messages` -- the endpoint expects tabular input
 
+## More Patterns
+
+### Query a Traditional ML Endpoint
+
+> "Send feature data to my sklearn classifier endpoint and get predictions. Use Python."
 
 ```python
 response = w.serving_endpoints.query(
     name="sklearn-classifier",
     dataframe_records=[
-        {"age": 25, "income": 50000, "credit_score": 720}
-    ]
+        {"age": 25, "income": 50000, "credit_score": 720},
+        {"age": 35, "income": 75000, "credit_score": 680},
+    ],
 )
 
-print(response.predictions)
+print(response.predictions)  # [0.85, 0.72]
 ```
 
+Traditional ML endpoints accept `dataframe_records` -- a list of dicts where each dict is a row. The response contains `predictions` instead of `choices`.
 
+### Stream Agent Responses
+
+> "Query my agent endpoint with streaming so I can display tokens as they arrive. Use Python."
 
 ```python
 for chunk in w.serving_endpoints.query(
     name="my-agent-endpoint",
     messages=[{"role": "user", "content": "Tell me a story"}],
-    stream=True
+    stream=True,
 ):
     if chunk.choices:
         print(chunk.choices[0].delta.content, end="")
 ```
 
+Streaming returns chunks as the model generates them. Each chunk has a `delta` with partial content. This is essential for user-facing applications where perceived latency matters.
 
+### Query via REST API
 
-
-
-```bash
-curl -X GET \
-  "https://<workspace>.databricks.com/api/2.0/serving-endpoints/<endpoint-name>" \
-  -H "Authorization: Bearer <token>"
-```
-
-
+> "Call my agent endpoint from curl to test it outside of Python. Use bash."
 
 ```bash
 curl -X POST \
-  "https://<workspace>.databricks.com/serving-endpoints/<endpoint-name>/invocations" \
-  -H "Authorization: Bearer <token>" \
+  "https://<workspace>.databricks.com/serving-endpoints/my-agent-endpoint/invocations" \
+  -H "Authorization: Bearer $DATABRICKS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -158,85 +88,33 @@ curl -X POST \
   }'
 ```
 
+The REST API uses the same payload format as the SDK. Use this for integration testing from non-Python services or CI pipelines.
 
+### Use the OpenAI Client
 
-```bash
-curl -X POST \
-  "https://<workspace>.databricks.com/serving-endpoints/<endpoint-name>/invocations" \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "dataframe_records": [
-        {"age": 25, "income": 50000, "credit_score": 720}
-    ]
-  }'
-```
-
-
-
-
-
-```python
-from databricks.sdk import WorkspaceClient
-import os
-
-# Uses DATABRICKS_HOST and DATABRICKS_TOKEN from environment
-w = WorkspaceClient()
-
-def ask_agent(question: str) -> str:
-    response = w.serving_endpoints.query(
-        name="my-agent-endpoint",
-        messages=[{"role": "user", "content": question}]
-    )
-    return response.choices[0].message.content
-
-# Usage
-answer = ask_agent("What is a Delta table?")
-print(answer)
-```
-
-
-
-```python
-from databricks.sdk import WorkspaceClient
-from langchain_core.tools import tool
-
-w = WorkspaceClient()
-
-@tool
-def ask_specialist_agent(question: str) -> str:
-    """Ask a specialist agent for domain-specific answers."""
-    response = w.serving_endpoints.query(
-        name="specialist-agent-endpoint",
-        messages=[{"role": "user", "content": question}]
-    )
-    return response.choices[0].message.content
-
-# Add to your main agent's tools
-tools = [ask_specialist_agent]
-```
-
-
-
-
+> "Query my Databricks endpoint using the OpenAI Python client so my existing app works without changes. Use Python."
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://<workspace>.databricks.com/serving-endpoints/<endpoint-name>",
-    api_key="<databricks-token>"
+    base_url="https://<workspace>.databricks.com/serving-endpoints",
+    api_key="<databricks-token>",
 )
 
 response = client.chat.completions.create(
-    model="<endpoint-name>",  # Any value works, endpoint determines model
-    messages=[{"role": "user", "content": "Hello!"}]
+    model="my-agent-endpoint",
+    messages=[{"role": "user", "content": "Hello!"}],
 )
 
 print(response.choices[0].message.content)
 ```
 
+Databricks endpoints are OpenAI-compatible. Point the `base_url` at your workspace and use the endpoint name as the `model`. Existing applications built against the OpenAI API work with zero code changes.
 
+### Build a Reusable Query Helper
+
+> "Create a helper function I can use across my application to query my agent. Use Python."
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -244,28 +122,28 @@ from databricks.sdk.errors import NotFound, PermissionDenied
 
 w = WorkspaceClient()
 
-try:
-    response = w.serving_endpoints.query(
-        name="my-endpoint",
-        messages=[{"role": "user", "content": "Test"}]
-    )
-except NotFound:
-    print("Endpoint not found - check name or wait for deployment")
-except PermissionDenied:
-    print("No permission to query this endpoint")
-except Exception as e:
-    if "NOT_READY" in str(e):
-        print("Endpoint is still starting up")
-    else:
+def ask_agent(question: str, endpoint: str = "my-agent-endpoint") -> str:
+    try:
+        response = w.serving_endpoints.query(
+            name=endpoint,
+            messages=[{"role": "user", "content": question}],
+        )
+        return response.choices[0].message.content
+    except NotFound:
+        return "Endpoint not found -- check name or wait for deployment"
+    except PermissionDenied:
+        return "No permission to query this endpoint"
+    except Exception as e:
+        if "NOT_READY" in str(e):
+            return "Endpoint is still starting up (~15 min after deployment)"
         raise
 ```
 
+Wrap the query in error handling that distinguishes between deployment issues (transient) and permission issues (configuration). This saves debugging time when endpoints are still spinning up.
 
+## Watch Out For
 
-
-
-
-
-
-
-
+- **Querying before the endpoint is READY** -- deployment takes around 15 minutes. Check status with the SDK (`w.serving_endpoints.get(name="...")`) before sending requests. A `NOT_READY` error means the endpoint is still provisioning.
+- **Using `messages` for traditional ML endpoints** -- classical models expect `dataframe_records` (tabular input), not chat messages. Sending `messages` to an sklearn endpoint returns a confusing format error.
+- **Hardcoding tokens in source code** -- use `WorkspaceClient()` which reads auth from environment variables or config profiles. Hardcoded tokens end up in version control.
+- **Missing `stream=True` for user-facing apps** -- without streaming, the client blocks until the entire response is generated. For agents with tool-calling loops, this can mean 30+ seconds of silence before any output appears.

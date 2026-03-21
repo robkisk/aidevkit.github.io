@@ -1,119 +1,47 @@
 ---
 title: "Python API: Modern vs Legacy"
-description: "Last Updated: January 2026"
+description: Use the modern pyspark.pipelines API for new pipelines and know the mapping from the legacy dlt module for migrations.
 sidebar:
   order: 5
 ---
 
+## What You Can Build
 
-`pyspark.pipelines`
+The Python API for Spark Declarative Pipelines moved from `import dlt` to `from pyspark import pipelines as dp`. Ask your AI coding assistant to write pipeline code and it will use the modern API — but when you are migrating existing DLT pipelines, knowing the exact mapping between old and new saves hours of trial and error.
 
+## In Action
 
-
-
-
-
-
-`pyspark.pipelines``dp`
-`dlt`
-
-
-
-
-
-
-
-`dp``dlt`
-
-`from pyspark import pipelines as dp``import dlt`
-
-`@dp.table()``@dlt.table()`
-`spark.read.table("table")``dlt.read("table")`
-`dp.create_auto_cdc_flow()``dlt.apply_changes()`
-
-
-
-
-
-
-
-
+> "Write a Python bronze streaming table using the modern dp API that ingests JSON from cloud storage with Auto Loader"
 
 ```python
 from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
-@dp.table(name="bronze_events", comment="Raw events")
+schema_location_base = spark.conf.get("schema_location_base")
+
+@dp.table(name="bronze_events", cluster_by=["event_date"])
 def bronze_events():
     return (
         spark.readStream
         .format("cloudFiles")
         .option("cloudFiles.format", "json")
-        .load("/mnt/raw/events")
+        .option("cloudFiles.schemaLocation", f"{schema_location_base}/bronze_events")
+        .load("/Volumes/catalog/schema/raw/events/")
+        .withColumn("_ingested_at", F.current_timestamp())
+        .withColumn("event_date", F.current_date())
     )
 ```
 
+**Key decisions:**
+- **`from pyspark import pipelines as dp`** — this is the modern import. The `dp` alias is the convention. Never use `import dlt` in new code.
+- **`spark.read.table()` and `spark.readStream.table()`** — replace `dlt.read()` and `dlt.read_stream()`. Standard Spark reads work directly; no special pipeline-specific read functions needed.
+- **`cluster_by` instead of `partition_cols`** — Liquid Clustering is a parameter on the decorator. The old `partition_cols` parameter still works but should not be used in new pipelines.
+- **`@dp.table()` is context-aware** — if the function returns a streaming DataFrame, SDP creates a streaming table. If it returns a batch DataFrame, it creates a materialized view. No separate decorators needed.
 
-```python
-import dlt
-from pyspark.sql import functions as F
+## More Patterns
 
-@dlt.table(name="bronze_events", comment="Raw events")
-def bronze_events():
-    return (
-        spark.readStream
-        .format("cloudFiles")
-        .option("cloudFiles.format", "json")
-        .load("/mnt/raw/events")
-    )
-```
-
-
-
-
-```python
-@dp.table(name="silver_events")
-def silver_events():
-    # Explicit Unity Catalog path
-    return spark.read.table("bronze_events").filter(...)
-```
-
-
-```python
-@dlt.table(name="silver_events")
-def silver_events():
-    # Implicit LIVE schema
-    return dlt.read("bronze_events").filter(...)
-```
-
-`LIVE.*`
-
-
-
-
-```python
-@dp.table(name="silver_events")
-def silver_events():
-    # Context-aware (no separate read_stream)
-    return (
-        spark.readStream.table("catalog.schema.bronze_events")
-        .filter(F.col("event_type").isNotNull())
-    )
-```
-
-
-```python
-@dlt.table(name="silver_events")
-def silver_events():
-    # Explicit streaming read
-    return (
-        dlt.read_stream("bronze_events")
-        .filter(F.col("event_type").isNotNull())
-    )
-```
-
-
-
+### Data quality expectations
+> "Add quality expectations to a Python silver table that drops rows with null IDs and fails the pipeline if timestamps are missing"
 
 ```python
 @dp.table(name="silver_validated")
@@ -121,23 +49,13 @@ def silver_events():
 @dp.expect_or_drop("valid_amount", "amount > 0")
 @dp.expect_or_fail("critical_field", "timestamp IS NOT NULL")
 def silver_validated():
-    return spark.read.table("catalog.schema.bronze_events")
+    return spark.read.table("bronze_events")
 ```
 
+`expect_or_drop` silently removes bad rows. `expect_or_fail` halts the pipeline — use it for invariants that indicate a broken source. The expressions are SQL predicates evaluated per row. Check pipeline event logs to see how many rows each expectation filtered.
 
-```python
-@dlt.table(name="silver_validated")
-@dlt.expect_or_drop("valid_id", "id IS NOT NULL")
-@dlt.expect_or_drop("valid_amount", "amount > 0")
-@dlt.expect_or_fail("critical_field", "timestamp IS NOT NULL")
-def silver_validated():
-    return dlt.read("bronze_events")
-```
-
-
-
-
-
+### Auto CDC with the modern API
+> "Set up SCD Type 2 change tracking on a customer CDC feed using the dp API in Python"
 
 ```python
 from pyspark.sql.functions import col
@@ -154,24 +72,10 @@ dp.create_auto_cdc_flow(
 )
 ```
 
+`create_auto_cdc_flow()` replaces the legacy `dlt.apply_changes()`. The parameters are nearly identical, but `sequence_by` now takes a Column object (`col("...")`) instead of a plain string. The target streaming table must be created first with `create_streaming_table()`.
 
-```python
-dlt.create_streaming_table("customers_history")
-
-dlt.apply_changes(
-    target="customers_history",
-    source="customers_cdc",
-    keys=["customer_id"],
-    sequence_by="event_timestamp",
-    stored_as_scd_type="2",
-    track_history_column_list=["*"]
-)
-```
-
-`create_auto_cdc_flow()``apply_changes()`
-
-
-
+### Table properties and Liquid Clustering
+> "Create a Python bronze table with Liquid Clustering, auto-optimize, and auto-compact enabled"
 
 ```python
 @dp.table(
@@ -180,164 +84,52 @@ dlt.apply_changes(
         "delta.autoOptimize.optimizeWrite": "true",
         "delta.autoOptimize.autoCompact": "true"
     },
-    cluster_by=["event_type", "event_date"]  # Liquid Clustering
+    cluster_by=["event_type", "event_date"]
 )
 def bronze_events():
-    return spark.readStream.format("cloudFiles").load("/data")
-```
-
-
-```python
-@dlt.table(
-    name="bronze_events",
-    table_properties={
-        "pipelines.autoOptimize.managed": "true",
-        "pipelines.autoOptimize.zOrderCols": "event_type"
-    },
-    partition_cols=["event_date"]  # Legacy partitioning
-)
-def bronze_events():
-    return spark.readStream.format("cloudFiles").load("/data")
-```
-
-`cluster_by`
-
-
-
-
-
-`dp`
-
-
-
-
-
-
-`dlt`
-
-
-
-
-`dp`
-
-
-
-
-
-
-
-
-```python
-import dlt
-```
-
-
-```python
-from pyspark import pipelines as dp
-```
-
-
-
-`@dlt.table(name="my_table")`
-`@dp.table(name="my_table")`
-
-
-
-
-```python
-dlt.read("source_table")
-dlt.read_stream("source_table")
-```
-
-
-```python
-spark.table("catalog.schema.source_table")
-# Streaming context-aware, no separate read_stream
-```
-
-
-
-
-```python
-dlt.apply_changes(target="dim_customer", source="cdc_source", ...)
-```
-
-
-```python
-from pyspark.sql.functions import col
-
-dp.create_auto_cdc_flow(
-    target="dim_customer",
-    source="cdc_source",
-    keys=["customer_id"],
-    sequence_by=col("event_timestamp"),
-    stored_as_scd_type="2",
-    track_history_column_list=["*"]
-)
-```
-
-`dlt.apply_changes()``dp.create_auto_cdc_flow()`
-
-
-
-`@dlt.table(partition_cols=["date"])`
-`@dp.table(cluster_by=["date", "other_col"])`
-
-
-
-
-
-
-
-```python
-@dp.table(cluster_by=["key_col", "date_col"])
-def my_table():
-    return ...
-
-# Or automatic
-@dp.table(cluster_by=["AUTO"])
-def my_table():
-    return ...
-```
-
-
-
-```python
-# ✅ Modern: explicit path
-spark.table("catalog.schema.table")
-
-# ❌ Legacy: implicit LIVE
-dlt.read("table")
-```
-
-
-
-```python
-def write_to_custom_sink(batch_df, batch_id):
-    batch_df.write.format("custom").save(...)
-
-@dp.table(name="my_table")
-def my_table():
     return (
         spark.readStream
         .format("cloudFiles")
-        .load("/data")
-        .writeStream
-        .foreachBatch(write_to_custom_sink)
+        .option("cloudFiles.format", "json")
+        .option("cloudFiles.schemaLocation", f"{schema_location_base}/bronze_events")
+        .load("/Volumes/catalog/schema/raw/events/")
     )
 ```
 
+The `table_properties` dict maps directly to Delta table properties. `cluster_by` accepts a list of column names. For automatic clustering, pass `cluster_by=["AUTO"]` and Databricks will choose columns based on query patterns.
 
+### Side-by-side API mapping
+> "Show me the key differences between the legacy dlt API and the modern dp API so I can update my imports"
 
+```python
+# === Import ===
+# Legacy:  import dlt
+# Modern:  from pyspark import pipelines as dp
 
+# === Table decorator ===
+# Legacy:  @dlt.table(name="my_table")
+# Modern:  @dp.table(name="my_table")
 
-`pyspark.pipelines``dp`
+# === Reading tables ===
+# Legacy:  dlt.read("source_table")
+# Modern:  spark.read.table("source_table")
 
+# Legacy:  dlt.read_stream("source_table")
+# Modern:  spark.readStream.table("source_table")
 
+# === CDC ===
+# Legacy:  dlt.apply_changes(target=..., source=..., ...)
+# Modern:  dp.create_auto_cdc_flow(target=..., source=..., ...)
 
+# === Clustering ===
+# Legacy:  @dlt.table(partition_cols=["date"])
+# Modern:  @dp.table(cluster_by=["date", "region"])
+```
 
-`dlt`
+The mapping is mechanical — a find-and-replace covers most of it. The significant behavioral change is table reads: `dlt.read()` resolved names within an implicit `LIVE` schema, while `spark.read.table()` uses Unity Catalog paths directly. Unqualified names resolve to the pipeline's configured target catalog and schema.
 
-
-
-`from pyspark import pipelines as dp`
+## Watch Out For
+- **`sequence_by` type change** — in the legacy API, `sequence_by` accepted a string. In the modern API, it requires a Column object: `col("event_timestamp")`, not `"event_timestamp"`.
+- **`stored_as_scd_type` is a string** — SCD Type 2 in Python is `"2"` (string), not `2` (integer). SCD Type 1 is `"1"`. In SQL, the syntax is `STORED AS SCD TYPE 2` with no quotes.
+- **Implicit LIVE schema is gone** — `dlt.read("my_table")` used an implicit namespace. `spark.read.table("my_table")` resolves against the pipeline's target catalog and schema. For cross-schema reads, use fully qualified names.
+- **`dp.read()` and `dp.read_stream()` do not exist** — some migration guides reference these. They were never part of the modern API. Use `spark.read.table()` and `spark.readStream.table()` directly.

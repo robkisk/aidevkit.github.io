@@ -1,45 +1,42 @@
 ---
-title: SDP Pipeline Configuration for DABs
-description: "resources:"
+title: SDP Pipelines in Asset Bundles
+description: Configure Spark Declarative Pipeline resources in DABs with correct library paths, targets, and environment modes.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+Spark Declarative Pipelines (SDP) can be defined as DABs resources so they deploy alongside your jobs, alerts, and dashboards. The pipeline resource points at your transformation code, sets the target catalog and schema, and configures execution mode -- all in YAML. This page covers the structure that works, because the field names are not always obvious from the documentation.
 
+## In Action
 
-
-
-
+> "Add an SDP pipeline resource to my DABs project that reads from a source catalog and writes to a target catalog, using serverless compute with Photon."
 
 ```yaml
 resources:
   pipelines:
-    pipeline_name:
-      name: "[${bundle.target}] Pipeline Name"
+    sales_etl:
+      name: "[${bundle.target}] Sales ETL Pipeline"
 
-      # Target catalog and schema
       catalog: ${var.catalog}
       target: ${var.schema}
 
-      # Pipeline libraries
       libraries:
         - glob:
-            include: ../src/pipelines/<pipeline_folder>/transformations/**
-      
-      root_path: ../src/pipelines/<pipeline_folder>
+            include: ../src/pipelines/sales_etl/transformations/**
+
+      root_path: ../src/pipelines/sales_etl
 
       serverless: true
+      photon: true
 
-      # Pipeline configuration
       configuration:
         source_catalog: ${var.source_catalog}
         source_schema: ${var.source_schema}
 
       continuous: false
       development: true
-      photon: true
-
       channel: current
 
       permissions:
@@ -47,11 +44,107 @@ resources:
           group_name: "users"
 ```
 
-`CAN_VIEW``CAN_RUN``CAN_MANAGE`
+**Key decisions:**
+- `catalog` and `target` set where the pipeline writes. `catalog` is the Unity Catalog catalog, `target` is the schema within it. These are the output destination, not the source.
+- `libraries.glob.include` points at your transformation files. Use a glob pattern so new files are picked up automatically without editing the YAML.
+- `root_path` sets the working directory for relative imports in your pipeline code. This must point to the pipeline folder, not the project root.
+- `development: true` enables development mode -- faster iteration, no production data guarantees. Override this to `false` in your prod target.
+- `serverless: true` uses serverless compute. Combined with `photon: true`, you get the fastest execution without managing clusters.
 
+## More Patterns
 
+### Multi-environment pipeline with variable overrides
 
-`root_path``libraries.glob`
+> "Configure the same pipeline for dev and prod, with different catalogs and development mode toggled."
 
+```yaml
+variables:
+  catalog:
+    default: dev_catalog
+  schema:
+    default: sales
+  source_catalog:
+    default: raw_dev
+  source_schema:
+    default: ingestion
 
-`development: true`
+targets:
+  dev:
+    default: true
+    variables:
+      catalog: dev_catalog
+      source_catalog: raw_dev
+  prod:
+    variables:
+      catalog: prod_catalog
+      source_catalog: raw_prod
+
+resources:
+  pipelines:
+    sales_etl:
+      name: "[${bundle.target}] Sales ETL Pipeline"
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      libraries:
+        - glob:
+            include: ../src/pipelines/sales_etl/transformations/**
+      root_path: ../src/pipelines/sales_etl
+      serverless: true
+      photon: true
+      configuration:
+        source_catalog: ${var.source_catalog}
+        source_schema: ${var.source_schema}
+      continuous: false
+      development: ${if(bundle.target == "prod", false, true)}
+      channel: current
+```
+
+The `${if(...)}` expression flips `development` mode based on the target. In dev you get fast iteration with relaxed guarantees. In prod you get full pipeline semantics with exactly-once processing.
+
+### Continuous execution for streaming
+
+> "Set up an SDP pipeline that runs continuously for real-time data processing."
+
+```yaml
+resources:
+  pipelines:
+    streaming_ingest:
+      name: "[${bundle.target}] Streaming Ingest"
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      libraries:
+        - glob:
+            include: ../src/pipelines/streaming_ingest/**
+      root_path: ../src/pipelines/streaming_ingest
+      serverless: true
+      photon: true
+      continuous: true
+      development: false
+      channel: current
+```
+
+Setting `continuous: true` keeps the pipeline running and processing new data as it arrives. This is the right mode for Structured Streaming sources -- Auto Loader, Kafka, Kinesis. Combined with a job trigger, you get automatic restarts on failure.
+
+### Passing configuration to pipeline code
+
+> "How does the pipeline code access the source_catalog and source_schema I defined in configuration?"
+
+```python
+import dlt
+
+source_catalog = spark.conf.get("source_catalog")
+source_schema = spark.conf.get("source_schema")
+
+@dlt.table
+def raw_orders():
+    return spark.read.table(f"{source_catalog}.{source_schema}.orders")
+```
+
+The `configuration` block in your pipeline YAML becomes Spark configuration keys. Access them with `spark.conf.get()` inside your transformation code. This is how you parameterize pipelines without hardcoding catalog names.
+
+## Watch Out For
+
+- **Confusing `root_path` and `libraries.glob.include`** -- `root_path` sets the working directory for the pipeline runtime. `libraries.glob.include` tells the pipeline which files contain your transformations. Both are needed. Missing `root_path` causes relative imports to fail. Missing `libraries` means the pipeline has no code to run.
+- **Leaving `development: true` in production** -- development mode skips some production guarantees (like handling deleted records). Override it to `false` in your prod target, either with a variable or the `${if(...)}` expression.
+- **Using the wrong permissions level** -- SDP pipeline permissions are `CAN_VIEW`, `CAN_RUN`, and `CAN_MANAGE`. These are different from job permissions (`CAN_MANAGE_RUN` does not exist for pipelines).
+- **Hardcoding catalog names in pipeline code** -- use the `configuration` block to pass catalogs and schemas as parameters. Hardcoded names mean your dev pipeline reads from prod tables, which is both a data safety risk and a debugging nightmare.

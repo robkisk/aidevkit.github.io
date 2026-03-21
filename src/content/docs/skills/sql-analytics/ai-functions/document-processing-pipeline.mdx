@@ -1,96 +1,17 @@
 ---
-title: Document Processing Pipeline with AI Functions
-description: End-to-end patterns for building batch document processing pipelines using AI Functions in a Lakeflow Declarative Pipeline (DLT).
+title: Document Processing Pipeline
+description: Build end-to-end document processing pipelines using AI Functions to parse, classify, extract, and match documents at scale.
 sidebar:
   order: 4
 ---
 
-`config.yml`
+## What You Can Build
 
-`n8n-to-databricks`
+A multi-stage document processing pipeline that parses PDFs and images, classifies document types, extracts structured fields, and matches entities against master data -- all using SQL AI Functions inside a Spark Declarative Pipeline. Each stage uses the cheapest function that can handle the job: `ai_parse_document` for OCR, `ai_classify` for routing, `ai_extract` for flat fields, and `ai_query` only when you need nested JSON output.
 
+## In Action
 
-
-
-
-
-
-`ai_query`
-
-`ai_parse_document`
-`ai_extract`
-`ai_classify`
-`ai_similarity`
-`ai_summarize`
-`ai_query``responseFormat`
-
-
-
-`config.yml`
-
-`config.yml`
-
-```yaml
-# config.yml
-models:
-  default: "databricks-claude-sonnet-4"
-  mini:    "databricks-meta-llama-3-1-8b-instruct"
-  vision:  "databricks-llama-4-maverick"
-
-catalog:
-  name:   "my_catalog"
-  schema: "document_processing"
-
-volumes:
-  input: "/Volumes/my_catalog/document_processing/landing/"
-  tmp:   "/Volumes/my_catalog/document_processing/tmp/"
-
-output_tables:
-  results: "my_catalog.document_processing.processed_docs"
-  errors:  "my_catalog.document_processing.processing_errors"
-
-prompts:
-  extract_invoice: |
-    Extract invoice fields and return ONLY valid JSON.
-    Fields: invoice_number, vendor_name, vendor_tax_id (digits only),
-    issue_date (dd/mm/yyyy), total_amount (numeric),
-    line_items: [{item_code, description, quantity, unit_price, total}].
-    Return null for missing fields.
-
-  classify_doc: |
-    Classify this document into exactly one category.
-```
-
-```python
-# config_loader.py
-import yaml
-
-def load_config(path: str = "config.yml") -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
-
-CFG           = load_config()
-ENDPOINT      = CFG["models"]["default"]
-ENDPOINT_MINI = CFG["models"]["mini"]
-VOLUME_INPUT  = CFG["volumes"]["input"]
-PROMPT_INV    = CFG["prompts"]["extract_invoice"]
-```
-
-
-
-
-
-`@dlt.table`
-
-```
-[Landing Volume]  →  Stage 1: ai_parse_document
-                  →  Stage 2: ai_classify (document type)
-                  →  Stage 3: ai_extract (flat fields) + ai_query (nested JSON)
-                  →  Stage 4: ai_similarity (item matching)
-                  →  Stage 5: Final Delta output table
-```
-
-`pipeline.py`
+> "Write a SDP pipeline in Python that parses documents from a landing volume, classifies them, extracts invoice fields, and routes errors to a sidecar table."
 
 ```python
 import dlt
@@ -99,17 +20,13 @@ from pyspark.sql.functions import expr, col, from_json
 
 CFG      = yaml.safe_load(open("/Workspace/path/to/config.yml"))
 ENDPOINT = CFG["models"]["default"]
-VOL_IN   = CFG["volumes"]["input"]
 PROMPT   = CFG["prompts"]["extract_invoice"]
 
-
-# ── Stage 1: Parse binary documents ──────────────────────────────────────────
-# Preferred: ai_parse_document — no model selection, no ai_query needed
-
-@dlt.table(comment="Parsed document text from all file types in the landing volume")
+# Stage 1: Parse binary documents
+@dlt.table(comment="Parsed document text from landing volume")
 def raw_parsed():
     return (
-        spark.read.format("binaryFile").load(VOL_IN)
+        spark.read.format("binaryFile").load(CFG["volumes"]["input"])
         .withColumn("parsed", expr("ai_parse_document(content)"))
         .selectExpr(
             "path",
@@ -119,10 +36,7 @@ def raw_parsed():
         .filter("parse_error IS NULL")
     )
 
-
-# ── Stage 2: Classify document type ──────────────────────────────────────────
-# Preferred: ai_classify — cheap, no endpoint selection
-
+# Stage 2: Classify document type
 @dlt.table(comment="Document type classification")
 def classified_docs():
     return (
@@ -133,30 +47,12 @@ def classified_docs():
         )
     )
 
-
-# ── Stage 3a: Flat field extraction ──────────────────────────────────────────
-# Preferred: ai_extract for flat fields (vendor, date, total)
-
-@dlt.table(comment="Flat header fields extracted from documents")
-def extracted_flat():
+# Stage 3: Extract structured fields
+@dlt.table(comment="Invoice fields extracted with ai_query for nested JSON")
+def extracted_docs():
     return (
         dlt.read("classified_docs")
         .filter("doc_type = 'invoice'")
-        .withColumn(
-            "header",
-            expr("ai_extract(text_blocks, array('invoice_number', 'vendor_name', 'issue_date', 'total_amount', 'tax_id'))")
-        )
-        .select("path", "doc_type", "text_blocks", col("header"))
-    )
-
-
-# ── Stage 3b: Nested JSON extraction (last resort: ai_query) ─────────────────
-# Use ai_query only because line_items is a nested array — ai_extract can't handle it
-
-@dlt.table(comment="Nested line items extracted — ai_query used for array schema only")
-def extracted_line_items():
-    return (
-        dlt.read("extracted_flat")
         .withColumn(
             "ai_response",
             expr(f"""
@@ -169,77 +65,44 @@ def extracted_line_items():
             """)
         )
         .withColumn(
-            "line_items",
+            "invoice",
             from_json(
                 col("ai_response.response"),
-                "STRUCT<line_items:ARRAY<STRUCT<item_code:STRING, description:STRING, "
-                "quantity:DOUBLE, unit_price:DOUBLE, total:DOUBLE>>>"
+                "STRUCT<invoice_number:STRING, vendor_name:STRING, issue_date:STRING, "
+                "total_amount:DOUBLE, line_items:ARRAY<STRUCT<item_code:STRING, "
+                "description:STRING, quantity:DOUBLE, unit_price:DOUBLE, total:DOUBLE>>>"
             )
         )
-        .select("path", "doc_type", "header", "line_items", col("ai_response.error").alias("extraction_error"))
+        .select("path", "doc_type", "invoice", col("ai_response.error").alias("extraction_error"))
     )
 
-
-# ── Stage 4: Similarity matching ─────────────────────────────────────────────
-# Preferred: ai_similarity for fuzzy matching between extracted fields
-
-@dlt.table(comment="Vendor name similarity vs reference master data")
-def vendor_matched():
-    extracted = dlt.read("extracted_line_items")
-    # Join against a reference vendor table for fuzzy matching
-    vendors = spark.table("my_catalog.document_processing.vendor_master").select("vendor_id", "vendor_name")
-
-    return (
-        extracted.crossJoin(vendors)
-        .withColumn(
-            "name_similarity",
-            expr("ai_similarity(header.vendor_name, vendor_name)")
-        )
-        .filter("name_similarity > 0.80")
-        .orderBy("name_similarity", ascending=False)
-    )
-
-
-# ── Stage 5: Final output + error sidecar ────────────────────────────────────
-
-@dlt.table(
-    comment="Final processed documents ready for downstream consumption",
-    table_properties={"delta.enableChangeDataFeed": "true"},
-)
+# Stage 4: Success output
+@dlt.table(comment="Processed documents ready for downstream consumption")
 def processed_docs():
-    return (
-        dlt.read("extracted_line_items")
-        .filter("extraction_error IS NULL")
-        .selectExpr(
-            "path",
-            "doc_type",
-            "header.invoice_number",
-            "header.vendor_name",
-            "header.issue_date",
-            "header.total_amount",
-            "line_items.line_items AS items",
-        )
-    )
+    return dlt.read("extracted_docs").filter("extraction_error IS NULL")
 
-
-@dlt.table(comment="Rows that failed at any extraction stage — review and reprocess")
+# Stage 5: Error sidecar
+@dlt.table(comment="Failed extractions for review and reprocess")
 def processing_errors():
     return (
-        dlt.read("extracted_line_items")
+        dlt.read("extracted_docs")
         .filter("extraction_error IS NOT NULL")
         .select("path", "doc_type", col("extraction_error").alias("error"))
     )
 ```
 
+**Key decisions:**
+- **`ai_parse_document` first, not `ai_query`** -- it handles OCR natively without requiring a model endpoint, and the output is structured for downstream extraction
+- **`ai_classify` for routing, not `ai_query`** -- task-specific functions are faster and cheaper because they use optimized endpoints
+- **`ai_query` only for nested JSON** -- `ai_extract` handles flat fields well, but cannot produce nested arrays like `line_items`. Reach for `ai_query` with `responseFormat` only when you need structured nesting
+- **`failOnError => false` everywhere** -- a single malformed document should not kill the entire batch. Route errors to a sidecar table for retry
+- **`LEFT(text_blocks, 6000)` caps input length** -- long documents silently truncate or exceed context windows. Truncate explicitly
 
+## More Patterns
 
+### Parse and chunk documents in pure SQL
 
-
-
-
-
-
-`ai_parse_document``variant_get``ARRAY<VARIANT>``explode``explode()`
+> "Write SQL to parse documents from a volume, explode elements into individual chunks, and store them in a table for downstream processing."
 
 ```sql
 CREATE OR REPLACE TABLE catalog.schema.parsed_chunks AS
@@ -266,14 +129,11 @@ WHERE variant_get(element, '$.content', 'STRING') IS NOT NULL
   AND length(trim(variant_get(element, '$.content', 'STRING'))) > 10;
 ```
 
+This pure-SQL approach is useful when you want to chunk documents for RAG or vector search without a full SDP pipeline. The `length > 10` filter drops whitespace-only elements that add noise.
 
+### Streaming ingestion with incremental parsing
 
-`trigger(availableNow=True)`
-
-
-
-
-
+> "Write PySpark to set up a streaming job that parses new documents as they land in a volume."
 
 ```python
 from pyspark.sql.functions import col, current_timestamp, expr
@@ -288,12 +148,7 @@ files_df = (
 parsed_df = (
     files_df
     .repartition(8, expr("crc32(path) % 8"))
-    .withColumn("parsed", expr("""
-        ai_parse_document(content, map(
-            'version', '2.0',
-            'descriptionElementTypes', '*'
-        ))
-    """))
+    .withColumn("parsed", expr("ai_parse_document(content)"))
     .withColumn("parsed_at", current_timestamp())
     .select("path", "parsed", "parsed_at")
 )
@@ -301,175 +156,36 @@ parsed_df = (
 (
     parsed_df.writeStream.format("delta")
     .outputMode("append")
-    .option("checkpointLocation", "/Volumes/catalog/schema/checkpoints/01_parse")
-    .option("mergeSchema", "true")
+    .option("checkpointLocation", "/Volumes/catalog/schema/checkpoints/parse")
     .trigger(availableNow=True)
     .toTable("catalog.schema.parsed_documents_raw")
 )
 ```
 
+The `repartition` call distributes documents across partitions to parallelize `ai_parse_document` calls. Without it, a single partition processes all files sequentially. `trigger(availableNow=True)` processes all pending files then stops -- useful for scheduled batch jobs that run on a cadence.
 
+### Fuzzy vendor matching with ai_similarity
 
-`transform()``try_cast`
-
-```python
-from pyspark.sql.functions import col, concat_ws, expr, lit, when
-
-parsed_stream = spark.readStream.format("delta").table("catalog.schema.parsed_documents_raw")
-
-text_df = (
-    parsed_stream
-    .withColumn("text",
-        when(
-            expr("try_cast(parsed:error_status AS STRING)").isNotNull(), lit(None)
-        ).otherwise(
-            concat_ws("\n\n", expr("""
-                transform(
-                    try_cast(parsed:document:elements AS ARRAY),
-                    element -> try_cast(element:content AS STRING)
-                )
-            """))
-        )
-    )
-    .withColumn("error_status", expr("try_cast(parsed:error_status AS STRING)"))
-    .select("path", "text", "error_status", "parsed_at")
-)
-
-(
-    text_df.writeStream.format("delta")
-    .outputMode("append")
-    .option("checkpointLocation", "/Volumes/catalog/schema/checkpoints/02_text")
-    .option("mergeSchema", "true")
-    .trigger(availableNow=True)
-    .toTable("catalog.schema.parsed_documents_text")
-)
-```
-
-
-`repartition``ai_parse_document`
-`trigger(availableNow=True)`
-
-`transform()``try_cast``explode``variant_get`
-
-
-
-
-
+> "Write SQL to match extracted vendor names against a master data table using fuzzy similarity scoring."
 
 ```sql
-ALTER TABLE catalog.schema.parsed_chunks
-SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
+SELECT
+  e.path,
+  e.invoice.vendor_name AS extracted_vendor,
+  m.vendor_id,
+  m.vendor_name AS master_vendor,
+  ai_similarity(e.invoice.vendor_name, m.vendor_name) AS match_score
+FROM catalog.schema.processed_docs e
+CROSS JOIN catalog.schema.vendor_master m
+WHERE ai_similarity(e.invoice.vendor_name, m.vendor_name) > 0.80
+ORDER BY match_score DESC;
 ```
 
+`ai_similarity` returns a 0-1 score based on semantic similarity. A threshold of 0.80 catches common variations ("Acme Corp" vs "ACME Corporation") while filtering noise. For large vendor tables, pre-filter with a LIKE clause before running similarity to reduce cross-join cardinality.
 
+## Watch Out For
 
-
-
-
-
-
-
-`explode()``explode()``variant_get(doc, '$.document.elements', 'ARRAY<VARIANT>')`
-`length(trim(...)) > 10`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`ai_query`
-
-
-
-```python
-# pip install dspy-ai mlflow databricks-sdk
-import dspy, yaml
-
-CFG = yaml.safe_load(open("config.yml"))
-lm = dspy.LM(
-    model=f"databricks/{CFG['models']['default']}",
-    api_base="https://<workspace-host>/serving-endpoints",
-    api_key=dbutils.secrets.get("scope", "databricks-token"),
-)
-dspy.configure(lm=lm)
-
-
-class ExtractInvoiceHeader(dspy.Signature):
-    """Extract invoice header fields from document text."""
-    document_text:  str = dspy.InputField(desc="Raw text from the document")
-    invoice_number: str = dspy.OutputField(desc="Invoice number, or null")
-    vendor_name:    str = dspy.OutputField(desc="Vendor/supplier name, or null")
-    issue_date:     str = dspy.OutputField(desc="Date as dd/mm/yyyy, or null")
-    total_amount:  float = dspy.OutputField(desc="Total amount as float, or null")
-
-
-class ClassifyDocument(dspy.Signature):
-    """Classify a document into one of the provided categories."""
-    document_text: str = dspy.InputField()
-    category:      str = dspy.OutputField(
-        desc="One of: invoice, purchase_order, receipt, contract, other"
-    )
-
-
-class DocumentPipeline(dspy.Module):
-    def __init__(self):
-        self.classify = dspy.Predict(ClassifyDocument)
-        self.extract  = dspy.Predict(ExtractInvoiceHeader)
-
-    def forward(self, document_text: str):
-        doc_type = self.classify(document_text=document_text).category
-        if doc_type == "invoice":
-            header = self.extract(document_text=document_text)
-            return {"doc_type": doc_type, "header": header.__dict__}
-        return {"doc_type": doc_type, "header": None}
-
-
-pipeline = DocumentPipeline()
-```
-
-
-
-```python
-import mlflow, json
-
-class DSPyDocumentAgent(mlflow.pyfunc.PythonModel):
-    def load_context(self, context):
-        import dspy, yaml
-        cfg = yaml.safe_load(open(context.artifacts["config"]))
-        lm = dspy.LM(model=f"databricks/{cfg['models']['default']}")
-        dspy.configure(lm=lm)
-        self.pipeline = DocumentPipeline()
-
-    def predict(self, context, model_input):
-        text = model_input.iloc[0]["document_text"]
-        return json.dumps(self.pipeline(document_text=text), ensure_ascii=False)
-
-mlflow.set_registry_uri("databricks-uc")
-with mlflow.start_run():
-    mlflow.pyfunc.log_model(
-        artifact_path="document_agent",
-        python_model=DSPyDocumentAgent(),
-        artifacts={"config": "config.yml"},
-        registered_model_name="my_catalog.document_processing.document_agent",
-    )
-```
-
-
-
-
-
-`ai_parse_document``ai_query`
-`ai_extract``ai_query`
-`failOnError => false``_errors`
-`ai_query``LEFT(text, 6000)`
-`config.yml`
-`Signature`
+- **Passing raw binary to `ai_query` produces garbage** -- always parse documents with `ai_parse_document` first, then feed the extracted text to `ai_query` or `ai_extract`. Binary content is not text.
+- **`ai_extract` cannot handle nested arrays** -- it returns flat key-value pairs. For invoice line items, order details, or any array-of-structs, you must use `ai_query` with `responseFormat`.
+- **`ai_parse_document` is the bottleneck** -- it is the slowest stage in the pipeline. Repartition before calling it to parallelize across executors, and use `trigger(availableNow=True)` for batch scheduling.
+- **Prompt drift across config changes** -- externalizing prompts to a `config.yml` makes them versionable and testable. Hardcoded prompts scattered across pipeline stages are hard to audit and easy to break.

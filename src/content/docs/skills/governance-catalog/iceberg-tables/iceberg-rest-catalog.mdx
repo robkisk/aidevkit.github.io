@@ -1,112 +1,87 @@
 ---
 title: Iceberg REST Catalog (IRC)
-description: The Iceberg REST Catalog (IRC) is a REST API endpoint that lets external engines read and write Databricks-managed Iceberg data using the standard Apache Ice...
+description: Expose Databricks-managed Iceberg data to external engines through the standard REST Catalog endpoint with credential vending.
 sidebar:
   order: 3
 ---
 
+## What You Can Build
 
+The Iceberg REST Catalog (IRC) is the gateway that lets any Iceberg-compatible engine -- PyIceberg, OSS Spark, Snowflake, Trino, Flink -- connect to Unity Catalog and read (or write) your Databricks-managed Iceberg data. External engines authenticate, discover tables, and receive vended cloud credentials for direct storage access. No custom connectors, no JDBC federation, no data copying.
 
-`https://<workspace-url>/api/2.1/unity-catalog/iceberg-rest`
+## In Action
 
-`/api/2.1/unity-catalog/iceberg``/api/2.1/unity-catalog/iceberg-rest`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`GET /api/2.0/ip-access-lists``POST /api/2.0/ip-access-lists`
-
-`403 Forbidden`
-
-
-
-`EXTERNAL USE SCHEMA`
+> "Write SQL to grant external access for a service principal to read tables from the analytics.gold schema via the IRC endpoint."
 
 ```sql
--- Grant to a user
-GRANT EXTERNAL USE SCHEMA ON SCHEMA my_catalog.my_schema TO `user@example.com`;
+-- Grant external use (required for IRC access)
+GRANT EXTERNAL USE SCHEMA ON SCHEMA analytics.gold TO `iceberg-reader-sp`;
 
--- Grant to a service principal
-GRANT EXTERNAL USE SCHEMA ON SCHEMA my_catalog.my_schema TO `my-service-principal`;
-
--- Grant to a group
-GRANT EXTERNAL USE SCHEMA ON SCHEMA my_catalog.my_schema TO `data-engineers`;
+-- Also grant data permissions
+GRANT USE CATALOG ON CATALOG analytics TO `iceberg-reader-sp`;
+GRANT USE SCHEMA ON SCHEMA analytics.gold TO `iceberg-reader-sp`;
+GRANT SELECT ON SCHEMA analytics.gold TO `iceberg-reader-sp`;
 ```
 
-`EXTERNAL USE SCHEMA``SELECT``MODIFY`
+**Key decisions:**
+- **`EXTERNAL USE SCHEMA` is separate from data grants** -- a principal needs both the external use grant and standard SELECT/MODIFY permissions. Missing the external use grant produces a misleading "Failed to retrieve credentials" error, not a permissions error.
+- **Use the `-rest` endpoint** -- the canonical URI is `https://&lt;workspace-url&gt;/api/2.1/unity-catalog/iceberg-rest`. The older `/api/2.1/unity-catalog/iceberg` path is in maintenance mode and should not be used for new integrations.
+- **OAuth is recommended for production** -- PAT tokens work for testing but expire and cannot be rotated programmatically. Use a service principal with OAuth M2M for automated pipelines.
+- **Credential vending is automatic** -- the IRC protocol hands external engines temporary cloud credentials (STS tokens on AWS, SAS tokens on Azure) scoped to the specific table and operation. No cloud IAM configuration needed on the client side.
 
+## More Patterns
 
+### Configure a PyIceberg client
 
+> "Write Python to connect PyIceberg to a Databricks workspace and read a table via the IRC endpoint."
 
+```python
+from pyiceberg.catalog import load_catalog
 
+catalog = load_catalog(
+    "uc",
+    uri="https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest",
+    warehouse="analytics",
+    token="dapi_your_pat_token",
+)
 
-
+# 'warehouse' pins the catalog, so identifiers are schema.table
+tbl = catalog.load_table("gold.order_events")
+df = tbl.scan(row_filter="order_date >= '2025-01-01'", limit=1000).to_pandas()
 ```
-Authorization: Bearer <pat-token>
+
+The `warehouse` parameter maps to the Unity Catalog catalog name. After that, all table references use `schema.table` format, not `catalog.schema.table`.
+
+### Verify the read/write capability matrix
+
+> "Which table types can external engines read and write through the IRC?"
+
+| Table Type | IRC Read | IRC Write |
+|------------|:-:|:-:|
+| Managed Iceberg (`USING ICEBERG`) | Yes | Yes |
+| Delta + UniForm | Yes | No |
+| Delta + Compatibility Mode | Yes | No |
+| Foreign Iceberg Table | No | No |
+
+Only managed Iceberg tables support writes via IRC. UniForm and Compatibility Mode tables are read-only because the underlying format is still Delta.
+
+### Check and manage IP access lists
+
+> "How do I troubleshoot connection timeouts to the IRC endpoint when credentials are correct?"
+
+```sql
+-- In Databricks: check if IP access lists are enabled
+-- Admin console: Settings > Security > IP access list
+-- REST API alternative:
+-- GET /api/2.0/ip-access-lists
+-- POST /api/2.0/ip-access-lists (to add ranges)
 ```
 
+If the workspace has IP access lists enabled, the CIDR ranges of the external engine must be explicitly allowlisted. Connections will time out or return 403 regardless of valid credentials if the client IP is not on the list. This is the most common IRC connectivity issue.
 
+## Watch Out For
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-`USING ICEBERG`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`rest`
-`https://<workspace-url>/api/2.1/unity-catalog/iceberg-rest`
-`my_catalog`
-
-
-
-
-
-
-
-
-
-
+- **IP access lists are the silent blocker** -- 403 errors and connection timeouts with valid credentials almost always mean the client IP is not allowlisted. Check IP access lists before debugging auth.
+- **`EXTERNAL USE SCHEMA` error message is misleading** -- a missing grant reports "Failed to retrieve credentials" rather than a permissions error. If credential vending fails, check this grant first.
+- **Legacy endpoint still works but is read-only** -- `/api/2.1/unity-catalog/iceberg` was the original UniForm-era endpoint. It still functions for reads but does not support writes or newer features. Always use `/api/2.1/unity-catalog/iceberg-rest`.
+- **Credential vending requires external data access enabled on the workspace** -- this is a workspace-level admin setting. If vending fails even with correct grants, confirm the setting is on.

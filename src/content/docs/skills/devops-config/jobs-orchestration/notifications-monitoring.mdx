@@ -1,31 +1,23 @@
 ---
-title: Notifications and Monitoring Reference
-description: Send email alerts for job lifecycle events.
+title: Notifications and Monitoring
+description: Configure email alerts, webhook notifications, health rules, timeouts, and retries for Databricks jobs.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+Production jobs need to tell you when something goes wrong -- and ideally before users notice. You can configure email notifications, webhook integrations (Slack, PagerDuty), health rules that fire on duration or backlog thresholds, timeouts that kill runaway jobs, and retry policies that handle transient failures. All of these are declarative, defined in DABs YAML or the SDK, and deploy with the rest of your pipeline.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
+> "Add a DABs job with email notifications for the team on success and an on-call escalation on failure."
 
 ```yaml
 resources:
   jobs:
-    monitored_job:
-      name: "Monitored Job"
+    daily_etl:
+      name: "[${bundle.target}] Daily ETL Pipeline"
       email_notifications:
         on_start:
           - "team@example.com"
@@ -38,102 +30,36 @@ resources:
           - "oncall@example.com"
         no_alert_for_skipped_runs: true
       tasks:
-        - task_key: main
+        - task_key: extract
           notebook_task:
-            notebook_path: ../src/main.py
+            notebook_path: ../src/extract.py
+        - task_key: transform
+          depends_on:
+            - task_key: extract
+          notebook_task:
+            notebook_path: ../src/transform.py
 ```
 
+**Key decisions:**
+- Route `on_failure` to both on-call and the broader team. On-call responds immediately; the team has context for the morning standup.
+- `no_alert_for_skipped_runs: true` suppresses noise from skipped runs (e.g., when a previous run is still active and `max_concurrent_runs` is 1).
+- `on_duration_warning_threshold_exceeded` requires a health rule with `RUN_DURATION_SECONDS` to define the threshold. Without the health rule, this notification event never fires.
+- Email notifications are job-level by default but can be overridden per task for targeted routing.
 
+## More Patterns
 
-```python
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.jobs import JobEmailNotifications
+### Webhook notifications for Slack and PagerDuty
 
-w = WorkspaceClient()
-
-job = w.jobs.create(
-    name="Monitored Job",
-    email_notifications=JobEmailNotifications(
-        on_start=["team@example.com"],
-        on_success=["team@example.com"],
-        on_failure=["oncall@example.com", "team@example.com"],
-        on_duration_warning_threshold_exceeded=["oncall@example.com"],
-        no_alert_for_skipped_runs=True
-    ),
-    tasks=[...]
-)
-```
-
-
-
-
-
-`on_start`
-`on_success`
-`on_failure`
-`on_duration_warning_threshold_exceeded`
-`on_streaming_backlog_exceeded`
-
-
-
-```yaml
-tasks:
-  - task_key: critical_task
-    email_notifications:
-      on_start:
-        - "task-owner@example.com"
-      on_success:
-        - "task-owner@example.com"
-      on_failure:
-        - "oncall@example.com"
-    notebook_task:
-      notebook_path: ../src/critical.py
-```
-
-
-
-
-
-
-
-
-
-
-
-
-```python
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.settings import (
-    CreateNotificationDestinationRequest,
-    DestinationType,
-    SlackConfig
-)
-
-w = WorkspaceClient()
-
-# Create Slack destination
-destination = w.notification_destinations.create(
-    display_name="Slack Alerts",
-    config=SlackConfig(
-        url="https://hooks.slack.com/services/XXX/YYY/ZZZ"
-    )
-)
-
-print(f"Destination ID: {destination.id}")
-```
-
-
+> "Wire up Slack for success notifications and PagerDuty for failure alerts on a DABs job."
 
 ```yaml
 resources:
   jobs:
     webhook_job:
-      name: "Job with Webhooks"
+      name: "[${bundle.target}] Pipeline with Webhooks"
       webhook_notifications:
-        on_start:
-          - id: "notification-destination-uuid"
         on_success:
-          - id: "notification-destination-uuid"
+          - id: "slack-destination-uuid"
         on_failure:
           - id: "pagerduty-destination-uuid"
         on_duration_warning_threshold_exceeded:
@@ -144,78 +70,49 @@ resources:
             notebook_path: ../src/main.py
 ```
 
+Webhook notifications use notification destination IDs, not raw webhook URLs. Create the destination first using the SDK, then reference its ID in the job config.
 
+### Create a notification destination
+
+> "Using Python, create a Slack notification destination so I can reference it in job webhook configs."
 
 ```python
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.jobs import WebhookNotifications, Webhook
+from databricks.sdk.service.settings import SlackConfig
 
 w = WorkspaceClient()
 
-job = w.jobs.create(
-    name="Job with Webhooks",
-    webhook_notifications=WebhookNotifications(
-        on_start=[Webhook(id="notification-destination-uuid")],
-        on_success=[Webhook(id="notification-destination-uuid")],
-        on_failure=[Webhook(id="pagerduty-destination-uuid")],
-        on_duration_warning_threshold_exceeded=[Webhook(id="slack-destination-uuid")]
-    ),
-    tasks=[...]
+destination = w.notification_destinations.create(
+    display_name="Slack Alerts",
+    config=SlackConfig(
+        url="https://hooks.slack.com/services/XXX/YYY/ZZZ"
+    )
 )
+print(f"Destination ID: {destination.id}")
 ```
 
+Store the returned `destination.id` in a bundle variable so your YAML references it cleanly. Notification destinations are workspace-level resources -- create them once, reference them across many jobs.
 
+### Health rules for duration and streaming backlog
 
-
-
-
-
-
-
-
-
-
-
-```yaml
-tasks:
-  - task_key: critical_task
-    webhook_notifications:
-      on_failure:
-        - id: "pagerduty-destination-uuid"
-    notebook_task:
-      notebook_path: ../src/critical.py
-```
-
-
-
-
-
-
-
-
+> "Add health monitoring that alerts when a job runs longer than 2 hours or streaming backlog exceeds 1GB."
 
 ```yaml
 resources:
   jobs:
     health_monitored:
-      name: "Health Monitored Job"
+      name: "[${bundle.target}] Health Monitored Job"
       health:
         rules:
           - metric: RUN_DURATION_SECONDS
             op: GREATER_THAN
-            value: 3600  # Alert if run > 1 hour
+            value: 7200
           - metric: STREAMING_BACKLOG_BYTES
             op: GREATER_THAN
-            value: 1073741824  # Alert if backlog > 1GB
+            value: 1073741824
           - metric: STREAMING_BACKLOG_SECONDS
             op: GREATER_THAN
-            value: 300  # Alert if backlog > 5 minutes
-          - metric: STREAMING_BACKLOG_FILES
-            op: GREATER_THAN
-            value: 1000  # Alert if backlog > 1000 files
-          - metric: STREAMING_BACKLOG_RECORDS
-            op: GREATER_THAN
-            value: 100000  # Alert if backlog > 100k records
+            value: 300
       email_notifications:
         on_duration_warning_threshold_exceeded:
           - "oncall@example.com"
@@ -227,327 +124,84 @@ resources:
             notebook_path: ../src/streaming.py
 ```
 
+Health rules define the thresholds. Notifications define who gets told when those thresholds are crossed. Available metrics: `RUN_DURATION_SECONDS`, `STREAMING_BACKLOG_BYTES`, `STREAMING_BACKLOG_SECONDS`, `STREAMING_BACKLOG_FILES`, `STREAMING_BACKLOG_RECORDS`. The only supported operator is `GREATER_THAN`.
 
+### Timeouts and retries
 
-```python
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.jobs import JobsHealthRules, JobsHealthRule, JobsHealthMetric, JobsHealthOperator
-
-w = WorkspaceClient()
-
-job = w.jobs.create(
-    name="Health Monitored Job",
-    health=JobsHealthRules(
-        rules=[
-            JobsHealthRule(
-                metric=JobsHealthMetric.RUN_DURATION_SECONDS,
-                op=JobsHealthOperator.GREATER_THAN,
-                value=3600
-            ),
-            JobsHealthRule(
-                metric=JobsHealthMetric.STREAMING_BACKLOG_BYTES,
-                op=JobsHealthOperator.GREATER_THAN,
-                value=1073741824
-            )
-        ]
-    ),
-    tasks=[...]
-)
-```
-
-
-
-
-
-`RUN_DURATION_SECONDS`
-`STREAMING_BACKLOG_BYTES`
-`STREAMING_BACKLOG_SECONDS`
-`STREAMING_BACKLOG_FILES`
-`STREAMING_BACKLOG_RECORDS`
-
-
-
-
-
-`GREATER_THAN`
-
-
-
-
-
-
+> "Set a 2-hour timeout on the job and a 1-hour timeout on a flaky extraction task that should retry 3 times."
 
 ```yaml
 resources:
   jobs:
-    timeout_job:
-      name: "Job with Timeout"
-      timeout_seconds: 7200  # 2 hours max run time
-      tasks:
-        - task_key: main
-          notebook_task:
-            notebook_path: ../src/main.py
-```
-
-
-
-```yaml
-tasks:
-  - task_key: long_running
-    timeout_seconds: 3600  # 1 hour max for this task
-    notebook_task:
-      notebook_path: ../src/long_running.py
-```
-
-
-
-```python
-from databricks.sdk.service.jobs import Task, NotebookTask
-
-Task(
-    task_key="long_running",
-    timeout_seconds=3600,
-    notebook_task=NotebookTask(
-        notebook_path="/Workspace/long_running"
-    )
-)
-```
-
-
-
-`0`
-
-
-`on_failure`
-
-
-
-
-
-
-
-```yaml
-tasks:
-  - task_key: flaky_task
-    max_retries: 3
-    min_retry_interval_millis: 30000  # 30 seconds between retries
-    retry_on_timeout: true
-    notebook_task:
-      notebook_path: ../src/flaky_task.py
-```
-
-
-
-```python
-from databricks.sdk.service.jobs import Task, NotebookTask
-
-Task(
-    task_key="flaky_task",
-    max_retries=3,
-    min_retry_interval_millis=30000,
-    retry_on_timeout=True,
-    notebook_task=NotebookTask(
-        notebook_path="/Workspace/flaky_task"
-    )
-)
-```
-
-
-
-
-
-`max_retries`
-`min_retry_interval_millis`
-`retry_on_timeout`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```yaml
-resources:
-  jobs:
-    concurrent_job:
-      name: "Concurrent Job"
-      max_concurrent_runs: 5  # Allow up to 5 simultaneous runs
-      tasks:
-        - task_key: main
-          notebook_task:
-            notebook_path: ../src/main.py
-```
-
-
-
-```yaml
-resources:
-  jobs:
-    queued_job:
-      name: "Queued Job"
-      max_concurrent_runs: 1
-      queue:
-        enabled: true  # Queue additional runs instead of skipping
-      tasks:
-        - task_key: main
-          notebook_task:
-            notebook_path: ../src/main.py
-```
-
-
-
-```python
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.jobs import QueueSettings
-
-w = WorkspaceClient()
-
-job = w.jobs.create(
-    name="Queued Job",
-    max_concurrent_runs=1,
-    queue=QueueSettings(enabled=True),
-    tasks=[...]
-)
-```
-
-
-
-
-
-`max_concurrent_runs=1``queue.enabled=false`
-`max_concurrent_runs=1``queue.enabled=true`
-`max_concurrent_runs=N`
-
-
-
-
-
-
-
-
-
-```yaml
-resources:
-  jobs:
-    notification_settings_job:
-      name: "Job with Notification Settings"
-      notification_settings:
-        no_alert_for_skipped_runs: true
-        no_alert_for_canceled_runs: true
-      email_notifications:
-        on_failure:
-          - "team@example.com"
-      tasks:
-        - task_key: main
-          notebook_task:
-            notebook_path: ../src/main.py
-```
-
-
-
-```python
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.jobs import JobNotificationSettings
-
-w = WorkspaceClient()
-
-job = w.jobs.create(
-    name="Job with Notification Settings",
-    notification_settings=JobNotificationSettings(
-        no_alert_for_skipped_runs=True,
-        no_alert_for_canceled_runs=True
-    ),
-    tasks=[...]
-)
-```
-
-
-
-
-
-`no_alert_for_skipped_runs`
-`no_alert_for_canceled_runs`
-
-
-
-
-
-```yaml
-resources:
-  jobs:
-    fully_monitored:
-      name: "[${bundle.target}] Fully Monitored ETL"
-
-      # Timeout and retries
-      timeout_seconds: 14400  # 4 hours max
+    resilient_job:
+      name: "[${bundle.target}] Resilient ETL"
+      timeout_seconds: 7200
       max_concurrent_runs: 1
       queue:
         enabled: true
-
-      # Health monitoring
-      health:
-        rules:
-          - metric: RUN_DURATION_SECONDS
-            op: GREATER_THAN
-            value: 7200  # Warn if > 2 hours
-
-      # Email notifications
-      email_notifications:
-        on_start:
-          - "team@example.com"
-        on_success:
-          - "team@example.com"
-        on_failure:
-          - "oncall@example.com"
-          - "team@example.com"
-        on_duration_warning_threshold_exceeded:
-          - "oncall@example.com"
-        no_alert_for_skipped_runs: true
-
-      # Webhook notifications
-      webhook_notifications:
-        on_failure:
-          - id: "pagerduty-destination-uuid"
-        on_duration_warning_threshold_exceeded:
-          - id: "slack-alerts-uuid"
-
-      # Notification settings
-      notification_settings:
-        no_alert_for_canceled_runs: true
-
       tasks:
         - task_key: extract
-          max_retries: 2
-          min_retry_interval_millis: 60000
+          max_retries: 3
+          min_retry_interval_millis: 30000
+          retry_on_timeout: true
           timeout_seconds: 3600
           notebook_task:
             notebook_path: ../src/extract.py
-
         - task_key: transform
           depends_on:
             - task_key: extract
-          max_retries: 1
           timeout_seconds: 3600
           notebook_task:
             notebook_path: ../src/transform.py
-
-        - task_key: load
-          depends_on:
-            - task_key: transform
-          timeout_seconds: 1800
-          # Critical task - specific notifications
-          email_notifications:
-            on_failure:
-              - "data-team-lead@example.com"
-          notebook_task:
-            notebook_path: ../src/load.py
 ```
+
+Job-level `timeout_seconds` is the total wall clock limit for the entire run. Task-level `timeout_seconds` limits individual tasks. `max_retries` with `min_retry_interval_millis` handles transient failures -- API timeouts, rate limits, temporary network issues. Set `retry_on_timeout: true` to also retry tasks that hit their timeout, not just tasks that error.
+
+### Task-level notifications for critical steps
+
+> "Send a separate alert to the data team lead when the load task fails."
+
+```yaml
+tasks:
+  - task_key: load
+    depends_on:
+      - task_key: transform
+    timeout_seconds: 1800
+    email_notifications:
+      on_failure:
+        - "data-team-lead@example.com"
+    notebook_task:
+      notebook_path: ../src/load.py
+```
+
+Task-level notifications supplement job-level notifications -- they do not replace them. The data team lead gets a targeted alert for the load step, while the broader job-level `on_failure` still fires for the team.
+
+### Suppress noise from skipped and canceled runs
+
+> "Stop getting alerts when runs are skipped or canceled -- I only care about actual failures."
+
+```yaml
+resources:
+  jobs:
+    quiet_job:
+      name: "[${bundle.target}] Quiet ETL"
+      notification_settings:
+        no_alert_for_skipped_runs: true
+        no_alert_for_canceled_runs: true
+      email_notifications:
+        on_failure:
+          - "team@example.com"
+      tasks:
+        - task_key: main
+          notebook_task:
+            notebook_path: ../src/main.py
+```
+
+`notification_settings` controls which run outcomes generate alerts. Without these flags, skipped and canceled runs produce the same `on_failure` notifications as actual errors, drowning real failures in noise.
+
+## Watch Out For
+
+- **Missing the health rule for duration warnings** -- `on_duration_warning_threshold_exceeded` in `email_notifications` does nothing without a corresponding `health.rules` entry for `RUN_DURATION_SECONDS`. The notification event only fires when a health rule threshold is crossed.
+- **Using raw webhook URLs in the job config** -- webhook notifications reference notification destination IDs, not URLs. Create a destination with the SDK first, then use its ID in `webhook_notifications`.
+- **Setting `timeout_seconds` to 0** -- a value of 0 means no timeout, not "cancel immediately." Jobs with no timeout can run indefinitely if something hangs. Always set an explicit timeout in production.
+- **Retries without `min_retry_interval_millis`** -- without a retry interval, failed tasks retry immediately. For transient issues (API rate limits, network blips), an immediate retry hits the same problem. Set at least 30 seconds between retries.

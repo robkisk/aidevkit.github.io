@@ -1,33 +1,17 @@
 ---
-title: CRITICAL MLflow 3 GenAI Interfaces
-description: "Version: MLflow 3."
+title: Critical API Interfaces
+description: Exact API signatures and data schemas for MLflow 3 GenAI evaluation -- the reference you check before writing code.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+You can write evaluation code that works on the first run by referencing the exact API signatures, data formats, and scorer interfaces. This page is the contract -- every function signature, every required field, every return type. When your AI coding assistant generates MLflow evaluation code, these are the interfaces it needs to get right.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "Show me the correct way to call mlflow.genai.evaluate() with a predict function and multiple scorers. Use Python."
 
 ```python
 import mlflow
@@ -43,16 +27,16 @@ results = mlflow.genai.evaluate(
 #   - results.metrics: dict - Aggregate metrics
 ```
 
+**Key decisions:**
+- **`predict_fn` receives unpacked kwargs** -- if your inputs are `\{"query": "hello"\}`, your function signature is `def my_fn(query: str)`, not `def my_fn(inputs: dict)`
+- **Omit `predict_fn` when `data` includes `outputs`** -- pre-computed outputs skip the predict step entirely
+- **`data` supports three formats** -- list of dicts, pandas DataFrame, or an MLflow `EvalDataset` object
 
-`predict_fn``inputs`
-`data``outputs``predict_fn`
+## More Patterns
 
+### Data Record Schema
 
-
-
-
-
-
+> "What is the exact format for an evaluation data record with inputs, outputs, and expectations? Use Python."
 
 ```python
 # CORRECT format
@@ -72,15 +56,11 @@ record = {
 }
 ```
 
+`inputs` is the only required key. `outputs` bypasses the predict function. `expectations` feeds ground truth to scorers like `Correctness` and `ExpectationsGuidelines`.
 
-`inputs`
-`outputs`
-`expectations`
+### Built-in Scorer Signatures
 
-
-
-
-
+> "List every built-in scorer import and its constructor parameters. Use Python."
 
 ```python
 from mlflow.genai.scorers import (
@@ -91,82 +71,35 @@ from mlflow.genai.scorers import (
     RetrievalGroundedness,
     Safety,
 )
-```
 
-
-```python
+# Guidelines - requires name and guidelines text
 Guidelines(
     name="my_guideline",              # REQUIRED - unique name
     guidelines="Response must...",     # REQUIRED - str or List[str]
     model="databricks:/endpoint-name"  # OPTIONAL - custom judge model
 )
 
-# Guidelines auto-extracts 'request' and 'response' from trace
-# Reference them in guidelines: "The response must address the request"
+# ExpectationsGuidelines - no params, reads from expectations.guidelines
+ExpectationsGuidelines()
+
+# Correctness - needs expectations.expected_facts or expected_response
+Correctness(model="databricks:/endpoint-name")  # OPTIONAL model
+
+# Safety - no expectations required
+Safety(model="databricks:/endpoint-name")  # OPTIONAL model
+
+# RelevanceToQuery - checks response addresses the request
+RelevanceToQuery(model="databricks:/endpoint-name")  # OPTIONAL model
+
+# RetrievalGroundedness - REQUIRES a RETRIEVER span in the trace
+RetrievalGroundedness(model="databricks:/endpoint-name")  # OPTIONAL model
 ```
 
+Guidelines auto-extracts `request` and `response` from the trace. Reference them in your guideline text with those exact terms -- not `query`, not `output`.
 
-```python
-ExpectationsGuidelines()  # No parameters needed
+### Custom Scorer Interface
 
-# REQUIRES expectations.guidelines in each data row:
-record = {
-    "inputs": {...},
-    "outputs": {...},
-    "expectations": {
-        "guidelines": ["Must mention X", "Must not include Y"]
-    }
-}
-```
-
-
-```python
-Correctness(
-    model="databricks:/endpoint-name"  # OPTIONAL
-)
-
-# REQUIRES expectations.expected_facts OR expectations.expected_response:
-record = {
-    "inputs": {...},
-    "outputs": {...},
-    "expectations": {
-        "expected_facts": ["MLflow is open-source", "Manages ML lifecycle"]
-        # OR
-        "expected_response": "MLflow is an open-source platform..."
-    }
-}
-```
-
-
-```python
-Safety(
-    model="databricks:/endpoint-name"  # OPTIONAL
-)
-# No expectations required - evaluates outputs for harmful content
-```
-
-
-```python
-RelevanceToQuery(
-    model="databricks:/endpoint-name"  # OPTIONAL
-)
-# Checks if response addresses the user's request
-```
-
-
-```python
-RetrievalGroundedness(
-    model="databricks:/endpoint-name"  # OPTIONAL
-)
-# REQUIRES: Trace with RETRIEVER span type
-# Checks if response is grounded in retrieved documents
-```
-
-
-
-
-
-
+> "Show the @scorer decorator signature and every valid return type. Use Python."
 
 ```python
 from mlflow.genai.scorers import scorer
@@ -176,42 +109,42 @@ from mlflow.entities import Feedback
 def my_scorer(
     inputs: dict,          # From data record
     outputs: dict,         # App outputs or pre-computed
-    expectations: dict,    # From data record (optional)
-    trace: Trace = None    # Full MLflow Trace object (optional)
+    expectations: dict,    # From data record (optional param)
+    trace: Trace = None    # Full MLflow Trace object (optional param)
 ) -> Feedback | bool | int | float | str | list[Feedback]:
-    """Custom scorer implementation"""
-    
-    # Return options:
-    # 1. Simple value (metric name = function name)
+    # Return a simple value (metric name = function name)
     return True
-    
-    # 2. Feedback object with custom name
+
+    # Or a Feedback object with custom name
     return Feedback(
         name="custom_metric",
         value="yes",  # or "no", True/False, int, float
         rationale="Explanation of score"
     )
-    
-    # 3. Multiple feedbacks
+
+    # Or multiple feedbacks
     return [
         Feedback(name="metric_1", value=True),
         Feedback(name="metric_2", value=0.85)
     ]
 ```
 
+The `@scorer` decorator is required -- a plain function without it will not work as a scorer. Each `Feedback` in a list must have a unique `name` or they will collide.
 
+### Class-based Scorer
+
+> "Write a configurable scorer using the Scorer base class. Use Python."
 
 ```python
 from mlflow.genai.scorers import Scorer
 from mlflow.entities import Feedback
-from typing import Optional
 
 class MyScorer(Scorer):
     name: str = "my_scorer"  # REQUIRED
     threshold: int = 50      # Custom fields allowed (Pydantic)
-    
+
     def __call__(
-        self, 
+        self,
         outputs: str,
         inputs: dict = None,
         expectations: dict = None,
@@ -221,55 +154,14 @@ class MyScorer(Scorer):
             return Feedback(value=True, rationale="Meets length requirement")
         return Feedback(value=False, rationale="Too short")
 
-# Usage
 my_scorer = MyScorer(threshold=100)
 ```
 
+Class-based scorers are useful when you need the same logic with different configurations -- keyword checkers, threshold validators, domain-specific rules.
 
+### Judge Functions
 
-
-
-
-```python
-from mlflow.genai.judges import (
-    meets_guidelines,
-    is_correct,
-    is_safe,
-    is_context_relevant,
-    is_grounded,
-    make_judge,
-)
-```
-
-
-```python
-from mlflow.genai.judges import meets_guidelines
-
-feedback = meets_guidelines(
-    name="my_check",                    # Optional display name
-    guidelines="Must be professional",   # str or List[str]
-    context={                           # Dict with data to evaluate
-        "request": "user question",
-        "response": "app response",
-        "retrieved_documents": [...]     # Can include any keys
-    },
-    model="databricks:/endpoint"        # Optional custom model
-)
-# Returns: Feedback(value="yes"|"no", rationale="...")
-```
-
-
-```python
-from mlflow.genai.judges import is_correct
-
-feedback = is_correct(
-    request="What is MLflow?",
-    response="MLflow is an open-source platform...",
-    expected_facts=["MLflow is open-source"],  # OR expected_response
-    model="databricks:/endpoint"               # Optional
-)
-```
-
+> "Show the make_judge interface for creating custom LLM judges. Use Python."
 
 ```python
 from mlflow.genai.judges import make_judge
@@ -280,222 +172,45 @@ issue_judge = make_judge(
     Evaluate if the customer's issue was resolved.
     User's messages: {{ inputs }}
     Agent's responses: {{ outputs }}
-    
+
     Rate and respond with exactly one of:
     - 'fully_resolved'
-    - 'partially_resolved' 
+    - 'partially_resolved'
     - 'needs_follow_up'
     """,
     model="databricks:/databricks-gpt-5-mini"  # Optional
 )
 
-# Use in evaluation
-results = mlflow.genai.evaluate(
-    data=eval_dataset,
-    predict_fn=my_app,
-    scorers=[issue_judge]
-)
-```
-
-
-```python
 # Including {{ trace }} in instructions enables trace exploration
 tool_judge = make_judge(
     name="tool_correctness",
     instructions="""
-    Analyze the execution {{ trace }} to determine if appropriate tools were called.
-    Respond with true or false.
+    Analyze the execution {{ trace }} to determine if appropriate
+    tools were called. Respond with true or false.
     """,
     model="databricks:/databricks-gpt-5-mini"  # REQUIRED for trace judges
 )
 ```
 
+Template variables `\{\{ inputs \}\}`, `\{\{ outputs \}\}`, and `\{\{ trace \}\}` get filled from evaluation data. The `name` field matters -- it must match your label schema name if you plan to use `align()` later.
 
+### Trace Search and Span Types
 
-
-
+> "Show the search_traces API and available span types. Use Python."
 
 ```python
 import mlflow
+from mlflow.entities import SpanType
 
+# Search with filters
 traces_df = mlflow.search_traces(
     filter_string="attributes.status = 'OK'",
     order_by=["attributes.timestamp_ms DESC"],
     max_results=100,
-    run_id="optional-run-id"  # Filter to specific evaluation run
+    run_id="optional-run-id"
 )
 
-# Common filters:
-# "attributes.status = 'OK'" or "attributes.status = 'ERROR'"
-# "attributes.timestamp_ms > {milliseconds}"
-# "attributes.execution_time_ms > 5000"
-# "tags.environment = 'production'"
-# "tags.`mlflow.traceName` = 'my_function'"
-```
-
-
-```python
-from mlflow.entities import Trace, SpanType
-
-@scorer
-def trace_scorer(trace: Trace) -> Feedback:
-    # Search spans by type
-    llm_spans = trace.search_spans(span_type=SpanType.CHAT_MODEL)
-    retriever_spans = trace.search_spans(span_type=SpanType.RETRIEVER)
-    
-    # Access span data
-    for span in llm_spans:
-        duration = (span.end_time_ns - span.start_time_ns) / 1e9
-        inputs = span.inputs
-        outputs = span.outputs
-```
-
-
-
-
-
-
-```python
-import mlflow.genai.datasets
-from databricks.connect import DatabricksSession
-
-# Required for MLflow-managed datasets
-spark = DatabricksSession.builder.remote(serverless=True).getOrCreate()
-
-eval_dataset = mlflow.genai.datasets.create_dataset(
-    uc_table_name="catalog.schema.my_eval_dataset"
-)
-```
-
-
-```python
-# From list of dicts
-records = [
-    {"inputs": {"query": "..."}, "expectations": {"expected_facts": [...]}},
-]
-eval_dataset.merge_records(records)
-
-# From traces
-traces_df = mlflow.search_traces(filter_string="...")
-eval_dataset.merge_records(traces_df)
-```
-
-
-```python
-results = mlflow.genai.evaluate(
-    data=eval_dataset,  # Pass dataset object directly
-    predict_fn=my_app,
-    scorers=[...]
-)
-```
-
-
-
-
-
-`mlflow[databricks]>=3.9.0`
-
-
-```python
-import os
-import mlflow
-from mlflow.entities import UCSchemaLocation
-from mlflow.tracing.enablement import set_experiment_trace_location
-
-mlflow.set_tracking_uri("databricks")
-os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<SQL_WAREHOUSE_ID>"
-
-experiment_id = mlflow.create_experiment(name="/Shared/my-traces")
-
-set_experiment_trace_location(
-    location=UCSchemaLocation(
-        catalog_name="<CATALOG>",
-        schema_name="<SCHEMA>"
-    ),
-    experiment_id=experiment_id,
-)
-# Creates: mlflow_experiment_trace_otel_logs, _metrics, _spans
-```
-
-
-```python
-# Option A: Python API
-from mlflow.entities import UCSchemaLocation
-mlflow.tracing.set_destination(
-    destination=UCSchemaLocation(
-        catalog_name="<CATALOG>",
-        schema_name="<SCHEMA>",
-    )
-)
-
-# Option B: Environment variable
-os.environ["MLFLOW_TRACING_DESTINATION"] = "<CATALOG>.<SCHEMA>"
-```
-
-
-`USE_CATALOG`
-`USE_SCHEMA`
-`MODIFY``SELECT``mlflow_experiment_trace_*`
-`ALL_PRIVILEGES`
-
-
-
-
-
-
-```python
-from mlflow.tracing import set_databricks_monitoring_sql_warehouse_id
-
-set_databricks_monitoring_sql_warehouse_id(
-    warehouse_id="<SQL_WAREHOUSE_ID>",
-    experiment_id="<EXPERIMENT_ID>"  # Optional
-)
-# Alternative: os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<ID>"
-```
-
-
-```python
-from mlflow.genai.scorers import Safety, Guidelines, ScorerSamplingConfig
-
-# Register scorer to experiment
-safety = Safety().register(name="safety_monitor")
-
-# Start monitoring with sample rate
-safety = safety.start(
-    sampling_config=ScorerSamplingConfig(sample_rate=0.5)  # 50% of traces
-)
-```
-
-
-```python
-from mlflow.genai.scorers import list_scorers, get_scorer, delete_scorer
-
-# List all registered scorers
-scorers = list_scorers()
-
-# Get specific scorer
-my_scorer = get_scorer(name="safety_monitor")
-
-# Update sample rate
-my_scorer = my_scorer.update(
-    sampling_config=ScorerSamplingConfig(sample_rate=0.8)
-)
-
-# Stop monitoring (keeps registration)
-my_scorer = my_scorer.stop()
-
-# Delete entirely
-delete_scorer(name="safety_monitor")
-```
-
-
-
-
-
-
-```python
-from mlflow.entities import SpanType
-
+# Available span types
 SpanType.CHAT_MODEL      # LLM calls
 SpanType.RETRIEVER       # RAG retrieval
 SpanType.TOOL            # Tool/function calls
@@ -503,37 +218,11 @@ SpanType.AGENT           # Agent execution
 SpanType.CHAIN           # Chain execution
 ```
 
+Filter strings require the `attributes.` prefix for status, timestamp, and execution time. Tag names with dots need backticks: `tags.\`mlflow.traceName\``. Only `AND` is supported -- no `OR`.
 
-```python
-# LLM judges typically return:
-"yes" | "no"     # For pass/fail assessments
+## Watch Out For
 
-# Custom scorers can return:
-True | False     # Boolean
-0.0 - 1.0        # Float scores
-int              # Integer scores
-str              # Categorical values
-```
-
-
-
-
-
-```bash
-pip install --upgrade "mlflow[databricks]>=3.1.0" openai
-```
-
-
-
-```python
-import mlflow
-
-# Enable auto-tracing
-mlflow.openai.autolog()  # or mlflow.langchain.autolog(), etc.
-
-# Set tracking URI
-mlflow.set_tracking_uri("databricks")
-
-# Set experiment
-mlflow.set_experiment("/Shared/my-experiment")
-```
+- **Model URI format** -- use `databricks:/endpoint-name` with `:/` separator, not `databricks:endpoint-name` or bare `gpt-4o`
+- **Valid aggregations** -- only `min`, `max`, `mean`, `median`, `variance`, `p90` are valid. `p50`, `p99`, and `sum` do not exist. Use `median` instead of `p50`.
+- **Feedback value types from judges** -- built-in LLM judges return `"yes"` or `"no"` as strings, not booleans. Custom scorers can return `bool`, `float`, `int`, or `str`.
+- **MLflow version for trace ingestion** -- Unity Catalog trace features require `mlflow[databricks]>=3.9.0`, not `>=3.1.0`

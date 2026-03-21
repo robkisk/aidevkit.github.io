@@ -1,26 +1,20 @@
 ---
-title: Streaming Patterns for SDP
-description: Streaming-specific patterns including deduplication, windowed aggregations, late-arriving data handling, and stateful operations.
+title: Streaming Patterns
+description: Deduplicate, window, join, and sessionize streaming data with patterns that handle late arrivals and state growth.
 sidebar:
   order: 2
 ---
 
+## What You Can Build
 
+Streaming patterns transform raw event streams into deduplicated, windowed, and enriched datasets. Ask your AI coding assistant for deduplication logic, windowed aggregations, stream-to-stream joins, or session detection and it will generate the SQL or Python with correct watermarking, state management, and time semantics.
 
+## In Action
 
-
-
-
-
+> "Write a SQL streaming table that deduplicates bronze events by event_id, keeping the earliest occurrence based on event_timestamp"
 
 ```sql
--- Bronze: Ingest all (may contain duplicates)
-CREATE OR REPLACE STREAMING TABLE bronze_events AS
-SELECT *, current_timestamp() AS _ingested_at
-FROM read_stream(...);
-
--- Silver: Deduplicate by event_id
-CREATE OR REPLACE STREAMING TABLE silver_events_dedup AS
+CREATE OR REFRESH STREAMING TABLE silver_events_dedup AS
 SELECT
   event_id, user_id, event_type, event_timestamp, _ingested_at
 FROM (
@@ -32,42 +26,18 @@ FROM (
 WHERE rn = 1;
 ```
 
+**Key decisions:**
+- **`ROW_NUMBER()` over `DISTINCT`** — gives you control over which duplicate wins. `DISTINCT` cannot express "keep the first arrival" or "keep the latest update."
+- **Partition by the business key** — `event_id` here. The window function groups by this key and the `ORDER BY` picks the winner.
+- **Dedup at silver, not bronze** — bronze stays append-only and faithful to the source. Deduplication is a data quality decision that belongs in the silver layer.
 
+## More Patterns
 
-
-
-```sql
-CREATE OR REPLACE STREAMING TABLE silver_events_dedup AS
-SELECT
-  event_id, user_id, event_type, event_timestamp,
-  MIN(_ingested_at) AS first_seen_at
-FROM STREAM bronze_events
-GROUP BY
-  event_id, user_id, event_type, event_timestamp,
-  window(event_timestamp, '1 hour')  -- Deduplicate within 1-hour windows
-HAVING COUNT(*) >= 1;
-```
-
-
+### Windowed aggregation for time-series metrics
+> "Create a SQL streaming table that computes 5-minute average, min, and max temperature per sensor"
 
 ```sql
-CREATE OR REPLACE STREAMING TABLE silver_transactions_dedup AS
-SELECT
-  transaction_id, customer_id, amount, transaction_timestamp,
-  MIN(_ingested_at) AS _ingested_at
-FROM STREAM bronze_transactions
-GROUP BY transaction_id, customer_id, amount, transaction_timestamp;
-```
-
-
-
-
-
-
-
-```sql
--- 5-minute non-overlapping windows
-CREATE OR REPLACE STREAMING TABLE silver_sensor_5min AS
+CREATE OR REFRESH STREAMING TABLE silver_sensor_5min AS
 SELECT
   sensor_id,
   window(event_timestamp, '5 minutes') AS time_window,
@@ -79,104 +49,33 @@ FROM STREAM bronze_sensor_events
 GROUP BY sensor_id, window(event_timestamp, '5 minutes');
 ```
 
+The `window()` function creates non-overlapping (tumbling) windows. Each window closes after 5 minutes of event time, emitting one row per sensor per window. Use event timestamps, not processing time — otherwise late-arriving data lands in the wrong bucket.
 
-
-```sql
--- 1-minute for real-time monitoring
-CREATE OR REPLACE STREAMING TABLE gold_sensor_1min AS
-SELECT
-  sensor_id,
-  window(event_timestamp, '1 minute').start AS window_start,
-  window(event_timestamp, '1 minute').end AS window_end,
-  AVG(value) AS avg_value,
-  COUNT(*) AS event_count
-FROM STREAM silver_sensor_data
-GROUP BY sensor_id, window(event_timestamp, '1 minute');
-
--- 1-hour for trend analysis
-CREATE OR REPLACE STREAMING TABLE gold_sensor_1hour AS
-SELECT
-  sensor_id,
-  window(event_timestamp, '1 hour').start AS window_start,
-  AVG(value) AS avg_value,
-  STDDEV(value) AS stddev_value
-FROM STREAM silver_sensor_data
-GROUP BY sensor_id, window(event_timestamp, '1 hour');
-```
-
-
-
-
-
-
-
-
+### Stream-to-stream join with time bounds
+> "Join streaming orders with streaming payments, matching within a 1-hour window of the order timestamp, in SQL"
 
 ```sql
--- ✅ Use event timestamp
-CREATE OR REPLACE STREAMING TABLE silver_orders AS
-SELECT
-  order_id, order_timestamp,  -- Event time from source
-  customer_id, amount,
-  _ingested_at                -- Processing time (debugging only)
-FROM STREAM bronze_orders;
-
--- Group by event time
-CREATE OR REPLACE STREAMING TABLE gold_daily_orders AS
-SELECT
-  CAST(order_timestamp AS DATE) AS order_date,  -- Event time
-  COUNT(*) AS order_count,
-  SUM(amount) AS total_amount
-FROM STREAM silver_orders
-GROUP BY CAST(order_timestamp AS DATE);
-```
-
-
-
-`APPLY AS DELETE WHEN``SEQUENCE BY``COLUMNS * EXCEPT (...)``_rescued_data``TRACK HISTORY ON *`
-
-```sql
-CREATE OR REFRESH STREAMING TABLE silver_customers_history;
-
-CREATE FLOW customers_scd2_flow AS
-AUTO CDC INTO silver_customers_history
-FROM stream(bronze_customer_cdc)
-KEYS (customer_id)
-APPLY AS DELETE WHEN operation = "DELETE"
-SEQUENCE BY event_timestamp  -- Handles out-of-order
-COLUMNS * EXCEPT (operation, _ingested_at, _source_file)
-STORED AS SCD TYPE 2;
-```
-
-
-
-
-
-
-
-```sql
--- Join two streaming sources
-CREATE OR REPLACE STREAMING TABLE silver_orders_with_payments AS
+CREATE OR REFRESH STREAMING TABLE silver_orders_with_payments AS
 SELECT
   o.order_id, o.customer_id, o.order_timestamp, o.amount AS order_amount,
   p.payment_id, p.payment_timestamp, p.payment_method, p.amount AS payment_amount
 FROM STREAM bronze_orders o
 INNER JOIN STREAM bronze_payments p
   ON o.order_id = p.order_id
-  AND p.payment_timestamp BETWEEN o.order_timestamp AND o.order_timestamp + INTERVAL 1 HOUR;
+  AND p.payment_timestamp BETWEEN o.order_timestamp
+    AND o.order_timestamp + INTERVAL 1 HOUR;
 ```
 
+Stream-to-stream joins require a time bound — without one, the engine must buffer all events from both sides indefinitely. The `BETWEEN` clause limits state to a 1-hour window, keeping memory bounded. If payments can arrive days later, widen the interval or use a materialized view with batch semantics instead.
 
-
-
+### Stream-to-static enrichment join
+> "Enrich a streaming sales table with product names and categories from a static dimension table, in SQL"
 
 ```sql
--- Static dimension (changes infrequently)
-CREATE OR REPLACE TABLE dim_products AS
-SELECT * FROM catalog.schema.products;
+CREATE OR REFRESH TABLE dim_products AS
+SELECT * FROM catalog.reference.products;
 
--- Stream-to-static join
-CREATE OR REPLACE STREAMING TABLE silver_sales_enriched AS
+CREATE OR REFRESH STREAMING TABLE silver_sales_enriched AS
 SELECT
   s.sale_id, s.product_id, s.quantity, s.sale_timestamp,
   p.product_name, p.category, p.price,
@@ -185,29 +84,13 @@ FROM STREAM bronze_sales s
 LEFT JOIN dim_products p ON s.product_id = p.product_id;
 ```
 
+The dimension table is a regular (non-streaming) table that refreshes on each pipeline run. The streaming side drives the join — each new sale looks up the current product info. Use `LEFT JOIN` so sales with unknown products still flow through rather than silently dropping.
 
-
-```sql
--- Running totals by customer (stateful)
-CREATE OR REPLACE STREAMING TABLE silver_customer_running_totals AS
-SELECT
-  customer_id,
-  SUM(amount) AS total_spent,
-  COUNT(*) AS transaction_count,
-  MAX(transaction_timestamp) AS last_transaction_at
-FROM STREAM bronze_transactions
-GROUP BY customer_id;
-```
-
-
-
-
-
-
+### Session window detection
+> "Detect user sessions from a clickstream with a 30-minute inactivity timeout, in SQL"
 
 ```sql
--- 30-minute inactivity timeout
-CREATE OR REPLACE STREAMING TABLE silver_user_sessions AS
+CREATE OR REFRESH STREAMING TABLE silver_user_sessions AS
 SELECT
   user_id,
   session_window(event_timestamp, '30 minutes') AS session,
@@ -219,143 +102,28 @@ FROM STREAM bronze_user_events
 GROUP BY user_id, session_window(event_timestamp, '30 minutes');
 ```
 
+`session_window()` groups events by user with a dynamic gap — if no event arrives within 30 minutes, the session closes. This is different from `window()` which uses fixed-size buckets. Session windows produce variable-length windows that match real user behavior.
 
-
-
-
-
-
-```sql
-CREATE OR REPLACE STREAMING TABLE silver_sensor_with_anomalies AS
-SELECT
-  sensor_id, event_timestamp, temperature,
-  AVG(temperature) OVER (
-    PARTITION BY sensor_id ORDER BY event_timestamp
-    ROWS BETWEEN 100 PRECEDING AND CURRENT ROW
-  ) AS rolling_avg_100,
-  STDDEV(temperature) OVER (
-    PARTITION BY sensor_id ORDER BY event_timestamp
-    ROWS BETWEEN 100 PRECEDING AND CURRENT ROW
-  ) AS rolling_stddev_100,
-  CASE
-    WHEN temperature > rolling_avg_100 + (3 * rolling_stddev_100) THEN 'HIGH_OUTLIER'
-    WHEN temperature < rolling_avg_100 - (3 * rolling_stddev_100) THEN 'LOW_OUTLIER'
-    ELSE 'NORMAL'
-  END AS anomaly_flag
-FROM STREAM bronze_sensor_events;
-
--- Route anomalies for alerting
-CREATE OR REPLACE STREAMING TABLE silver_sensor_anomalies AS
-SELECT *
-FROM STREAM silver_sensor_with_anomalies
-WHERE anomaly_flag IN ('HIGH_OUTLIER', 'LOW_OUTLIER');
-```
-
-
+### CDC deduplication with Auto CDC
+> "Apply SCD Type 2 change tracking on a customer CDC feed, excluding operational columns, in SQL"
 
 ```sql
-CREATE OR REPLACE STREAMING TABLE silver_high_value_transactions AS
-SELECT transaction_id, customer_id, amount, transaction_timestamp
-FROM STREAM bronze_transactions
-WHERE amount > 10000;
+CREATE OR REFRESH STREAMING TABLE silver_customers_history;
+
+CREATE FLOW customers_scd2_flow AS
+AUTO CDC INTO silver_customers_history
+FROM stream(bronze_customer_cdc)
+KEYS (customer_id)
+APPLY AS DELETE WHEN operation = "DELETE"
+SEQUENCE BY event_timestamp
+COLUMNS * EXCEPT (operation, _ingested_at, _source_file)
+STORED AS SCD TYPE 2;
 ```
 
+Auto CDC handles deduplication, ordering, and merge logic in one declaration. The `COLUMNS * EXCEPT` clause strips operational metadata before writing to the target. Put `APPLY AS DELETE WHEN` before `SEQUENCE BY` — clause order matters and the error message does not point at the real cause.
 
-
-
-
-
-
-
-```yaml
-execution_mode: continuous
-serverless: true
-```
-
-
-```yaml
-execution_mode: triggered
-schedule: "0 * * * *"  # Hourly
-```
-
-
-
-
-
-
-
-
-
-
-
-```sql
--- ✅ Event timestamp for logic
-GROUP BY date_trunc('hour', event_timestamp)
-
--- ❌ Processing timestamp
-GROUP BY date_trunc('hour', _ingested_at)
-```
-
-
-
-
-
-
-
-
-
-
-
-```sql
--- High state: 1M users × 10K products × 100M sessions
-GROUP BY user_id, product_id, session_id
-
--- Lower state: 1M users × 100 categories × days
-GROUP BY user_id, product_category, DATE(event_time)
-```
-
-
-
-
-
-
-
-```sql
--- Bronze: Accept duplicates
-CREATE OR REPLACE STREAMING TABLE bronze_events AS
-SELECT * FROM read_stream(...);
-
--- Silver: Deduplicate immediately
-CREATE OR REPLACE STREAMING TABLE silver_events AS
-SELECT DISTINCT event_id, event_type, event_timestamp, user_id
-FROM STREAM bronze_events;
-
--- Gold: Work with clean data
-CREATE OR REPLACE STREAMING TABLE gold_metrics AS
-SELECT ... FROM STREAM silver_events;
-```
-
-
-
-```sql
-CREATE OR REPLACE STREAMING TABLE monitoring_lag AS
-SELECT
-  'kafka_events' AS source,
-  MAX(kafka_timestamp) AS max_event_timestamp,
-  current_timestamp() AS processing_timestamp,
-  (unix_timestamp(current_timestamp()) - unix_timestamp(MAX(kafka_timestamp))) AS lag_seconds
-FROM STREAM bronze_kafka_events
-GROUP BY window(kafka_timestamp, '1 minute');
-```
-
-
-
-
-
-
-
-
-
-
-
-
+## Watch Out For
+- **Unbounded state from high-cardinality GROUP BY** — `GROUP BY user_id, product_id, session_id` creates state for every unique combination. Aggregate at a higher level (`product_category` instead of `product_id`) or use windowed aggregations to bound state.
+- **Processing time instead of event time** — grouping by `_ingested_at` instead of the source event timestamp puts late-arriving data in the wrong window. Always use the event timestamp for business logic; keep `_ingested_at` for debugging only.
+- **Missing time bounds on stream-stream joins** — without a `BETWEEN` clause or `INTERVAL`, the engine buffers all unmatched events forever. State grows until the pipeline runs out of memory.
+- **`TRACK HISTORY ON *` causing parse errors** — if you hit "end of input" errors in Auto CDC, remove the `TRACK HISTORY ON *` clause. Tracking all columns is the default behavior; the explicit clause sometimes causes parser issues.

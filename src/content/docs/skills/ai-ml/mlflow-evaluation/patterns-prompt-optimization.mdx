@@ -1,26 +1,20 @@
 ---
-title: MLflow 3 Prompt Optimization with GEPA
-description: Patterns for automated prompt improvement using optimize_prompts() with the GEPA (Genetic-Pareto) optimizer.
+title: Prompt Optimization with GEPA
+description: Automate prompt improvement using optimize_prompts() with the GEPA optimizer and an aligned judge.
 sidebar:
   order: 99
 ---
 
-`optimize_prompts()`
+## What You Can Build
 
-`patterns-judge-alignment.md`
+You can automatically improve your agent's system prompt by letting GEPA iterate on it -- running evaluations, reflecting on failures, and generating improved candidates. Paired with an aligned judge, GEPA optimizes toward what your domain experts actually care about instead of generic quality criteria. The result is a production-ready prompt version with a clear score improvement over the baseline.
 
-`user-journeys.md`
+## In Action
 
-`GOTCHAS.md`
-
-
-
-
-
-`inputs``expectations``inputs``expectations`
+> "Build an optimization dataset with inputs and expectations for GEPA prompt optimization. Use Python."
 
 ```python
-# optimization dataset must have both inputs AND expectations
+# Optimization dataset must have both inputs AND expectations
 optimization_dataset = [
     {
         "inputs": {
@@ -54,14 +48,19 @@ from mlflow.genai.datasets import create_dataset
 
 optim_dataset = create_dataset(name=OPTIMIZATION_DATASET_NAME)
 optim_dataset = optim_dataset.merge_records(optimization_dataset)
-print(f"Created optimization dataset with {len(optimization_dataset)} records")
 ```
 
+**Key decisions:**
+- **Every record needs `expectations`** -- unlike evaluation datasets, optimization datasets require both `inputs` and `expectations`. GEPA uses expectations to measure improvement.
+- **`expected_response` describes ideal behavior, not exact text** -- write what the agent should do, not a word-for-word answer
+- **15-20 examples is the sweet spot** -- enough variety for GEPA to generalize, not so many that optimization takes hours
+- **Persist to an MLflow dataset** -- makes the optimization repeatable and auditable
 
+## More Patterns
 
+### Run GEPA Optimization
 
-
-`patterns-judge-alignment.md`
+> "Run optimize_prompts() with GEPA using an aligned judge as the scorer. Use Python."
 
 ```python
 import mlflow
@@ -70,19 +69,16 @@ from mlflow.genai.scorers import get_scorer
 
 mlflow.set_experiment(experiment_id=EXPERIMENT_ID)
 
-# Load prompt from registry (must be registered before optimization)
+# Load registered prompt
 system_prompt = mlflow.genai.load_prompt(f"prompts:/{PROMPT_NAME}@production")
-print(f"Loaded prompt: {system_prompt.uri}")
 
-# Load scorer -- an aligned judge is recommended for domain-accurate optimization
-# See patterns-judge-alignment.md for how to create one
+# Load aligned judge (see Judge Alignment page for how to create one)
 aligned_judge = get_scorer(name=ALIGNED_JUDGE_NAME, experiment_id=EXPERIMENT_ID)
 
-# Define predict_fn -- loads prompt from registry on each call so GEPA can swap it
+# predict_fn must reload the prompt on each call so GEPA can swap it
 def predict_fn(input):
     prompt = mlflow.genai.load_prompt(system_prompt.uri)
     system_content = prompt.format()
-
     user_message = input[0]["content"]
     messages = [
         {"role": "system", "content": system_content},
@@ -90,47 +86,45 @@ def predict_fn(input):
     ]
     return AGENT.predict({"input": messages})
 
-# Define aggregation to normalize judge feedback (Feedback.value) to 0-1 for GEPA
+# Normalize judge feedback to 0-1 for GEPA
 def objective_function(scores: dict) -> float:
     feedback = scores.get(ALIGNED_JUDGE_NAME)
     if feedback and hasattr(feedback, "feedback") and hasattr(feedback.feedback, "value"):
         try:
-            return float(feedback.feedback.value) / 5.0  # Normalize 1-5 scale to 0-1
+            return float(feedback.feedback.value) / 5.0
         except (ValueError, TypeError):
             return 0.5
     return 0.5
 
-# Run optimization
 result = mlflow.genai.optimize_prompts(
     predict_fn=predict_fn,
-    train_data=optimization_dataset,  # Must have inputs + expectations
+    train_data=optimization_dataset,
     prompt_uris=[system_prompt.uri],
     optimizer=GepaPromptOptimizer(
         reflection_model=REFLECTION_MODEL,
-        max_metric_calls=75,            # Reduce for faster runs; increase for quality
+        max_metric_calls=75,
         display_progress_bar=True,
     ),
     scorers=[aligned_judge],
     aggregation=objective_function,
 )
 
-optimized_prompt = result.optimized_prompts[0]
 print(f"Initial score: {result.initial_eval_score}")
 print(f"Final score:   {result.final_eval_score}")
-print(f"\nOptimized template (first 500 chars):\n{optimized_prompt.template[:500]}...")
+print(f"\nOptimized template:\n{result.optimized_prompts[0].template[:500]}...")
 ```
 
+GEPA iterates on your system prompt by running evaluations, reflecting on failures, and generating improved candidates. `max_metric_calls` controls the exploration budget -- 75 is a good starting point, increase for quality or decrease for speed. Requires MLflow &gt;= 3.5.0.
 
+### Register and Conditionally Promote
 
-
-
-
+> "Register the optimized prompt and promote to production only if the score improved. Use Python."
 
 ```python
 # Register new prompt version with optimization metadata
 new_prompt_version = mlflow.genai.register_prompt(
     name=PROMPT_NAME,
-    template=optimized_prompt.template,
+    template=result.optimized_prompts[0].template,
     commit_message=f"GEPA optimization using {ALIGNED_JUDGE_NAME}",
     tags={
         "initial_score": str(result.initial_eval_score),
@@ -139,30 +133,58 @@ new_prompt_version = mlflow.genai.register_prompt(
         "judge": ALIGNED_JUDGE_NAME,
     },
 )
-print(f"Registered prompt version: {new_prompt_version.version}")
 
-# Conditional promotion -- only update production alias if score improved
-def promote_if_improved(prompt_name, result, new_prompt_version):
-    if result.final_eval_score > result.initial_eval_score:
-        mlflow.genai.set_prompt_alias(
-            name=prompt_name,
-            alias="production",
-            version=new_prompt_version.version,
-        )
-        print(f"Promoted version {new_prompt_version.version} to production "
-              f"({result.initial_eval_score:.3f} -> {result.final_eval_score:.3f})")
-    else:
-        print(f"No improvement ({result.initial_eval_score:.3f} -> "
-              f"{result.final_eval_score:.3f}). Production alias unchanged.")
-
-promote_if_improved(PROMPT_NAME, result, new_prompt_version)
+# Only promote if score actually improved
+if result.final_eval_score > result.initial_eval_score:
+    mlflow.genai.set_prompt_alias(
+        name=PROMPT_NAME,
+        alias="production",
+        version=new_prompt_version.version,
+    )
+    print(
+        f"Promoted version {new_prompt_version.version} to production "
+        f"({result.initial_eval_score:.3f} -> {result.final_eval_score:.3f})"
+    )
+else:
+    print(
+        f"No improvement ({result.initial_eval_score:.3f} -> "
+        f"{result.final_eval_score:.3f}). Production alias unchanged."
+    )
 ```
 
+Always register the optimized version even if it did not improve -- the metadata is useful for tracking what was tried. Only update the production alias when the score actually increased.
 
+### Use GEPA Without an Aligned Judge
 
+> "Run prompt optimization with a standard Guidelines scorer when you don't have expert feedback yet. Use Python."
 
+```python
+from mlflow.genai.scorers import Guidelines
 
+quality_scorer = Guidelines(
+    name="response_quality",
+    guidelines=[
+        "The response must directly address the user's question",
+        "The response must include specific data or examples",
+        "The response must not include information not supported by available data"
+    ]
+)
 
+result = mlflow.genai.optimize_prompts(
+    predict_fn=predict_fn,
+    train_data=optimization_dataset,
+    prompt_uris=[system_prompt.uri],
+    optimizer=GepaPromptOptimizer(reflection_model=REFLECTION_MODEL),
+    scorers=[quality_scorer],
+)
+```
 
-`max_metric_calls`
+GEPA works with any scorer, not just aligned judges. Starting with `Guidelines` is reasonable for a first optimization pass. Switch to an aligned judge when you have expert feedback for domain-accurate signal.
 
+## Watch Out For
+
+- **Missing expectations in optimization data** -- `optimize_prompts()` requires both `inputs` and `expectations` per record. A dataset with only `inputs` works for `evaluate()` but fails for optimization.
+- **predict_fn not reloading the prompt** -- GEPA swaps prompt candidates during optimization. If your predict function hard-codes the prompt text instead of calling `load_prompt()` on each invocation, GEPA cannot test new candidates.
+- **`max_metric_calls` too low** -- setting this below 30 limits GEPA's exploration. The optimizer may converge on a local optimum. Start at 75 and adjust based on budget.
+- **Auto-promoting without validation** -- always check `result.final_eval_score > result.initial_eval_score` before promoting. GEPA can sometimes produce a prompt that scores lower on the optimization set.
+- **Optimizing with an unaligned judge** -- GEPA will optimize toward whatever signal the scorer gives. A generic judge optimizes for generic quality. An aligned judge optimizes for what your experts care about.

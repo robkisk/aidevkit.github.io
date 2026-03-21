@@ -1,32 +1,17 @@
 ---
 title: Reverse ETL with Lakebase Provisioned
-description: Reverse ETL allows you to sync data from Unity Catalog Delta tables into Lakebase Provisioned as PostgreSQL tables.
+description: Sync Unity Catalog Delta tables into Lakebase Provisioned for low-latency application queries.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+Reverse ETL bridges the gap between your analytical lakehouse and application-tier databases. You define a synced table that mirrors a Unity Catalog Delta table into Lakebase Provisioned as a PostgreSQL table. Applications then query Postgres directly for sub-millisecond point lookups -- product catalogs, user profiles, feature stores -- without hitting your lakehouse for every request.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-```sql
-ALTER TABLE your_catalog.your_schema.your_table
-SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
-```
-
-
-
-
+> "Using Python and the Databricks SDK, create a synced table that copies analytics.gold.user_profiles into Lakebase Provisioned with triggered scheduling."
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -38,10 +23,9 @@ from databricks.sdk.service.database import (
 
 w = WorkspaceClient()
 
-# Create a synced table from Unity Catalog to Lakebase Provisioned
 synced_table = w.database.create_synced_database_table(
     SyncedDatabaseTable(
-        name="lakebase_catalog.schema.synced_table",
+        name="lakebase_catalog.public.user_profiles",
         database_instance_name="my-lakebase-instance",
         spec=SyncedTableSpec(
             source_table_full_name="analytics.gold.user_profiles",
@@ -53,61 +37,27 @@ synced_table = w.database.create_synced_database_table(
 print(f"Created synced table: {synced_table.name}")
 ```
 
+**Key decisions:**
+- **TRIGGERED scheduling** syncs on demand -- you control when data flows. Best for batch pipelines where you sync after an ETL job completes.
+- **CONTINUOUS scheduling** syncs automatically as the source table changes. Best for real-time use cases like user profiles or feature stores.
+- **SNAPSHOT scheduling** takes a full copy each sync. Use this when Change Data Feed is not enabled on the source table.
+- The source Delta table must have Change Data Feed enabled for TRIGGERED and CONTINUOUS modes. Run `ALTER TABLE ... SET TBLPROPERTIES (delta.enableChangeDataFeed = true)` before creating the sync.
+- `primary_key_columns` is required -- it defines how rows are upserted into Postgres during incremental syncs.
 
-
-
-
-`name`
-`database_instance_name`
-`source_table_full_name`
-`primary_key_columns`
-`scheduling_policy``SNAPSHOT``TRIGGERED``CONTINUOUS`
-
-
-
-```bash
-databricks database create-synced-database-table \
-    --json '{
-        "name": "lakebase_catalog.schema.synced_table",
-        "database_instance_name": "my-lakebase-instance",
-        "spec": {
-            "source_table_full_name": "analytics.gold.user_profiles",
-            "primary_key_columns": ["user_id"],
-            "scheduling_policy": "TRIGGERED"
-        }
-    }'
-```
-
-
-
-
-
-```python
-status = w.database.get_synced_database_table(name="lakebase_catalog.schema.synced_table")
-print(f"State: {status.data_synchronization_status.detailed_state}")
-print(f"Message: {status.data_synchronization_status.message}")
-```
-
-
-
-
-
-
-
-
-```python
-# Delete the synced table via SDK
-w.database.delete_synced_database_table(name="lakebase_catalog.schema.synced_table")
-```
+### Enable Change Data Feed first
 
 ```sql
--- Drop the Postgres table to free storage
-DROP TABLE your_database.your_schema.your_table;
+ALTER TABLE analytics.gold.user_profiles
+SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
 ```
 
+Without this, TRIGGERED and CONTINUOUS scheduling fail silently or fall back to full snapshots.
 
+## More Patterns
 
+### Product catalog for an e-commerce app
 
+> "Using Python, sync a product catalog into Lakebase Provisioned for low-latency lookups from a storefront app."
 
 ```python
 w.database.create_synced_database_table(
@@ -121,10 +71,13 @@ w.database.create_synced_database_table(
         ),
     )
 )
-# Application queries PostgreSQL directly with low-latency point lookups
 ```
 
+TRIGGERED scheduling works well here because the product catalog updates on a known schedule -- after the nightly ETL job. Your orchestration job syncs the table as its final step, and the storefront queries Postgres with single-digit millisecond latency.
 
+### Real-time user profiles with continuous sync
+
+> "Using Python, set up continuous sync for user profiles so the auth service always sees fresh data."
 
 ```python
 w.database.create_synced_database_table(
@@ -140,7 +93,11 @@ w.database.create_synced_database_table(
 )
 ```
 
+CONTINUOUS mode watches the source Delta table and pushes changes as they arrive. The auth service always reads near-real-time data without any manual sync step. Use this when stale data causes visible user impact.
 
+### ML feature store serving
+
+> "Using Python, sync feature vectors into Lakebase so the ML model can query them at inference time."
 
 ```python
 w.database.create_synced_database_table(
@@ -154,23 +111,62 @@ w.database.create_synced_database_table(
         ),
     )
 )
-# ML model queries features with low latency
 ```
 
+Feature serving is a classic reverse ETL use case. The feature engineering pipeline writes to Delta. The synced table pushes those features into Postgres. The model serving endpoint queries Postgres for point lookups at inference time -- no Spark overhead for a single-row read.
 
+### Monitor sync status
 
+> "Using Python, check if my synced table is healthy and see the latest sync state."
 
+```python
+status = w.database.get_synced_database_table(
+    name="lakebase_catalog.public.user_profiles"
+)
+print(f"State: {status.data_synchronization_status.detailed_state}")
+print(f"Message: {status.data_synchronization_status.message}")
+```
 
-`get_synced_database_table()`
+Check `detailed_state` after creating or modifying a synced table. Common states: `ACTIVE` means syncing normally, `FAILED` includes a `message` explaining why, and `PROVISIONING` means the initial sync is still running.
 
+### Create via CLI
 
+> "Using the Databricks CLI, create a synced table for reverse ETL."
 
+```bash
+databricks database create-synced-database-table \
+    --json '{
+        "name": "lakebase_catalog.public.synced_table",
+        "database_instance_name": "my-lakebase-instance",
+        "spec": {
+            "source_table_full_name": "analytics.gold.user_profiles",
+            "primary_key_columns": ["user_id"],
+            "scheduling_policy": "TRIGGERED"
+        }
+    }'
+```
 
+### Clean up a synced table
 
+> "Using Python, delete the synced table and drop the Postgres table."
 
+```python
+# Remove the sync definition
+w.database.delete_synced_database_table(
+    name="lakebase_catalog.public.user_profiles"
+)
+```
 
+```sql
+-- Then drop the Postgres table to free storage
+DROP TABLE lakebase_catalog.public.user_profiles;
+```
 
+Deleting the synced table stops the sync but does not drop the Postgres table. You need to drop it separately if you want to reclaim storage.
 
+## Watch Out For
 
-
-
+- **Source table missing Change Data Feed** -- TRIGGERED and CONTINUOUS modes require `delta.enableChangeDataFeed = true` on the source table. Without it, the sync either fails or silently falls back to expensive full snapshots.
+- **Omitting `primary_key_columns`** -- this field is required. It defines how incremental updates are applied. Without a primary key, the sync cannot determine which rows to upsert versus insert.
+- **Confusing delete behaviors** -- `delete_synced_database_table` removes the sync definition but leaves the Postgres table intact. You must `DROP TABLE` separately to free storage. Conversely, dropping the Postgres table without deleting the sync definition causes the sync to fail on its next run.
+- **Using CONTINUOUS for large, infrequently updated tables** -- continuous sync maintains an always-on process. For tables that update once a day, TRIGGERED scheduling is cheaper and produces the same result.

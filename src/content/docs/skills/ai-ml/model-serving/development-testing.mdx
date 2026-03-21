@@ -1,53 +1,20 @@
 ---
-title: "Development & Testing Workflow"
-description: MCP-based workflow for developing and testing agents on Databricks.
+title: Development & Testing Workflow
+description: Iterate on agents locally and test them on Databricks before deploying to a serving endpoint.
 sidebar:
   order: 5
 ---
 
+## What You Can Build
 
+You can go from a local `agent.py` file to a tested, working agent on Databricks in minutes. The workflow is write locally, upload, install packages, test, and iterate -- each step driven by a single prompt to your AI coding assistant. Catching errors here saves you the 15-minute deployment cycle for every bug.
 
-`databricks workspace import``databricks clusters spark-submit`
+## In Action
 
-
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Step 1: Write agent code locally (agent.py)                 │
-└─────────────────────────────────────────────────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Step 2: Upload to workspace                                 │
-│   → upload_folder MCP tool                                  │
-└─────────────────────────────────────────────────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Step 3: Install packages                                    │
-│   → execute_databricks_command MCP tool                     │
-└─────────────────────────────────────────────────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Step 4: Test agent (iterate)                                │
-│   → run_python_file_on_databricks MCP tool                  │
-│   → If error: fix locally, re-upload, re-run                │
-└─────────────────────────────────────────────────────────────┘
-```
-
-
-
-
-
-```
-my_agent/
-├── agent.py           # Agent implementation (ResponsesAgent)
-├── test_agent.py      # Local testing script
-├── log_model.py       # MLflow logging script
-└── requirements.txt   # Dependencies (optional)
-```
-
-
+> "Upload my agent folder to Databricks and test it on a cluster. Use the agent files in ./my_agent/."
 
 ```python
+# agent.py
 import mlflow
 from mlflow.pyfunc import ResponsesAgent
 from mlflow.types.responses import ResponsesAgentRequest, ResponsesAgentResponse
@@ -58,11 +25,10 @@ LLM_ENDPOINT = "databricks-meta-llama-3-3-70b-instruct"
 class MyAgent(ResponsesAgent):
     def __init__(self):
         self.llm = ChatDatabricks(endpoint=LLM_ENDPOINT)
-    
+
     def predict(self, request: ResponsesAgentRequest) -> ResponsesAgentResponse:
         messages = [{"role": m.role, "content": m.content} for m in request.input]
         response = self.llm.invoke(messages)
-        # CRITICAL: Must use helper methods for output items
         return ResponsesAgentResponse(
             output=[self.create_text_output_item(text=response.content, id="msg_1")]
         )
@@ -71,139 +37,84 @@ AGENT = MyAgent()
 mlflow.models.set_model(AGENT)
 ```
 
+**Key decisions:**
+- **Write locally, run remotely** -- your AI coding assistant edits `agent.py` on your machine and pushes it to the workspace for execution. No notebook editing required.
+- **Test with real endpoints** -- local unit tests catch syntax errors but miss auth issues, missing packages, and endpoint connectivity. Remote testing on a cluster catches all of these.
+- **Keep the project structure flat** -- `agent.py`, `test_agent.py`, `log_model.py` in one folder. The upload and execution tools work best with a single directory.
+- **Re-upload after every change** -- workspace files do not auto-sync. Each iteration requires upload then run.
 
+## More Patterns
+
+### Write a Local Test Script
+
+> "Create a test script that validates my agent handles basic requests. Use Python."
 
 ```python
+# test_agent.py
 from agent import AGENT
 from mlflow.types.responses import ResponsesAgentRequest, ChatContext
 
-# Test request
 request = ResponsesAgentRequest(
     input=[{"role": "user", "content": "What is Databricks?"}],
-    context=ChatContext(user_id="test@example.com")
+    context=ChatContext(user_id="test@example.com"),
 )
 
-# Run prediction
+# Non-streaming
 result = AGENT.predict(request)
 print("Response:", result.model_dump(exclude_none=True))
+
+# Streaming
+for event in AGENT.predict_stream(request):
+    print(event)
 ```
 
+Run this on the cluster after uploading. It imports your agent directly and calls `predict`, exercising the same code path the serving endpoint will use. If this works, deployment will work.
 
+### Install Packages on the Cluster
 
-`upload_folder`
+> "Install the MLflow 3 agent packages on my Databricks cluster."
 
-```
-upload_folder(
-    local_folder="./my_agent",
-    workspace_folder="/Workspace/Users/you@company.com/my_agent"
-)
-```
-
-
-
-
-
-`execute_databricks_command`
-
-```
-execute_databricks_command(
-    code="%pip install -U mlflow==3.6.0 databricks-langchain langgraph==0.3.4 databricks-agents pydantic"
-)
+```python
+%pip install -U mlflow==3.6.0 databricks-langchain langgraph==0.3.4 databricks-agents pydantic
+dbutils.library.restartPython()
 ```
 
-`cluster_id``context_id`
+The `restartPython()` call is mandatory after `%pip install`. Without it, the new packages are installed but the running Python process still has the old versions loaded.
 
+### Verify the Environment
 
+> "Check which versions of the agent packages are installed on the cluster. Use Python."
 
-```
-execute_databricks_command(
-    code="dbutils.library.restartPython()",
-    cluster_id="<cluster_id>",
-    context_id="<context_id>"
-)
-```
+```python
+import pkg_resources
 
-
-
-`run_python_file_on_databricks`
-
-```
-run_python_file_on_databricks(
-    file_path="./my_agent/test_agent.py",
-    cluster_id="<cluster_id>",
-    context_id="<context_id>"
-)
+for pkg in ['mlflow', 'langchain', 'langgraph', 'pydantic', 'databricks-langchain']:
+    try:
+        version = pkg_resources.get_distribution(pkg).version
+        print(f"{pkg}: {version}")
+    except pkg_resources.DistributionNotFound:
+        print(f"{pkg}: NOT INSTALLED")
 ```
 
+Run this before testing your agent. Version mismatches between your local `pip_requirements` and the cluster are the most common source of "works locally, fails remotely" bugs.
 
+### Smoke-Test a Foundation Model Endpoint
 
+> "Verify that my cluster can reach the foundation model endpoint before testing the full agent. Use Python."
 
-`agent.py``test_agent.py`
-`upload_folder(...)`
-`run_python_file_on_databricks(...)`
-
-
-
-`cluster_id``context_id`
-
-
-
-
-
-
-
-```
-execute_databricks_command(
-    code="import mlflow; print(mlflow.__version__)",
-    cluster_id="<cluster_id>",
-    context_id="<context_id>"
-)
-```
-
-
-
-```
-execute_databricks_command(
-    code="""
-from databricks.sdk import WorkspaceClient
-w = WorkspaceClient()
-for ep in list(w.serving_endpoints.list())[:10]:
-    print(f"{ep.name}: {ep.state.ready if ep.state else 'unknown'}")
-    """,
-    cluster_id="<cluster_id>",
-    context_id="<context_id>"
-)
-```
-
-
-
-```
-execute_databricks_command(
-    code="""
+```python
 from databricks_langchain import ChatDatabricks
+
 llm = ChatDatabricks(endpoint="databricks-meta-llama-3-3-70b-instruct")
 response = llm.invoke([{"role": "user", "content": "Hello!"}])
 print(response.content)
-    """,
-    cluster_id="<cluster_id>",
-    context_id="<context_id>"
-)
 ```
 
+If this fails with a permission or connectivity error, your agent will fail too. Isolate the problem before debugging your agent code.
 
+## Watch Out For
 
-
-
-`upload_folder`
-`execute_databricks_command`
-`execute_databricks_command`
-`run_python_file_on_databricks`
-`execute_databricks_command`
-
-
-
-
-
-
-
-
+- **Skipping `restartPython()` after `%pip install`** -- the Python process caches old module versions. You will see stale behavior or import errors until you restart.
+- **Reusing a stale execution context** -- if you see strange errors after multiple iterations, let your AI coding assistant create a fresh context rather than reusing the old one.
+- **Testing only locally** -- local tests with mocked endpoints miss auth failures, package version conflicts, and network issues that only surface on the cluster. Always run `test_agent.py` on Databricks before logging the model.
+- **Forgetting to re-upload after edits** -- workspace files do not auto-sync from your local machine. Every code change requires uploading the folder again before re-running.

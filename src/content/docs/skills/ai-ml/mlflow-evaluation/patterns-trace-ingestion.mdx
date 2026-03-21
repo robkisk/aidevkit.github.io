@@ -1,43 +1,17 @@
 ---
-title: MLflow Trace Ingestion in Unity Catalog
-description: Working code patterns for setting up trace storage in Unity Catalog, logging traces from applications, and enabling production monitoring.
+title: Trace Ingestion & Production Monitoring
+description: Store traces in Unity Catalog, instrument applications, and enable continuous production monitoring with scorers.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+You can persist every agent interaction as a trace in Unity Catalog, then continuously score production traffic with registered scorers. This gives you durable storage, SQL-queryable trace data, and automated quality monitoring without changing your application code. Whether your agent runs as a Databricks App, a model serving endpoint, or an external service with OTEL, traces flow into the same UC tables.
 
-`mlflow[databricks]>=3.9.0`
+## In Action
 
-`us-east-1``us-west-2`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "Link a Unity Catalog schema to an MLflow experiment for trace storage. Use Python."
 
 ```python
 import os
@@ -45,23 +19,19 @@ import mlflow
 from mlflow.entities import UCSchemaLocation
 from mlflow.tracing.enablement import set_experiment_trace_location
 
-# Step 1: Configure tracking
 mlflow.set_tracking_uri("databricks")
 os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = "<SQL_WAREHOUSE_ID>"
 
-# Step 2: Define names
 experiment_name = "/Shared/my-agent-traces"
 catalog_name = "my_catalog"
 schema_name = "my_schema"
 
-# Step 3: Create or retrieve experiment
 if experiment := mlflow.get_experiment_by_name(experiment_name):
     experiment_id = experiment.experiment_id
 else:
     experiment_id = mlflow.create_experiment(name=experiment_name)
 
-# Step 4: Link UC schema to experiment
-result = set_experiment_trace_location(
+set_experiment_trace_location(
     location=UCSchemaLocation(
         catalog_name=catalog_name,
         schema_name=schema_name
@@ -70,27 +40,25 @@ result = set_experiment_trace_location(
 )
 ```
 
+**Key decisions:**
+- **Set `MLFLOW_TRACING_SQL_WAREHOUSE_ID` before linking** -- the schema link requires a SQL warehouse to create the underlying tables
+- **Three tables are created automatically** -- `mlflow_experiment_trace_otel_logs`, `_metrics`, and `_spans`
+- **Requires `mlflow[databricks]>=3.9.0`** -- trace ingestion features are not available in older versions
+- **Region availability** -- trace ingestion is currently available in `us-east-1` and `us-west-2`
 
-`{catalog}.{schema}.mlflow_experiment_trace_otel_logs`
-`{catalog}.{schema}.mlflow_experiment_trace_otel_metrics`
-`{catalog}.{schema}.mlflow_experiment_trace_otel_spans`
+## More Patterns
 
+### Grant UC Permissions
 
-
-
-
-
-
-`ALL_PRIVILEGES`
+> "Set up the correct Unity Catalog permissions for trace tables. Use SQL."
 
 ```sql
--- Required: USE_CATALOG on the catalog
+-- Required: USE_CATALOG and USE_SCHEMA
 GRANT USE_CATALOG ON CATALOG my_catalog TO `user@company.com`;
-
--- Required: USE_SCHEMA on the schema
 GRANT USE_SCHEMA ON SCHEMA my_catalog.my_schema TO `user@company.com`;
 
 -- Required: MODIFY and SELECT on each trace table
+-- ALL_PRIVILEGES does NOT include these -- grant explicitly
 GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_logs
   TO `user@company.com`;
 GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_spans
@@ -99,226 +67,11 @@ GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_
   TO `user@company.com`;
 ```
 
+`ALL_PRIVILEGES` does not include the required `MODIFY` and `SELECT` permissions on these tables. Grant them explicitly. For service principals (used by serving endpoints and apps), replace the user email with the application ID.
 
-```sql
--- Replace with the service principal's application ID
-GRANT USE_CATALOG ON CATALOG my_catalog TO `<service-principal-app-id>`;
-GRANT USE_SCHEMA ON SCHEMA my_catalog.my_schema TO `<service-principal-app-id>`;
-GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_logs
-  TO `<service-principal-app-id>`;
-GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_spans
-  TO `<service-principal-app-id>`;
-GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_metrics
-  TO `<service-principal-app-id>`;
-```
+### Set Trace Destination for Your Application
 
-
-
-
-
-
-
-```python
-import mlflow
-from mlflow.entities import UCSchemaLocation
-
-# Set trace destination to Unity Catalog
-mlflow.tracing.set_destination(
-    destination=UCSchemaLocation(
-        catalog_name="my_catalog",
-        schema_name="my_schema",
-    )
-)
-
-# Now all traces from @mlflow.trace or autolog will go to UC
-@mlflow.trace
-def my_agent(query: str) -> str:
-    # Traces are automatically sent to UC tables
-    return process(query)
-```
-
-
-
-
-
-
-
-```python
-import os
-
-# Set destination as "{catalog}.{schema}"
-os.environ["MLFLOW_TRACING_DESTINATION"] = "my_catalog.my_schema"
-```
-
-
-```bash
-export MLFLOW_TRACING_DESTINATION="my_catalog.my_schema"
-```
-
-
-
-
-
-`@mlflow.trace`
-
-```python
-import mlflow
-from mlflow.entities import SpanType
-
-# Basic function tracing
-@mlflow.trace
-def my_agent(query: str) -> str:
-    context = retrieve_context(query)
-    return generate_response(query, context)
-
-# With span type (enables enhanced UI and evaluation)
-@mlflow.trace(span_type=SpanType.RETRIEVER)
-def retrieve_context(query: str) -> list[dict]:
-    """Mark retrieval functions with RETRIEVER span type."""
-    return vector_store.search(query, top_k=5)
-
-@mlflow.trace(span_type=SpanType.CHAIN)
-def generate_response(query: str, context: list[dict]) -> str:
-    """Mark orchestration with CHAIN span type."""
-    return llm.invoke(query, context=context)
-
-# With custom name and attributes
-@mlflow.trace(name="safety_check", span_type=SpanType.TOOL)
-def check_safety(text: str) -> bool:
-    return safety_classifier.predict(text)
-```
-
-
-`SpanType.CHAIN`
-`SpanType.CHAT_MODEL`
-`SpanType.LLM`
-`SpanType.RETRIEVER`
-`SpanType.TOOL`
-`SpanType.AGENT`
-`SpanType.EMBEDDING`
-
-
-
-
-
-`mlflow.start_span()`
-
-```python
-import mlflow
-
-def process_query(query: str) -> str:
-    # Create a span with manual control
-    with mlflow.start_span(name="process_query") as span:
-        span.set_inputs({"query": query})
-
-        # Nested span for retrieval
-        with mlflow.start_span(name="retrieve", span_type="RETRIEVER") as retriever_span:
-            retriever_span.set_inputs({"query": query})
-            docs = vector_store.search(query)
-            retriever_span.set_outputs(docs)
-
-        # Nested span for generation
-        with mlflow.start_span(name="generate", span_type="CHAIN") as gen_span:
-            gen_span.set_inputs({"query": query, "doc_count": len(docs)})
-            response = llm.generate(query, docs)
-            gen_span.set_outputs({"response": response})
-
-        # Set attributes for analysis
-        span.set_attribute("doc_count", len(docs))
-        span.set_attribute("model", "gpt-4o")
-        span.set_outputs({"response": response})
-
-    return response
-```
-
-
-
-
-
-
-
-```python
-import mlflow
-
-# Enable auto-tracing for specific frameworks
-mlflow.openai.autolog()        # OpenAI SDK calls
-mlflow.langchain.autolog()     # LangChain chains and agents
-# Also available: mlflow.anthropic.autolog(), mlflow.litellm.autolog(), etc.
-
-# Set tracking and destination
-mlflow.set_tracking_uri("databricks")
-mlflow.set_experiment("/Shared/my-agent-traces")
-
-# Traces are captured automatically
-from openai import OpenAI
-client = OpenAI()
-
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "What is MLflow?"}
-    ]
-)
-# ^ This call is automatically traced
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-```python
-import mlflow
-from mlflow.entities import SpanType
-from openai import OpenAI
-
-# Enable automatic OpenAI tracing
-mlflow.openai.autolog()
-
-client = OpenAI()
-
-@mlflow.trace(span_type=SpanType.CHAIN)
-def my_rag_pipeline(query: str) -> str:
-    """Manual decorator wraps the whole pipeline.
-    Auto-tracing captures individual OpenAI calls inside."""
-
-    # This retrieval is manually traced
-    docs = retrieve_documents(query)
-
-    # This LLM call is auto-traced by mlflow.openai.autolog()
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": f"Answer using context: {docs}"},
-            {"role": "user", "content": query}
-        ]
-    )
-    return response.choices[0].message.content
-
-@mlflow.trace(span_type=SpanType.RETRIEVER)
-def retrieve_documents(query: str) -> list[dict]:
-    """Manually traced retrieval function."""
-    return vector_store.search(query, top_k=5)
-```
-
-
-
-
-
-
-
-
-`mlflow[databricks]>=3.5.0`
-
-
+> "Configure where your application sends traces using the Python API or environment variable. Use Python."
 
 ```python
 import os
@@ -333,50 +86,60 @@ mlflow.tracing.set_destination(
     )
 )
 
-# Option B: Environment variable (set in app config)
+# Option B: Environment variable
 os.environ["MLFLOW_TRACING_DESTINATION"] = "my_catalog.my_schema"
 
-# Your app code — traces are sent to UC
+# All traces from @mlflow.trace or autolog now go to UC
 @mlflow.trace
-def handle_request(query: str) -> str:
-    return my_agent.invoke(query)
+def my_agent(query: str) -> str:
+    return process(query)
 ```
 
+The environment variable is better for apps and serving endpoints where you set config at deploy time. The Python API is better for notebooks and scripts. The format is `catalog.schema` with a dot separator -- not `catalog/schema`.
 
+### Instrument Your Application
 
-`mlflow_experiment_trace_*`
+> "Add tracing to a RAG pipeline with automatic and manual instrumentation. Use Python."
 
+```python
+import mlflow
+from mlflow.entities import SpanType
 
+# Automatic tracing -- captures every OpenAI call
+mlflow.openai.autolog()
 
+# Manual tracing -- marks your functions with span types
+@mlflow.trace(span_type=SpanType.RETRIEVER)
+def retrieve_context(query: str) -> list[dict]:
+    """RETRIEVER span type enables RetrievalGroundedness scorer."""
+    return vector_store.search(query, top_k=5)
 
+@mlflow.trace(span_type=SpanType.CHAIN)
+def generate_response(query: str, context: list[dict]) -> str:
+    return llm.invoke(query, context=context)
 
-
-
-
-
-
-```sql
-GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_logs
-  TO `serving-principal-id`;
-GRANT MODIFY, SELECT ON TABLE my_catalog.my_schema.mlflow_experiment_trace_otel_spans
-  TO `serving-principal-id`;
+@mlflow.trace
+def my_agent(query: str) -> str:
+    context = retrieve_context(query)
+    return generate_response(query, context)
 ```
 
+Combine autolog with manual decorators. Autolog captures LLM calls automatically. Manual `@mlflow.trace` decorators add span types that enable specialized scorers like `RetrievalGroundedness`.
 
+### Configure Trace Sources
 
+> "Set up traces from a Databricks App, model serving endpoint, or external OTEL application."
 
-
-
-
-
-```
-DATABRICKS_TOKEN=<your-personal-access-token>
-MLFLOW_TRACING_DESTINATION=my_catalog.my_schema
-```
-
+For **Databricks Apps**, set the environment variable in your app config:
 
 ```python
 import os
+os.environ["MLFLOW_TRACING_DESTINATION"] = "my_catalog.my_schema"
+```
+
+For **model serving endpoints**, grant the serving principal access to trace tables and set the destination in the model's predict function:
+
+```python
 import mlflow
 from mlflow.entities import UCSchemaLocation
 
@@ -387,25 +150,19 @@ mlflow.tracing.set_destination(
     )
 )
 
-# Your model's predict function — traces go to UC
 @mlflow.trace
 def predict(model_input):
     return my_model.invoke(model_input)
 ```
 
-
-
-
-
-
+For **external applications via OTEL**, configure the OTLP exporter with the UC table name header:
 
 ```python
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-# Configure OTLP exporter pointing to Databricks
-otlp_trace_exporter = OTLPSpanExporter(
+otlp_exporter = OTLPSpanExporter(
     endpoint="https://<workspace-url>/api/2.0/otel/v1/traces",
     headers={
         "content-type": "application/x-protobuf",
@@ -414,28 +171,15 @@ otlp_trace_exporter = OTLPSpanExporter(
     },
 )
 
-# Set up the tracer provider
 provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(otlp_trace_exporter))
-
-# Use standard OpenTelemetry APIs to create spans
-tracer = provider.get_tracer("my-application")
-with tracer.start_as_current_span("my-operation") as span:
-    span.set_attribute("query", "What is MLflow?")
-    result = process_query("What is MLflow?")
-    span.set_attribute("result_length", len(result))
+provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 ```
 
+The `X-Databricks-UC-Table-Name` header tells Databricks which UC table to write spans to. This works for any application that speaks OTEL, regardless of language or framework.
 
+### Enable Production Monitoring
 
-`X-Databricks-UC-Table-Name`
-
-
-
-
-
-
-
+> "Register scorers and start monitoring production traces. Use Python."
 
 ```python
 import mlflow
@@ -445,87 +189,34 @@ from mlflow.tracing import set_databricks_monitoring_sql_warehouse_id
 # Step 1: Configure the SQL warehouse for monitoring
 set_databricks_monitoring_sql_warehouse_id(
     warehouse_id="<SQL_WAREHOUSE_ID>",
-    experiment_id="<EXPERIMENT_ID>"  # Optional — uses active experiment if omitted
+    experiment_id="<EXPERIMENT_ID>"
 )
 
 # Step 2: Set the active experiment
 mlflow.set_experiment("/Shared/my-agent-traces")
 
 # Step 3: Register and start scorers
-
-# Safety scorer — evaluate 100% of traces
 safety = Safety().register(name="production_safety")
 safety = safety.start(
-    sampling_config=ScorerSamplingConfig(sample_rate=1.0)
+    sampling_config=ScorerSamplingConfig(sample_rate=1.0)  # 100% of traces
 )
 
-# Custom guidelines — evaluate 50% of traces
 tone_check = Guidelines(
     name="professional_tone",
     guidelines="The response must be professional and helpful"
 ).register(name="production_tone")
 tone_check = tone_check.start(
-    sampling_config=ScorerSamplingConfig(sample_rate=0.5)
+    sampling_config=ScorerSamplingConfig(sample_rate=0.5)  # 50% of traces
 )
 ```
 
-`.register()``.start()`
+Both `.register()` and `.start()` are required. Registration creates the scorer record; `.start()` activates monitoring. A registered-but-not-started scorer exists but does nothing.
 
+### Query UC Trace Tables Directly
 
-`CAN USE`
-`CAN EDIT`
-
-
-
-
-
-
-
-
-```python
-from mlflow.genai.scorers import list_scorers, get_scorer, delete_scorer, ScorerSamplingConfig
-
-# List all registered scorers for the active experiment
-scorers = list_scorers()
-for s in scorers:
-    print(f"  {s.name}: sample_rate={s.sampling_config.sample_rate if s.sampling_config else 'N/A'}")
-
-# Get a specific scorer
-safety_scorer = get_scorer(name="production_safety")
-
-# Update sample rate (e.g., increase from 50% to 80%)
-safety_scorer = safety_scorer.update(
-    sampling_config=ScorerSamplingConfig(sample_rate=0.8)
-)
-
-# Stop monitoring (keeps registration for later re-start)
-safety_scorer = safety_scorer.stop()
-
-# Re-start monitoring
-safety_scorer = safety_scorer.start(
-    sampling_config=ScorerSamplingConfig(sample_rate=0.5)
-)
-
-# Delete entirely (removes registration)
-delete_scorer(name="production_safety")
-```
-
-
-
-
-
-
+> "Find slow traces and error rates using SQL queries against the UC trace tables."
 
 ```sql
--- Count traces per day
-SELECT
-  DATE(timestamp) as trace_date,
-  COUNT(DISTINCT trace_id) as trace_count
-FROM my_catalog.my_schema.mlflow_experiment_trace_otel_spans
-WHERE parent_span_id IS NULL  -- root spans only
-GROUP BY DATE(timestamp)
-ORDER BY trace_date DESC;
-
 -- Find slow traces (root span duration > 10s)
 SELECT
   trace_id,
@@ -549,137 +240,12 @@ HAVING COUNT(*) > 10
 ORDER BY error_pct DESC;
 ```
 
+UC trace tables are standard Delta tables. Query them with SQL, Spark, or any tool that reads Unity Catalog. Root spans have `parent_span_id IS NULL`.
 
-```python
-from databricks.connect import DatabricksSession
+## Watch Out For
 
-spark = DatabricksSession.builder.remote(serverless=True).getOrCreate()
-
-# Query trace spans
-spans_df = spark.sql("""
-    SELECT trace_id, name, span_kind,
-           (end_time_unix_nano - start_time_unix_nano) / 1e6 as duration_ms
-    FROM my_catalog.my_schema.mlflow_experiment_trace_otel_spans
-    WHERE name LIKE '%retriever%'
-    ORDER BY duration_ms DESC
-    LIMIT 100
-""")
-spans_df.show()
-```
-
-
-
-
-
-
-
-```python
-import os
-import mlflow
-from mlflow.entities import UCSchemaLocation
-from mlflow.tracing.enablement import set_experiment_trace_location
-from mlflow.tracing import set_databricks_monitoring_sql_warehouse_id
-from mlflow.genai.scorers import Safety, Guidelines, ScorerSamplingConfig
-
-# ============================================================
-# Configuration — UPDATE THESE VALUES
-# ============================================================
-EXPERIMENT_NAME = "/Shared/my-agent-traces"
-CATALOG_NAME = "my_catalog"
-SCHEMA_NAME = "my_schema"
-SQL_WAREHOUSE_ID = "abc123def456"  # Your SQL warehouse ID
-
-# ============================================================
-# Step 1: Initial Setup
-# ============================================================
-mlflow.set_tracking_uri("databricks")
-os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = SQL_WAREHOUSE_ID
-
-# Create or retrieve experiment
-if experiment := mlflow.get_experiment_by_name(EXPERIMENT_NAME):
-    experiment_id = experiment.experiment_id
-else:
-    experiment_id = mlflow.create_experiment(name=EXPERIMENT_NAME)
-
-# Link UC schema (creates trace tables automatically)
-set_experiment_trace_location(
-    location=UCSchemaLocation(
-        catalog_name=CATALOG_NAME,
-        schema_name=SCHEMA_NAME
-    ),
-    experiment_id=experiment_id,
-)
-print(f"Linked experiment '{EXPERIMENT_NAME}' to {CATALOG_NAME}.{SCHEMA_NAME}")
-
-# ============================================================
-# Step 2: Set Trace Destination
-# ============================================================
-mlflow.set_experiment(EXPERIMENT_NAME)
-mlflow.tracing.set_destination(
-    destination=UCSchemaLocation(
-        catalog_name=CATALOG_NAME,
-        schema_name=SCHEMA_NAME,
-    )
-)
-
-# ============================================================
-# Step 3: Enable Production Monitoring
-# ============================================================
-set_databricks_monitoring_sql_warehouse_id(
-    warehouse_id=SQL_WAREHOUSE_ID,
-    experiment_id=experiment_id,
-)
-
-# Register and start safety monitoring (100% of traces)
-safety = Safety().register(name="safety_monitor")
-safety = safety.start(
-    sampling_config=ScorerSamplingConfig(sample_rate=1.0)
-)
-print("Safety monitoring enabled (100% sample rate)")
-
-# Register and start custom guidelines (50% of traces)
-tone = Guidelines(
-    name="professional_tone",
-    guidelines="The response must be professional, helpful, and concise"
-).register(name="tone_monitor")
-tone = tone.start(
-    sampling_config=ScorerSamplingConfig(sample_rate=0.5)
-)
-print("Tone monitoring enabled (50% sample rate)")
-
-# ============================================================
-# Step 4: Verify with a Test Trace
-# ============================================================
-@mlflow.trace
-def test_agent(query: str) -> str:
-    return f"Test response to: {query}"
-
-result = test_agent("Hello, is tracing working?")
-print(f"Test trace logged. Check the Experiments UI at: {EXPERIMENT_NAME}")
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-`us-east-1``us-west-2`
-
-
-
-
-
-
-
-
-
-
-
-
+- **Missing SQL warehouse ID** -- `MLFLOW_TRACING_SQL_WAREHOUSE_ID` must be set before `set_experiment_trace_location()`. Without it, table creation fails with a confusing error.
+- **Wrong destination format** -- use `catalog.schema` with a dot separator. `catalog/schema` and bare `catalog` are not valid.
+- **`ALL_PRIVILEGES` not sufficient** -- UC trace tables need explicit `MODIFY` and `SELECT` grants. `ALL_PRIVILEGES` does not cover these.
+- **Registered but not started** -- calling `.register()` without `.start()` creates a scorer that does nothing. Both steps are required.
+- **MLflow version** -- trace ingestion requires `mlflow[databricks]>=3.9.0`. Earlier versions do not have the `UCSchemaLocation` or `set_experiment_trace_location` APIs.

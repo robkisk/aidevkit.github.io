@@ -1,46 +1,17 @@
 ---
 title: Lakebase Autoscaling Projects
-description: A project is the top-level container for Lakebase Autoscaling resources, including branches, computes, databases, and roles.
+description: Create and manage Lakebase Autoscaling projects -- the top-level container for branches, computes, and databases.
 sidebar:
   order: 99
 ---
 
+## What You Can Build
 
+A project is the root container for everything in Lakebase Autoscaling: branches, computes, roles, and databases all live under a project. You create a project first, then branch from it for development, staging, and production workflows -- similar to how you branch Git repositories. This page covers creating, inspecting, updating, and deleting projects using the SDK and CLI.
 
+## In Action
 
-
-
-
-```
-Project
-  └── Branches (production, development, staging, etc.)
-        ├── Computes (R/W compute, read replicas)
-        ├── Roles (Postgres roles)
-        └── Databases (Postgres databases)
-```
-
-
-`production`
-
-`databricks_postgres`
-
-
-
-
-
-```
-projects/{project_id}
-```
-
-
-
-
-
-
-
-
-
-
+> "Using Python and the Databricks SDK, create a new Lakebase Autoscaling project called my-app with Postgres 17."
 
 ```python
 from databricks.sdk import WorkspaceClient
@@ -48,7 +19,6 @@ from databricks.sdk.service.postgres import Project, ProjectSpec
 
 w = WorkspaceClient()
 
-# Create a project (long-running operation)
 operation = w.postgres.create_project(
     project=Project(
         spec=ProjectSpec(
@@ -59,14 +29,32 @@ operation = w.postgres.create_project(
     project_id="my-app"
 )
 
-# Wait for completion
 result = operation.wait()
 print(f"Created project: {result.name}")
-print(f"Display name: {result.status.display_name}")
 print(f"Postgres version: {result.status.pg_version}")
 ```
 
+**Key decisions:**
+- Project creation is a long-running operation -- always call `.wait()` to block until the infrastructure is provisioned. Skipping this means your next step (creating branches or computes) will fail because the project is not ready.
+- Every project starts with a `production` branch and a default `databricks_postgres` database automatically. You do not need to create these manually.
+- The `project_id` becomes part of all resource paths (e.g., `projects/my-app/branches/production`), so pick something short and stable.
+- Use `pg_version: "17"` for new projects -- it is the latest supported version.
 
+### Resource hierarchy
+
+```
+Project
+  └── Branches (production, development, staging, etc.)
+        ├── Computes (R/W compute, read replicas)
+        ├── Roles (Postgres roles)
+        └── Databases (Postgres databases)
+```
+
+## More Patterns
+
+### Create a project with the CLI
+
+> "Using the Databricks CLI, create a Lakebase Autoscaling project."
 
 ```bash
 databricks postgres create-project \
@@ -79,9 +67,11 @@ databricks postgres create-project \
     }'
 ```
 
+The CLI returns immediately with an operation ID. Use `databricks postgres get-project projects/my-app` to check when provisioning completes.
 
+### Inspect an existing project
 
-
+> "Using Python, get the details of my Lakebase project and print its configuration."
 
 ```python
 project = w.postgres.get_project(name="projects/my-app")
@@ -91,33 +81,15 @@ print(f"Display name: {project.status.display_name}")
 print(f"Postgres version: {project.status.pg_version}")
 ```
 
+The `spec` field contains what you requested. The `status` field contains the actual provisioned state -- including the resolved display name and Postgres version. Always read from `status` for current values.
 
+### Update a project display name
 
-```bash
-databricks postgres get-project projects/my-app
-```
-
-`spec``status`
-
-
-
-```python
-projects = w.postgres.list_projects()
-
-for project in projects:
-    print(f"Project: {project.name}")
-    print(f"  Display name: {project.status.display_name}")
-    print(f"  Postgres version: {project.status.pg_version}")
-```
-
-
-
-`update_mask`
+> "Using Python, rename my Lakebase project to 'My Updated Application'."
 
 ```python
 from databricks.sdk.service.postgres import Project, ProjectSpec, FieldMask
 
-# Update display name
 operation = w.postgres.update_project(
     name="projects/my-app",
     project=Project(
@@ -131,79 +103,35 @@ operation = w.postgres.update_project(
 result = operation.wait()
 ```
 
+The `update_mask` field is required -- it tells the API which fields to modify. Without it, the update is rejected. Only include the fields you are changing.
 
+### List all projects
 
-```bash
-databricks postgres update-project projects/my-app spec.display_name \
-    --json '{
-        "spec": {
-            "display_name": "My Updated Application"
-        }
-    }'
+> "Using Python, list all Lakebase Autoscaling projects in the workspace."
+
+```python
+projects = w.postgres.list_projects()
+
+for project in projects:
+    print(f"Project: {project.name}")
+    print(f"  Display name: {project.status.display_name}")
+    print(f"  Postgres version: {project.status.pg_version}")
 ```
 
+### Delete a project
 
-
-
-
-
+> "Using Python, delete the Lakebase project my-app."
 
 ```python
 operation = w.postgres.delete_project(name="projects/my-app")
-# This is a long-running operation
+operation.wait()
 ```
 
+Deletion is also a long-running operation. It removes all branches, computes, roles, and databases under the project. This is not reversible.
 
+## Watch Out For
 
-```bash
-databricks postgres delete-project projects/my-app
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`.wait()`
-
-```python
-# Start operation
-operation = w.postgres.create_project(...)
-
-# Wait for completion
-result = operation.wait()
-
-# Or check status manually
-op_status = w.postgres.get_operation(name=operation.name)
-print(f"Done: {op_status.done}")
-```
+- **Not calling `.wait()` on create/update/delete** -- these are long-running operations that return immediately with an operation ID. If you proceed to create branches or computes without waiting, the project will not exist yet and the calls fail.
+- **Omitting `update_mask` on updates** -- the API requires you to specify which fields to change. An update request without `update_mask` is rejected, even if the `spec` contains the correct new values.
+- **Using the project ID in the wrong format** -- SDK methods expect the full resource path `projects/my-app`, not just `my-app`. The CLI `create-project` takes `--project-id my-app` (without the prefix), but `get-project` takes the full path.
+- **Deleting a project with active connections** -- deletion removes all resources immediately. Ensure applications are disconnected and data is backed up before deleting.

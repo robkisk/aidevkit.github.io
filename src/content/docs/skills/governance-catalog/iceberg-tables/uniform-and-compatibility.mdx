@@ -1,24 +1,41 @@
 ---
-title: UniForm and Compatibility Mode
-description: UniForm and Compatibility Mode make Delta tables readable as Iceberg by external engines — without converting to a native Iceberg table.
+title: UniForm & Compatibility Mode
+description: Make existing Delta tables readable as Iceberg by external engines without converting away from Delta.
 sidebar:
   order: 2
 ---
 
+## What You Can Build
 
+UniForm lets you keep writing Delta internally while external engines read the same table as Iceberg. No migration, no dual pipelines. Databricks auto-generates Iceberg metadata after each Delta transaction, so Snowflake, PyIceberg, or Trino can query via the IRC endpoint. Compatibility Mode extends this to streaming tables and materialized views created in Spark Declarative Pipelines.
 
+## In Action
 
-
-
-
-
-
-
-
-
+> "Write SQL to enable UniForm on an existing Delta customer table so Snowflake can read it as Iceberg."
 
 ```sql
-CREATE TABLE my_catalog.my_schema.customers (
+ALTER TABLE analytics.gold.customers
+SET TBLPROPERTIES (
+  'delta.columnMapping.mode' = 'name',
+  'delta.enableIcebergCompatV2' = 'true',
+  'delta.universalFormat.enabledFormats' = 'iceberg'
+);
+```
+
+**Key decisions:**
+- **Column mapping must be `name` mode** -- UniForm requires it. If the table uses `id` mode, migrate to `name` first.
+- **Deletion vectors must be disabled** -- UniForm is incompatible with DVs. If they are currently enabled, disable and purge before enabling UniForm.
+- **Iceberg metadata is generated asynchronously** -- there is a brief delay (typically seconds, occasionally minutes for large transactions) before external engines see the latest data.
+- **External reads are read-only** -- the underlying format is still Delta. External engines cannot write back through the IRC endpoint.
+
+## More Patterns
+
+### Enable UniForm on a new table
+
+> "Write SQL to create a new Delta table with UniForm enabled from the start."
+
+```sql
+CREATE TABLE analytics.gold.customers (
   customer_id BIGINT,
   name STRING,
   region STRING,
@@ -31,41 +48,22 @@ TBLPROPERTIES (
 );
 ```
 
+Setting the properties at creation time avoids the disable-DVs-then-purge dance required on existing tables.
 
+### Fix an existing table that has deletion vectors enabled
 
-```sql
-ALTER TABLE my_catalog.my_schema.customers
-SET TBLPROPERTIES (
-  'delta.columnMapping.mode' = 'name',
-  'delta.enableIcebergCompatV2' = 'true',
-  'delta.universalFormat.enabledFormats' = 'iceberg'
-);
-```
-
-
-
-
-
-
-
-
-
-`delta.enableDeletionVectors = false`
-`id``name`
-
-
+> "Write SQL to disable deletion vectors on an existing table, purge them, then enable UniForm."
 
 ```sql
--- Disable deletion vectors first
-ALTER TABLE my_catalog.my_schema.customers
+-- Step 1: Disable deletion vectors
+ALTER TABLE analytics.gold.customers
 SET TBLPROPERTIES ('delta.enableDeletionVectors' = 'false');
 
--- Rewrite to remove existing deletion vectors
-REORG TABLE my_catalog.my_schema.customers
-APPLY (PURGE);
+-- Step 2: Rewrite files to remove existing DVs
+REORG TABLE analytics.gold.customers APPLY (PURGE);
 
--- Then enable UniForm
-ALTER TABLE my_catalog.my_schema.customers
+-- Step 3: Enable UniForm
+ALTER TABLE analytics.gold.customers
 SET TBLPROPERTIES (
   'delta.columnMapping.mode' = 'name',
   'delta.enableIcebergCompatV2' = 'true',
@@ -73,63 +71,22 @@ SET TBLPROPERTIES (
 );
 ```
 
+The `REORG ... APPLY (PURGE)` step is critical -- it physically rewrites data files to remove deletion vector references. Without it, the Iceberg metadata generation will fail.
 
+### Enable Compatibility Mode on a streaming table
 
-
-
-
-
-
-
-
-
-
-```sql
-ALTER TABLE my_catalog.my_schema.customers
-UNSET TBLPROPERTIES ('delta.universalFormat.enabledFormats');
-```
-
-
-
-
-
-
-
-
-
-`delta.universalFormat.compatibility.location`
-
-
-
-
-
-
-
-
+> "Write SQL to create a streaming table in an SDP pipeline that external engines can read as Iceberg."
 
 ```sql
 CREATE OR REFRESH STREAMING TABLE my_events
 TBLPROPERTIES (
   'delta.universalFormat.enabledFormats' = 'compatibility',
-  'delta.universalFormat.compatibility.location' = '<external-location-url>'
+  'delta.universalFormat.compatibility.location' = 's3://my-bucket/iceberg-compat/my_events/'
 )
 AS SELECT * FROM STREAM read_files('/Volumes/catalog/schema/raw/events/');
 ```
 
-
-
-```sql
-CREATE OR REFRESH MATERIALIZED VIEW daily_summary
-TBLPROPERTIES (
-  'delta.universalFormat.enabledFormats' = 'compatibility',
-  'delta.universalFormat.compatibility.location' = '<external-location-url>'
-)
-AS SELECT event_date, COUNT(*) AS event_count
-FROM my_events
-GROUP BY event_date;
-```
-
-
+Compatibility Mode is the only way to expose streaming tables and materialized views as Iceberg. It writes a separate copy of the data to the external location in Iceberg-compatible format, so factor in additional storage costs. The Python SDP equivalent:
 
 ```python
 from pyspark import pipelines as dp
@@ -138,7 +95,7 @@ from pyspark import pipelines as dp
     name="my_events",
     table_properties={
         "delta.universalFormat.enabledFormats": "compatibility",
-        "delta.universalFormat.compatibility.location": "<external-location-url>",
+        "delta.universalFormat.compatibility.location": "s3://my-bucket/iceberg-compat/my_events/",
     },
 )
 def my_events():
@@ -149,64 +106,25 @@ def my_events():
     )
 ```
 
+### Control refresh frequency for Compatibility Mode
 
-
-
-
-`delta.universalFormat.compatibility.location`
-
-
-
-
-
-
-
-`delta.universalFormat.compatibility.targetRefreshInterval`
+> "Write SQL to create a streaming table with Compatibility Mode that refreshes Iceberg metadata after every commit."
 
 ```sql
 CREATE OR REFRESH STREAMING TABLE my_events
 TBLPROPERTIES (
   'delta.universalFormat.enabledFormats' = 'compatibility',
-  'delta.universalFormat.compatibility.location' = '<external-location-url>',
+  'delta.universalFormat.compatibility.location' = 's3://my-bucket/iceberg-compat/my_events/',
   'delta.universalFormat.compatibility.targetRefreshInterval' = '0 MINUTES'
 )
 AS SELECT * FROM STREAM read_files('/Volumes/catalog/schema/raw/events/');
 ```
 
+`0 MINUTES` checks for changes after every commit -- the default for SDP tables. For non-SDP tables the default is `1 HOUR`. Values below `1 HOUR` like `30 MINUTES` will not actually refresh faster than hourly.
 
+## Watch Out For
 
-`0 MINUTES`
-`1 HOUR`
-`1 HOUR``30 MINUTES`
-
-
-
-```sql
-REFRESH TABLE my_catalog.my_schema.my_events;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- **Compatibility Mode doubles storage cost** -- it writes a full copy of the data to the external location, not a pointer. Plan for this on large tables.
+- **The `compatibility.location` must be a pre-configured external location** -- if the path is not registered as an external location in Unity Catalog, the metadata generation fails silently.
+- **UniForm async delay can surprise pipelines** -- if an external engine reads immediately after a Databricks write, it may see stale data. Use `DESCRIBE EXTENDED table_name` to check Iceberg metadata generation status.
+- **Disabling UniForm is a one-liner, but re-enabling requires the DV purge cycle again** -- `UNSET TBLPROPERTIES ('delta.universalFormat.enabledFormats')` removes UniForm, but if DVs get re-enabled in the meantime, you must purge before turning UniForm back on.
