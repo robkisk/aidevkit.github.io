@@ -118,7 +118,7 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 500;
 }
 
-/* === Card Grid (force 3 columns) === */
+/* === Card Grid === */
 
 .card-grid {
   grid-template-columns: repeat(3, 1fr) !important;
@@ -128,6 +128,18 @@ h1, h2, h3, h4, h5, h6 {
 .card-grid .card {
   padding: 0.75rem !important;
   font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+  .card-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* === Buttons === */
