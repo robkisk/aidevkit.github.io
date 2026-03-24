@@ -500,6 +500,9 @@ def gen_skill_index(skill: Skill, slug: str) -> str:
         f"sidebar:\n"
         f"  label: {title}\n"
         f"  order: 0\n"
+        f"  badge:\n"
+        f"    text: New\n"
+        f"    variant: tip\n"
         f"---\n\n"
         f"{body}\n"
     )
@@ -520,6 +523,9 @@ def gen_skill_single(skill: Skill, slug: str) -> str:
         f"description: {desc}\n"
         f"sidebar:\n"
         f"  label: {title}\n"
+        f"  badge:\n"
+        f"    text: New\n"
+        f"    variant: tip\n"
         f"---\n\n"
         f"{body}\n"
     )
@@ -537,6 +543,9 @@ def gen_child_page(child: ChildPage) -> str:
         f"description: {desc}\n"
         f"sidebar:\n"
         f"  order: {child.order}\n"
+        f"  badge:\n"
+        f"    text: New\n"
+        f"    variant: tip\n"
         f"---\n\n"
         f"{body}\n"
     )
