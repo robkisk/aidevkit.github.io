@@ -1,0 +1,159 @@
+---
+title: Troubleshooting & Operations
+description: Monitor endpoint health, diagnose index issues, optimize costs, and migrate Vector Search resources.
+sidebar:
+  order: 4
+---
+
+**Skill:** `databricks-vector-search`
+
+## What You Can Build
+
+You can build operational visibility into your Vector Search infrastructure — check whether endpoints and indexes are healthy, trigger syncs, right-size your resources, and migrate between endpoint types without downtime. This is the runbook side of vector search, not the query side.
+
+## In Action
+
+> "Check the health of my Vector Search endpoint and all its indexes, then report any that aren't fully online. Use Python and the Databricks SDK."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Check endpoint health
+endpoint = w.vector_search_endpoints.get_endpoint(endpoint_name="rag-endpoint")
+print(f"Endpoint: {endpoint.name}")
+print(f"  State: {endpoint.endpoint_status.state.value}")
+print(f"  Type: {endpoint.endpoint_type}")
+print(f"  Indexes: {endpoint.num_indexes}")
+
+if endpoint.endpoint_status.state.value != "ONLINE":
+    print(f"  ⚠ Message: {endpoint.endpoint_status.message}")
+```
+
+**Key decisions:**
+- **Check the endpoint before the index** — an endpoint stuck in PROVISIONING makes every index on it appear unhealthy, so always start here
+- **`state.value`** gives you the string representation; the raw `state` is an enum you can't print directly
+- **`num_indexes`** tells you how loaded the endpoint is — relevant for capacity planning and cost
+- **`endpoint_type`** confirms whether you're on STANDARD or STORAGE_OPTIMIZED, which affects filter syntax and performance characteristics
+
+## More Patterns
+
+### Check Index Readiness
+
+> "Verify that a specific vector index is online and report its row count. Use Python."
+
+```python
+index = w.vector_search_indexes.get_index(
+    index_name="catalog.schema.kb_index"
+)
+
+if index.status.ready:
+    print(f"Index is ONLINE — {index.status.indexed_row_count} rows indexed")
+    print(f"URL: {index.status.index_url}")
+else:
+    print(f"Index NOT READY: {index.status.message}")
+
+# For Delta Sync indexes, you can also check the underlying pipeline
+if index.delta_sync_index_spec:
+    print(f"Pipeline ID: {index.delta_sync_index_spec.pipeline_id}")
+```
+
+The `status.ready` boolean is the single check you need. When it's `False`, the `message` field tells you why — embedding model issues, source table permissions, or sync failures. The `pipeline_id` is useful for debugging sync issues in the Pipelines UI.
+
+### Trigger and Monitor a Sync
+
+> "Sync my triggered index after loading new data and wait until it's ready. Use Python."
+
+```python
+import time
+
+# Trigger sync for TRIGGERED pipelines only
+w.vector_search_indexes.sync_index(
+    index_name="catalog.schema.kb_index"
+)
+
+# Poll until the index is ready again
+while True:
+    index = w.vector_search_indexes.get_index(
+        index_name="catalog.schema.kb_index"
+    )
+    if index.status.ready:
+        print(f"Sync complete — {index.status.indexed_row_count} rows")
+        break
+    print(f"Syncing... {index.status.message}")
+    time.sleep(10)
+```
+
+`sync_index()` is only valid for `TRIGGERED` pipelines. Calling it on a `CONTINUOUS` pipeline raises an error. The sync is asynchronous — you get a 200 response immediately, then poll `get_index()` to track progress.
+
+### Optimize Costs with Column Selection
+
+> "My index is syncing too slowly and costing too much. How do I reduce what gets indexed?"
+
+```python
+# When creating the index, only sync columns you'll query or filter on
+w.vector_search_indexes.create_index(
+    name="catalog.schema.lean_index",
+    endpoint_name="rag-endpoint",
+    primary_key="doc_id",
+    index_type="DELTA_SYNC",
+    delta_sync_index_spec={
+        "source_table": "catalog.schema.documents",
+        "embedding_source_columns": [{
+            "name": "content",
+            "embedding_model_endpoint_name": "databricks-gte-large-en"
+        }],
+        "pipeline_type": "TRIGGERED",
+        "columns_to_sync": ["doc_id", "content", "title"]  # No wide/unused columns
+    }
+)
+```
+
+`columns_to_sync` is the single biggest cost lever. Without it, every column in the source table gets copied into the index — including large text fields, JSON blobs, and timestamps you never query. Set it explicitly at creation time. You cannot add columns after the fact; you'd need to recreate the index.
+
+### Migrate to a Storage-Optimized Endpoint
+
+> "Move my index from a Standard endpoint to Storage-Optimized for better cost efficiency. Use Python."
+
+```python
+# Step 1: Create the new endpoint
+w.vector_search_endpoints.create_endpoint(
+    name="rag-endpoint-storage-optimized",
+    endpoint_type="STORAGE_OPTIMIZED"
+)
+
+# Step 2: Recreate the index on the new endpoint (same source table)
+w.vector_search_indexes.create_index(
+    name="catalog.schema.kb_index_v2",
+    endpoint_name="rag-endpoint-storage-optimized",
+    primary_key="doc_id",
+    index_type="DELTA_SYNC",
+    delta_sync_index_spec={
+        "source_table": "catalog.schema.knowledge_base",
+        "embedding_source_columns": [{
+            "name": "content",
+            "embedding_model_endpoint_name": "databricks-gte-large-en"
+        }],
+        "pipeline_type": "TRIGGERED"
+    }
+)
+
+# Step 3: Sync and verify
+w.vector_search_indexes.sync_index(index_name="catalog.schema.kb_index_v2")
+
+# Step 4: Update your application to query "catalog.schema.kb_index_v2"
+# Step 5: Clean up old resources
+w.vector_search_indexes.delete_index(index_name="catalog.schema.kb_index")
+w.vector_search_endpoints.delete_endpoint(endpoint_name="rag-endpoint")
+```
+
+There's no in-place migration between endpoint types. The pattern is: create new endpoint, recreate the index pointing at the same source table, sync, cut over, then clean up. Since the index reads from Delta, no data copying is needed — just re-indexing.
+
+## Watch Out For
+
+- **Endpoint stuck in PROVISIONING** — new endpoints can take several minutes to come online. Don't start creating indexes until `get_endpoint` shows `ONLINE`. Creating an index on a provisioning endpoint queues the work but makes debugging harder.
+- **`sync_index()` on CONTINUOUS pipelines** — this raises an error. Only `TRIGGERED` pipelines support manual sync. If you need on-demand refresh with a continuous pipeline, you chose the wrong pipeline type.
+- **`message` field is your best diagnostic** — both `get_endpoint` and `get_index` return a `message` field when something is wrong. Check it before opening a support ticket. Common messages point to permission issues, missing source tables, or embedding model endpoint problems.
+- **`num_indexes` and capacity** — each endpoint has a practical limit on how many indexes it can serve. Monitor `num_indexes` and watch for degraded query latency as you add more indexes to a single endpoint.
+- **Filter syntax changes with endpoint type** — if you migrate from Standard to Storage-Optimized, your `filters_json` calls need to switch to `filter_string` with SQL syntax. This is easy to miss during migration and will break at query time, not at index creation.

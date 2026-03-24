@@ -30,7 +30,7 @@ from pathlib import Path
 # Configuration
 # ═══════════════════════════════════════════════════════════════════════════
 
-SOURCE_ROOT = Path("/Users/robby.kiskanyan/dev/aitools/ai-dev-kit")
+SOURCE_ROOT = Path("/Users/robby.kiskanyan/dev/aitools/gold-ctx/ai-dev-kit")
 SITE_ROOT = Path(__file__).resolve().parent.parent  # aidevkit.github.io/
 SKILLS_SOURCE = SOURCE_ROOT / "databricks-skills"
 MCP_TOOLS_SOURCE = SOURCE_ROOT / "databricks-mcp-server/databricks_mcp_server/tools"

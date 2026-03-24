@@ -1,0 +1,131 @@
+---
+title: Search Modes
+description: Choose the right Vector Search query mode — ANN, HYBRID, or FULL_TEXT — and apply filters to narrow results.
+sidebar:
+  order: 3
+---
+
+**Skill:** `databricks-vector-search`
+
+## What You Can Build
+
+You can tune how Vector Search matches queries to documents by switching between three modes: pure semantic similarity (ANN), combined semantic-plus-keyword (HYBRID), or keyword-only (FULL_TEXT). Each mode changes what "relevant" means, and mixing in metadata filters lets you scope results without re-indexing.
+
+## In Action
+
+> "Query my vector index using hybrid search to find troubleshooting docs that match both meaning and exact error codes. Use Python and the Databricks SDK."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.support_docs_index",
+    columns=["doc_id", "title", "content", "category"],
+    query_text="SPARK-12345 executor memory error",
+    query_type="HYBRID",
+    num_results=10,
+    filters_json='{"category": "troubleshooting"}'
+)
+
+for row in results.result.data_array:
+    score = row[-1]
+    print(f"[{score:.3f}] {row[1]}: {row[2][:100]}...")
+```
+
+**Key decisions:**
+- **`HYBRID`** is the right default for most production use cases — it catches both conceptual matches ("memory issues") and exact identifiers ("SPARK-12345")
+- **`filters_json`** narrows results server-side before ranking, which is cheaper than filtering after retrieval
+- **`num_results=10`** oversamples so your downstream reranker or LLM has enough candidates to work with
+- **ANN is the default** — omitting `query_type` gives you pure semantic search, which is fine when queries are always natural language
+
+## More Patterns
+
+### Pure Semantic Search (ANN)
+
+> "Find the five most semantically similar documents to a natural language question. Use Python."
+
+```python
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.kb_index",
+    columns=["doc_id", "title", "content"],
+    query_text="How do I handle schema evolution in streaming pipelines?",
+    num_results=5
+)
+```
+
+ANN is the default when you omit `query_type`. It embeds your query text and finds the nearest vectors by cosine similarity. Use it when queries are conversational and you don't need exact-term matching.
+
+### Keyword-Only Search (FULL_TEXT)
+
+> "Search for documents containing specific API method names where semantic similarity would dilute results. Use Python."
+
+```python
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.api_docs_index",
+    columns=["doc_id", "method_name", "description"],
+    query_text="upsert_data_vector_index",
+    query_type="FULL_TEXT",
+    num_results=5
+)
+```
+
+FULL_TEXT uses BM25 keyword matching with no vector similarity. It's the right choice when queries are identifiers, error codes, or exact terms that embeddings would paraphrase away. This mode is currently in beta.
+
+### Hybrid Search with Metadata Filters
+
+> "Search for recent governance documents using hybrid mode and SQL-style filters. Use Python."
+
+```python
+# filters_json for the Databricks SDK (databricks-sdk)
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.kb_index",
+    columns=["doc_id", "content", "category"],
+    query_text="data access controls and permissions",
+    query_type="HYBRID",
+    num_results=10,
+    filters_json='{"category": "governance", "status": ["open", "in_progress"]}'
+)
+```
+
+The `filters_json` parameter takes a JSON string where keys are column names and values are either a single match or a list (treated as IN). Filters run before ranking, so they reduce compute cost on large indexes.
+
+### Self-Managed Embeddings with Hybrid
+
+> "I pre-compute my own embeddings. Run a hybrid query that combines my vector with keyword matching. Use Python."
+
+```python
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.custom_embed_index",
+    columns=["doc_id", "content"],
+    query_vector=[0.1, 0.2, 0.3, ...],  # Your pre-computed embedding
+    query_text="executor memory error",   # Text for BM25 keyword leg
+    query_type="HYBRID",
+    num_results=10
+)
+```
+
+When your index uses self-managed embeddings (`embedding_vector_columns` instead of `embedding_source_columns`), HYBRID mode requires both `query_vector` and `query_text`. The vector drives the semantic leg; the text drives the keyword leg. Omitting either silently degrades to single-mode search.
+
+### Pre-Computed Vector Query (ANN)
+
+> "Query using a vector I've already embedded through my own model. Use Python."
+
+```python
+results = w.vector_search_indexes.query_index(
+    index_name="catalog.schema.custom_embed_index",
+    columns=["doc_id", "content"],
+    query_vector=[0.1, 0.2, 0.3, ...],
+    num_results=10
+)
+```
+
+Pass `query_vector` instead of `query_text` when you want full control over the embedding step. The vector dimension must match the index's `embedding_dimension` exactly — mismatches return garbage results without error.
+
+## Watch Out For
+
+- **Mixing up `query_text` and `query_vector` on managed indexes** — indexes with `embedding_source_columns` expect `query_text` (Databricks embeds it for you). Passing `query_vector` bypasses the managed model entirely and your dimensions may not match.
+- **HYBRID requires the index to support both legs** — if your index was created with only `embedding_vector_columns` and no text column, the keyword leg has nothing to match against. You'll get results, but they're purely ANN.
+- **Filter syntax depends on your SDK** — `filters_json` (JSON string) works with `databricks-sdk`. The older `databricks-vectorsearch` package uses `filters` with SQL-like string syntax instead. Don't mix them.
+- **FULL_TEXT is beta** — it works well for exact-term queries, but ranking behavior and supported syntax may change. Don't build critical production paths on it yet without a fallback.
