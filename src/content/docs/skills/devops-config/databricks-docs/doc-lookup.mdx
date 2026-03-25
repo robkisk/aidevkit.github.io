@@ -1,0 +1,97 @@
+---
+title: Looking Up Docs via llms.txt
+description: Fetch the Databricks llms.txt index and navigate to the right reference page — without leaving your coding session.
+curated: true
+sidebar:
+  order: 1
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-docs`
+
+## What You Can Build
+
+The Databricks documentation spans hundreds of pages across Data Engineering, SQL, AI/ML, Governance, and Developer Tools. Instead of leaving your editor to search docs.databricks.com, you can ask your AI coding assistant to fetch the llms.txt index, find the authoritative reference for whatever you're building, and apply it inline. The lookup takes seconds and the answer is grounded in the actual Databricks documentation — not training data from months ago.
+
+## In Action
+
+> "I need to understand how Delta Sharing works so I can set up a share from my Unity Catalog. Fetch the Databricks docs and find the right reference page."
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search the index for "Delta Sharing" entries
+3. Identify: /data-governance/delta-sharing/index.html
+4. Fetch that page and return the key concepts + required permissions
+```
+
+Your assistant returns the core model: providers create shares and recipients, Unity Catalog manages the metastore-level grants, and recipients access data via a share credential token. It also surfaces the exact privilege you need — `CREATE SHARE` on the metastore — before you've written a single line of code.
+
+**Key decisions:**
+- **Fetch llms.txt first, not the docs homepage** — the index is structured for machine consumption and links directly to section-level pages, which are far easier to parse than the full HTML navigation tree
+- **Search by concept, not by UI label** — "Delta Sharing" works better than "share data externally" because the index uses feature names as anchors
+- **Ask for required permissions alongside the concept** — docs pages bury permissions in sub-sections; asking explicitly surfaces them in the initial summary
+
+## More Patterns
+
+### Find the right SQL syntax for a new feature
+
+> "What's the exact SQL syntax for creating a materialized view with a refresh schedule in Databricks SQL? Check the docs."
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search for "materialized view" and "CREATE MATERIALIZED VIEW"
+3. Fetch /sql/language-manual/sql-ref-syntax-ddl-create-materialized-view.html
+4. Return the full CREATE syntax with optional clauses annotated
+```
+
+SQL syntax questions are where doc lookups pay off most. The assistant returns the exact DDL with `SCHEDULE CRON` syntax, the list of unsupported source types, and the behavior difference between `REFRESH MATERIALIZED VIEW` and the auto-refresh scheduler — all from the canonical reference, not from general training data.
+
+### Understand Unity Catalog privilege hierarchy before writing grants
+
+> "Before I write the GRANT statements for my team's access model, fetch the Unity Catalog privilege reference so I know the full hierarchy."
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search for "privileges" and "Unity Catalog" and "securable objects"
+3. Fetch /data-governance/unity-catalog/manage-privileges/privileges.html
+4. Summarize the privilege hierarchy: metastore → catalog → schema → table/view/volume
+```
+
+The privilege hierarchy in Unity Catalog is non-obvious — `USE CATALOG` doesn't grant `USE SCHEMA`, and `SELECT` on a table doesn't grant `SELECT` on the schema. Fetching the reference before writing grants prevents a cascade of permission errors when your team first runs queries.
+
+### Look up SDK method signatures for a less-common API
+
+> "I need to use the Databricks SDK to list all Unity Catalog external locations. What's the right client method and return type?"
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search for "external locations" under Developer Tools / SDK
+3. Fetch the relevant SDK reference page
+4. Return: w.external_locations.list() → Iterator[ExternalLocationInfo]
+   with fields: name, url, credential_name, comment, created_by
+```
+
+The Python SDK has methods for nearly every Databricks API surface, but the naming conventions aren't always obvious (`external_locations` not `unity_catalog_external_locations`). A doc lookup gets you the exact client attribute, return type, and important fields in one shot.
+
+### Resolve a documentation conflict between two versions
+
+> "I've seen two different syntaxes for `read_files` — one uses `format =>` and one uses `format =`. Which is current? Check the Databricks docs."
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search for "read_files" under Data Engineering
+3. Fetch the Auto Loader / read_files reference page
+4. Return: named parameter syntax (format =>) is the current form for SQL;
+   Python uses keyword arguments
+```
+
+The Databricks documentation is versioned and updated frequently. When you see conflicting syntax in Stack Overflow answers or older notebooks, the llms.txt lookup gives you the authoritative current version without guessing which source is stale.
+
+## Watch Out For
+
+- **Don't skip the index step** — fetching a specific docs URL directly without checking llms.txt first means you might land on a sub-page that's been reorganized or superseded by a newer section
+- **Feature names change** — Lakehouse Monitoring is now Data Profiling, DLT is now Spark Declarative Pipelines (SDP). If a search returns no results, try the current product name
+- **llms.txt covers public docs only** — internal-only APIs, preview features behind flags, and workspace-specific configurations won't appear in the index; pair with the Databricks SDK reference for those
+- **Page content can be dense** — ask for a specific sub-topic rather than the full page; "summarize the permissions section" returns a more useful result than "fetch this page"

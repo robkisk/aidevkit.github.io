@@ -1,0 +1,156 @@
+---
+title: Domain Patterns
+description: Write descriptions that produce high-quality, varied synthetic PDFs across HR, technical, financial, and training document domains.
+curated: true
+sidebar:
+  order: 3
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-unstructured-pdf-generation`
+
+## What You Can Build
+
+The `description` parameter is the primary lever for content quality. A well-written description produces documents that are varied, realistic, and useful for testing retrieval — a weak one produces documents that are structurally identical and easy for any retriever to handle. This page covers what makes a strong description for each major domain and how to wire descriptions into repeatable generation patterns.
+
+## In Action
+
+> "Generate 15 HR policy documents that cover distinct policy areas. I need realistic documents that vary in structure — some procedural, some reference material."
+
+```python
+generate_and_upload_pdfs(
+    catalog="my_catalog",
+    schema="hr_docs",
+    description=(
+        "HR policy documents for a mid-sized technology company. Documents should cover "
+        "distinct policy areas including: PTO accrual and carryover rules, parental leave "
+        "eligibility, remote work requirements by role level, expense reimbursement limits "
+        "by category, code of conduct violations and escalation paths, performance "
+        "improvement plan procedures, and equipment return on offboarding. "
+        "Mix formats: some documents should be structured with numbered sections and "
+        "policy owner names, others should be prose-heavy reference material. "
+        "Include effective dates and version numbers."
+    ),
+    count=15,
+    doc_size="MEDIUM",
+    folder="hr_policies",
+)
+```
+
+**Key decisions:**
+- **Name the policy areas explicitly** — listing 7 distinct topics for 15 documents forces variation. Without this, the model will generate slight variations of the same document.
+- **Specify structural variation** — "mix formats: some numbered, some prose" prevents all documents from having identical layout, which makes retrieval harder and more realistic.
+- **Include metadata fields** — effective dates and version numbers make the documents behave like real corporate policy files, which matters when testing metadata filtering.
+
+## More Patterns
+
+### Technical Documentation
+
+> "Generate 20 technical runbook PDFs for a cloud infrastructure team. I need realistic operational content with procedure steps and error handling sections."
+
+```python
+generate_and_upload_pdfs(
+    catalog="my_catalog",
+    schema="tech_docs",
+    description=(
+        "Technical runbooks and operational guides for a Kubernetes-based cloud platform team. "
+        "Topics should vary across: cluster scaling procedures, certificate rotation steps, "
+        "database failover runbooks, on-call incident triage guides, deployment rollback "
+        "procedures, load balancer configuration references, and monitoring alert definitions. "
+        "Documents should include numbered procedural steps, prerequisite sections, "
+        "expected output examples, and a 'common errors' section. "
+        "Reference specific tool names (kubectl, Helm, Terraform) where appropriate. "
+        "Some documents should be short quick-reference cards; others multi-section guides."
+    ),
+    count=20,
+    doc_size="MEDIUM",
+    folder="technical_docs",
+)
+```
+
+Technical documents benefit from naming real tools and including specific structural elements like prerequisite lists and expected outputs. These cues give the model enough context to generate content that tests multi-hop retrieval — questions like "what are the prerequisites for certificate rotation?" require the retriever to find the right section within the right document.
+
+### Financial Reports
+
+> "Create 10 financial report PDFs — quarterly earnings reports, budget variance analyses, and cost allocation summaries."
+
+```python
+generate_and_upload_pdfs(
+    catalog="my_catalog",
+    schema="finance_docs",
+    description=(
+        "Corporate financial documents for a B2B SaaS company. "
+        "Mix of document types: quarterly earnings reports with revenue by segment "
+        "(Enterprise, Mid-Market, SMB), cost variance analyses comparing actuals to budget "
+        "by department (R&D, Sales, G&A), and annual budget allocation summaries. "
+        "Include realistic financial figures in millions USD, YoY growth percentages, "
+        "and forward guidance statements. Documents should reference fiscal quarters "
+        "(Q1 FY2024, Q2 FY2024) and include CFO commentary sections. "
+        "Some reports should show positive variance, others should explain misses."
+    ),
+    count=10,
+    doc_size="LARGE",
+    folder="financial_reports",
+)
+```
+
+Financial documents work well at `LARGE` size because the realistic value is in multi-section content with numerical tables, commentary, and segment breakdowns. Use `LARGE` here — a short financial report is not a realistic test artifact.
+
+### Training Materials
+
+> "Generate training course materials and learning guides for an enterprise software product."
+
+```python
+generate_and_upload_pdfs(
+    catalog="my_catalog",
+    schema="training",
+    description=(
+        "Training materials and learning guides for a data platform product. "
+        "Document types should vary: quick-start guides for new users, "
+        "conceptual explainers on core platform features (catalogs, schemas, volumes, "
+        "compute types), hands-on lab instructions with step-by-step exercises, "
+        "certification exam study guides with practice questions, and FAQ documents "
+        "covering common beginner mistakes. "
+        "Use second-person voice ('you will configure...') for procedural docs "
+        "and third-person for conceptual material. "
+        "Include 'learning objectives' sections and 'key takeaways' at the end of each document."
+    ),
+    count=12,
+    doc_size="MEDIUM",
+    folder="training_materials",
+)
+```
+
+Training materials are ideal for RAG demos because the questions users ask map naturally to the document structure (learning objectives, FAQs, step-by-step instructions). Specifying voice — second-person for procedural, third-person for conceptual — produces documents that feel distinct rather than interchangeable.
+
+### Targeted Single Documents for Demo Scenarios
+
+> "I need one specific contract template and one product specification that I can reference by name in a demo."
+
+```python
+generate_and_upload_pdf(
+    catalog="my_catalog",
+    schema="demo_docs",
+    title="Master Service Agreement Template v2.3",
+    description=(
+        "A software vendor Master Service Agreement covering SLA commitments (99.9% uptime), "
+        "data processing addendum requirements, limitation of liability clauses capped at "
+        "12 months of fees, termination for convenience with 30-day notice, and IP ownership. "
+        "Should read like a real legal document with numbered clauses and defined terms section."
+    ),
+    question="What is the uptime SLA commitment in the Master Service Agreement?",
+    guideline="Answer must state 99.9% uptime. Should mention how SLA credits are calculated.",
+    folder="legal_docs",
+)
+```
+
+When a demo needs a specific document with a known title — one you'll reference by name in a walkthrough — use `generate_and_upload_pdf` (singular). You control the title, the question a user would ask, and what the correct answer looks like. Batch generation cannot guarantee a specific title will appear.
+
+## Watch Out For
+
+- **Generic descriptions defeat the purpose** — "Generate HR policy documents" will produce documents that are almost identical in structure and topic. The retriever will get high scores not because it works well, but because all documents say roughly the same thing. Name specific subtopics.
+- **Skipping structural variation hints** — without telling the model to mix formats (procedural vs. reference, short vs. long), all documents will have the same layout. Structural variation is what makes chunking and retrieval genuinely challenging.
+- **Using `SMALL` size for financial or legal documents** — short financial reports and short contracts don't resemble real artifacts. Use `MEDIUM` or `LARGE` for domains where realistic length matters.
+- **Ignoring the `folder` parameter for multi-domain datasets** — if you generate HR docs, tech docs, and financial docs all into the same folder, ingestion pipelines lose the ability to scope by document type. Always use domain-specific folder names from the start.

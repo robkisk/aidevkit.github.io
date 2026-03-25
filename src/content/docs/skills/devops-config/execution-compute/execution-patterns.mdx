@@ -1,0 +1,224 @@
+---
+title: Execution Patterns
+description: Real-world patterns for model training, ETL runs, interactive data exploration, and handling missing compute gracefully.
+curated: true
+sidebar:
+  order: 3
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-execution-compute`
+
+## What You Can Build
+
+The individual tools are straightforward. The value comes from knowing which pattern to reach for: when to go serverless vs cluster, how to structure multi-step exploration without losing state, how to wire a training run into MLflow, and how to recover gracefully when no compute is available. These are the patterns that come up repeatedly in real work.
+
+## In Action
+
+> "Train an XGBoost model on the features table, log the metrics to MLflow, and register the model if accuracy is above 0.85. Use serverless so I don't have to wait for a cluster."
+
+```python
+execute_code(
+    code="""
+import mlflow
+import mlflow.xgboost
+import xgboost as xgb
+from pyspark.sql import functions as F
+
+mlflow.set_experiment("/Users/user@company.com/xgboost-churn")
+
+features = spark.table("catalog.ml.churn_features").toPandas()
+X = features.drop(columns=["label", "customer_id"])
+y = features["label"]
+
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+with mlflow.start_run(run_name="xgboost-v4"):
+    model = xgb.XGBClassifier(n_estimators=200, max_depth=6, learning_rate=0.1)
+    model.fit(X_train, y_train)
+
+    accuracy = model.score(X_test, y_test)
+    mlflow.log_metric("accuracy", accuracy)
+    mlflow.xgboost.log_model(model, "model")
+
+    print(f"Accuracy: {accuracy:.4f}")
+
+    if accuracy >= 0.85:
+        mlflow.register_model(
+            f"runs:/{mlflow.active_run().info.run_id}/model",
+            "churn-xgboost"
+        )
+        print("Model registered.")
+    else:
+        print("Accuracy below threshold — not registering.")
+""",
+    compute_type="serverless",
+    workspace_path="/Workspace/Users/user@company.com/ml-project/train",
+    run_name="xgboost-v4"
+)
+```
+
+**Key decisions:**
+- **Serverless for training** — serverless handles single-node ML training well and eliminates cluster startup wait. Switch to a cluster only if you need distributed training or GPU instances.
+- **`workspace_path` + `run_name`** — creates an auditable notebook in your workspace tied to the MLflow run. You can re-open it later to see the exact code that produced the registered model.
+- **Conditional registration inside the run** — keep the threshold logic in the executed code, not in your prompt. It runs atomically with the training loop.
+
+## More Patterns
+
+### ETL with persistent state across steps
+
+> "Run the daily aggregation job: first load yesterday's raw events, then compute hourly buckets, then write the result to the gold table. I want to inspect the intermediate output before the final write."
+
+```python
+# Step 1 — load raw data
+r1 = execute_code(
+    code="""
+from pyspark.sql import functions as F
+raw = spark.table("catalog.bronze.events") \
+    .filter(F.col("event_date") == F.date_sub(F.current_date(), 1))
+print(f"Raw events: {raw.count():,}")
+raw.createOrReplaceTempView("raw_events")
+""",
+    compute_type="cluster"
+)
+
+# Step 2 — aggregate; df is still live in the same context
+r2 = execute_code(
+    code="""
+hourly = spark.sql(\"\"\"
+    SELECT
+        DATE_TRUNC('hour', event_ts) AS hour,
+        event_type,
+        COUNT(*) AS cnt,
+        SUM(revenue) AS revenue
+    FROM raw_events
+    GROUP BY 1, 2
+\"\"\")
+hourly.show(5)
+hourly.createOrReplaceTempView("hourly_agg")
+""",
+    context_id=r1["context_id"],
+    cluster_id=r1["cluster_id"]
+)
+
+# Step 3 — write after confirming the preview looks right
+execute_code(
+    code="""
+spark.table("hourly_agg").write \
+    .mode("overwrite") \
+    .partitionBy("hour") \
+    .saveAsTable("catalog.gold.hourly_events")
+print("Write complete.")
+""",
+    context_id=r2["context_id"],
+    cluster_id=r2["cluster_id"]
+)
+```
+
+Chaining `context_id` across steps keeps temp views and cached DataFrames alive. You get the ability to inspect intermediate results before committing the final write — the same workflow as a notebook, but driven entirely through conversation.
+
+### Interactive data exploration with cumulative context
+
+> "Help me explore the customer table: first show me the schema, then find nulls in the key columns, then give me a sample of rows where tenure is over 5 years."
+
+```python
+# Turn 1 — schema
+r = execute_code(
+    code="spark.table('catalog.schema.customers').printSchema()",
+    compute_type="auto"
+)
+
+# Turn 2 — null audit (reuse context)
+r = execute_code(
+    code="""
+from pyspark.sql import functions as F
+df = spark.table("catalog.schema.customers")
+key_cols = ["customer_id", "email", "signup_date", "tenure_years"]
+df.select([F.sum(F.col(c).isNull().cast("int")).alias(c) for c in key_cols]).show()
+""",
+    context_id=r["context_id"],
+    cluster_id=r["cluster_id"]
+)
+
+# Turn 3 — sample high-tenure rows
+execute_code(
+    code="""
+spark.table("catalog.schema.customers") \
+    .filter("tenure_years > 5") \
+    .sample(0.01) \
+    .limit(20) \
+    .show(truncate=False)
+""",
+    context_id=r["context_id"],
+    cluster_id=r["cluster_id"]
+)
+```
+
+Each turn adds to the conversation context. Your AI coding assistant sees the output of each step and can adjust the next query accordingly. This is faster than notebooks for open-ended exploration because you describe what you want to learn, not the exact code to get there.
+
+### Handle "no available compute" gracefully
+
+> "Run my script, but if there's no running cluster, create a small one first and then run it."
+
+```python
+# Check what's available
+compute = list_compute(resource="clusters", auto_select=True)
+
+if compute.get("startable_clusters"):
+    # A stopped cluster exists — start it
+    cluster_id = compute["startable_clusters"][0]["cluster_id"]
+    manage_cluster(action="start", cluster_id=cluster_id)
+    # Wait for RUNNING (poll list_compute until state == "RUNNING")
+elif not compute.get("suggestions"):
+    # Nothing available — create a new cluster
+    result = manage_cluster(
+        action="create",
+        name="on-demand-worker",
+        num_workers=2,
+        autotermination_minutes=45
+    )
+    cluster_id = result["cluster_id"]
+else:
+    cluster_id = compute["suggestions"][0]["cluster_id"]
+
+execute_code(
+    file_path="/local/scripts/process_batch.py",
+    compute_type="cluster",
+    cluster_id=cluster_id
+)
+```
+
+`list_compute` with `auto_select=True` returns `startable_clusters` (terminated but restartable) and `suggestions` (already running). Use the structured response to decide whether to start, reuse, or create. This avoids redundant clusters and avoids hard-coding cluster IDs in your workflow.
+
+### Run a one-off SQL migration on serverless
+
+> "Run this schema migration SQL against the production catalog — no cluster needed, just execute it."
+
+```python
+execute_code(
+    code="""
+ALTER TABLE catalog.schema.orders
+ADD COLUMNS (
+    fraud_score DOUBLE,
+    fraud_reviewed_at TIMESTAMP
+);
+
+COMMENT ON TABLE catalog.schema.orders IS 'Order transactions with fraud scoring';
+""",
+    language="sql",
+    compute_type="serverless",
+    destroy_context_on_completion=True
+)
+```
+
+DDL and schema migrations run cleanly on serverless. `destroy_context_on_completion=True` releases the context immediately since there is no follow-up. This is the right pattern for one-shot administrative SQL — faster than spinning up a warehouse and simpler than writing a migration script.
+
+## Watch Out For
+
+- **Serverless resets between calls without `context_id`** — each new serverless execution is a clean slate. If your pattern depends on variables or views from a previous call, you must chain `context_id`. Otherwise, redefine the data at the top of each call.
+- **Cluster startup is not instantaneous** — if you call `manage_cluster(action="start", ...)` and immediately call `execute_code` with that cluster ID, the execution will fail. Poll `list_compute` until state is RUNNING before submitting work.
+- **`auto_select=True` in `list_compute` picks running clusters only** — it will not start a stopped cluster for you. The `startable_clusters` field tells you what's restartable, but you have to call `manage_cluster(action="start", ...)` yourself.
+- **Large `.toPandas()` calls on serverless run out of memory** — serverless has fixed single-node resources. For DataFrames larger than a few GB, stay on a cluster with `num_workers` set appropriately, or filter and aggregate in Spark before collecting.

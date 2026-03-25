@@ -54,7 +54,8 @@ SKILL_MAP: dict[str, tuple[str, str]] = {
     "databricks-agent-bricks":       ("ai-ml", "agent-bricks"),
     "databricks-mlflow-evaluation":  ("ai-ml", "mlflow-evaluation"),
     "databricks-model-serving":      ("ai-ml", "model-serving"),
-    "databricks-synthetic-data-gen": ("ai-ml", "synthetic-data"),
+    "databricks-synthetic-data-gen":            ("ai-ml", "synthetic-data"),
+    "databricks-unstructured-pdf-generation": ("ai-ml", "unstructured-pdf-generation"),
     # Apps & Databases
     "databricks-app-python":           ("apps-databases", "databricks-apps-python"),
     "databricks-lakebase-autoscale":   ("apps-databases", "lakebase-autoscale"),
@@ -66,7 +67,9 @@ SKILL_MAP: dict[str, tuple[str, str]] = {
     "databricks-bundles":    ("devops-config", "asset-bundles"),
     "databricks-jobs":       ("devops-config", "jobs-orchestration"),
     "databricks-config":     ("devops-config", "workspace-config"),
-    "databricks-python-sdk": ("devops-config", "python-sdk"),
+    "databricks-python-sdk":          ("devops-config", "python-sdk"),
+    "databricks-docs":                ("devops-config", "databricks-docs"),
+    "databricks-execution-compute":   ("devops-config", "execution-compute"),
 }
 
 # Skills rendered as a single .mdx (not a directory with index + children)

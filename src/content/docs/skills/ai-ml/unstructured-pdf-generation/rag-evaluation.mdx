@@ -1,0 +1,165 @@
+---
+title: RAG Evaluation with Synthetic PDFs
+description: Use JSON sidecar files to build ground-truth evaluation datasets — ingest PDFs, query your RAG system, and score responses against embedded guidelines.
+curated: true
+sidebar:
+  order: 2
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-unstructured-pdf-generation`
+
+## What You Can Build
+
+Every generated PDF comes with a paired JSON sidecar containing a `question` and a `guideline` — a ready-made ground-truth evaluation dataset. You can ingest the PDFs into a vector index, run the questions through your RAG pipeline, and score the responses against the guidelines using MLflow evaluation. The entire loop — document generation through evaluation scoring — runs within Databricks without any external tooling.
+
+## In Action
+
+> "I generated synthetic tech docs PDFs. Now load the JSON sidecar files, query my vector index with each question, and evaluate the responses."
+
+```python
+import json
+import glob
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+CATALOG = "rag_demo"
+SCHEMA = "unstructured"
+VOLUME = "raw_data"
+FOLDER = "technical_docs"
+
+# Load all sidecar files
+sidecar_path = f"/Volumes/{CATALOG}/{SCHEMA}/{VOLUME}/{FOLDER}/*.json"
+sidecar_files = glob.glob(sidecar_path)
+
+eval_records = []
+for path in sidecar_files:
+    with open(path) as f:
+        sidecar = json.load(f)
+    eval_records.append(sidecar)
+
+# Query vector index for each question
+results = []
+for record in eval_records:
+    query_result = w.vector_search_indexes.query_index(
+        index_name=f"{CATALOG}.{SCHEMA}.tech_docs_index",
+        columns=["doc_id", "content"],
+        query_text=record["question"],
+        num_results=3,
+    )
+    context = "\n\n".join(row[1] for row in query_result.result.data_array)
+    results.append({
+        "question": record["question"],
+        "guideline": record["guideline"],
+        "retrieved_context": context,
+        "pdf_path": record["pdf_path"],
+    })
+```
+
+**Key decisions:**
+- **Sidecars are the evaluation ground truth** — `question` was written to have a single correct answer grounded in that specific PDF. Don't treat these as open-ended benchmarks.
+- **Query with `num_results=3`** — for evaluation you want to check whether the right document surfaces in the top-k, not just whether the answer is correct. Adjust based on your target recall metric.
+- **Use `pdf_path` to diagnose failures** — when a question retrieves the wrong context, `pdf_path` tells you which source document to inspect.
+
+## More Patterns
+
+### Score Responses with MLflow
+
+> "Run MLflow evaluation on my RAG results using the guideline field as the expected answer criteria."
+
+```python
+import mlflow
+import pandas as pd
+
+eval_df = pd.DataFrame([
+    {
+        "inputs": r["question"],
+        "ground_truth": r["guideline"],
+        "context": r["retrieved_context"],
+    }
+    for r in results
+])
+
+with mlflow.start_run(run_name="rag_eval_synthetic_docs"):
+    eval_results = mlflow.evaluate(
+        model="endpoints:/databricks-meta-llama-3-3-70b-instruct",
+        data=eval_df,
+        targets="ground_truth",
+        model_type="question-answering",
+        evaluators="default",
+    )
+    print(eval_results.metrics)
+```
+
+MLflow's built-in evaluators score faithfulness, relevance, and correctness against the guideline. The `ground_truth` column here is the guideline text, which describes what a correct answer must contain — it works better than a single expected string because it accommodates paraphrase.
+
+### Build a Curated Evaluation Set with `generate_and_upload_pdf`
+
+> "Create 10 PDF documents, each targeting a known retrieval scenario with a specific question and scoring rubric."
+
+```python
+eval_scenarios = [
+    {
+        "title": "Data Retention Policy",
+        "description": "A corporate data retention policy covering retention periods for financial records (7 years), customer PII (3 years), and audit logs (5 years). Include deletion procedures and legal hold exceptions.",
+        "question": "How long must customer PII be retained?",
+        "guideline": "Answer must state 3 years. Should mention legal hold as an exception that overrides the standard period.",
+        "folder": "compliance_eval",
+    },
+    {
+        "title": "Incident Response Runbook",
+        "description": "A security incident response runbook with severity levels P0-P3, escalation paths, and a 15-minute SLA for P0 incidents. Include on-call rotation details.",
+        "question": "What is the SLA for a P0 incident?",
+        "guideline": "Answer must state 15 minutes. Should mention escalation path for unresolved incidents.",
+        "folder": "compliance_eval",
+    },
+]
+
+for scenario in eval_scenarios:
+    generate_and_upload_pdf(
+        catalog="rag_demo",
+        schema="unstructured",
+        **scenario,
+    )
+```
+
+This pattern gives you full control over what each document contains and what the correct answer looks like. Use it when you need deterministic evaluation scenarios rather than stochastic batch generation.
+
+### Track Retrieval Coverage
+
+> "Check whether the source PDF was actually retrieved in the top 3 results for each question."
+
+```python
+hit_count = 0
+
+for record in eval_records:
+    query_result = w.vector_search_indexes.query_index(
+        index_name=f"{CATALOG}.{SCHEMA}.tech_docs_index",
+        columns=["doc_id", "source_path"],
+        query_text=record["question"],
+        num_results=3,
+    )
+
+    retrieved_paths = [row[1] for row in query_result.result.data_array]
+    hit = record["pdf_path"] in retrieved_paths
+    hit_count += int(hit)
+
+    if not hit:
+        print(f"MISS: {record['question'][:60]}...")
+        print(f"  Expected: {record['pdf_path']}")
+
+recall_at_3 = hit_count / len(eval_records)
+print(f"\nRecall@3: {recall_at_3:.2%}")
+```
+
+Recall@k measures whether the correct source appears in the top-k retrieved results, independent of the LLM's answer quality. If recall is low, fix your chunking or embedding strategy before tuning the generation step.
+
+## Watch Out For
+
+- **Sidecars are only written when a PDF is successfully generated** — if generation fails mid-batch, some PDFs won't have corresponding JSON files. Always count PDFs and JSONs to verify parity before starting evaluation.
+- **`question` and `guideline` in batch mode are auto-generated** — `generate_and_upload_pdfs` writes questions and guidelines based on the document content. For deterministic eval scenarios, use `generate_and_upload_pdf` (singular) to set these explicitly.
+- **Index must be synced before querying** — if you generate PDFs and immediately start evaluation, make sure your vector index has been synced against the new ingested content. Stale indexes return no results for new documents without any warning.
+- **Don't use `guideline` as an exact-match string** — guidelines describe what a correct answer should contain, not a verbatim expected response. Pass them to LLM-based evaluators (MLflow, Mosaic AI Agent Evaluation), not string-equality checks.

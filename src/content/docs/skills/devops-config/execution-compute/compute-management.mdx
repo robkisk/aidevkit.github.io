@@ -1,0 +1,138 @@
+---
+title: Managing Clusters and SQL Warehouses
+description: Create, right-size, and control the lifecycle of Databricks clusters and SQL warehouses — from single-node dev clusters to autoscaling production fleets.
+curated: true
+sidebar:
+  order: 2
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-execution-compute`
+
+## What You Can Build
+
+Provision and manage Databricks compute without touching the UI. Your AI coding assistant can create clusters with the right node type and autoscaling config, start stopped clusters, terminate idle resources, and set up SQL warehouses for BI tool connectivity — all through conversation. It can also inspect what's already running and recommend the right compute for your workload.
+
+## In Action
+
+> "Create a small autoscaling cluster for my dev work — I want it to scale between 1 and 4 workers and shut down after 30 minutes of inactivity."
+
+```python
+manage_cluster(
+    action="create",
+    name="dev-autoscale",
+    autoscale_min_workers=1,
+    autoscale_max_workers=4,
+    autotermination_minutes=30
+)
+```
+
+**Key decisions:**
+- **Autoscaling vs fixed workers** — use `autoscale_min_workers` / `autoscale_max_workers` for variable workloads. Use `num_workers` only when you need deterministic resource allocation (benchmarking, cost caps).
+- **`autotermination_minutes`** prevents orphaned clusters. Set it aggressively for dev (30–60 min), conservatively for shared clusters that need warm-start availability.
+- **`data_security_mode` defaults to `"SINGLE_USER"`** — this is the correct mode for Unity Catalog. Change it only if you have an explicit shared-access requirement.
+- **`spark_version` and `node_type_id` default to sensible values** — omit them for dev clusters, specify them explicitly when you need a pinned runtime version or GPU nodes.
+
+## More Patterns
+
+### List available compute and pick what's already running
+
+> "What clusters are currently running in my workspace? I want to attach to one instead of starting a new one."
+
+```python
+list_compute(resource="clusters")
+```
+
+The response includes cluster IDs, states (RUNNING, TERMINATED, etc.), and node types. Pass `auto_select=True` to get back the best available running cluster automatically — useful when you want to execute code without knowing the cluster ID in advance.
+
+### Start a stopped cluster
+
+> "My nightly cluster is terminated from last night's autotermination — start it back up before I run the morning reports."
+
+```python
+manage_cluster(action="start", cluster_id="1234-567890-abcdef")
+```
+
+`start` is idempotent if the cluster is already running. After calling it, poll `list_compute` with the cluster ID to wait for RUNNING state before submitting work. The cluster can take 3–8 minutes to start depending on instance availability.
+
+### Create a fixed-size cluster for a specific Spark version
+
+> "Stand up a cluster pinned to Databricks Runtime 14.3 LTS for reproducing a production issue."
+
+```python
+list_compute(resource="spark_versions")
+# pick the version string from the response, e.g. "14.3.x-scala2.12"
+
+manage_cluster(
+    action="create",
+    name="repro-drt-14-3",
+    spark_version="14.3.x-scala2.12",
+    num_workers=2,
+    autotermination_minutes=60
+)
+```
+
+Use `list_compute(resource="spark_versions")` to get the exact version strings available in your workspace. Pin `spark_version` when you need reproducibility — runtime upgrades can change behavior in subtle ways.
+
+### Modify an existing cluster's autoscaling bounds
+
+> "The ETL cluster is undersized for end-of-month processing — bump its max workers to 12."
+
+```python
+manage_cluster(
+    action="modify",
+    cluster_id="1234-567890-abcdef",
+    autoscale_min_workers=2,
+    autoscale_max_workers=12
+)
+```
+
+`modify` applies changes to a running or stopped cluster. For running clusters, some changes (like node type) require a restart. Scaling bounds take effect without a restart.
+
+### Terminate a cluster when the job is done
+
+> "The training job finished — terminate the GPU cluster so we stop accruing costs."
+
+```python
+manage_cluster(action="terminate", cluster_id="1234-567890-abcdef")
+```
+
+`terminate` stops the cluster but preserves its configuration. You can restart it later with `start`. Use `delete` only when you want to remove the cluster permanently — this cannot be undone.
+
+### Create a SQL warehouse for BI connectivity
+
+> "Set up a Medium SQL warehouse for our Tableau dashboards with serverless enabled and auto-stop after an hour."
+
+```python
+manage_sql_warehouse(
+    action="create",
+    name="tableau-prod",
+    size="Medium",
+    warehouse_type="PRO",
+    enable_serverless=True,
+    auto_stop_mins=60,
+    min_num_clusters=1,
+    max_num_clusters=3
+)
+```
+
+SQL warehouses are the right compute target for BI tools, JDBC/ODBC connections, and SQL analytics — not general-purpose Python workloads. `enable_serverless=True` with `warehouse_type="PRO"` is the recommended configuration: faster startup, better cost efficiency, and Photon acceleration by default. `min_num_clusters` / `max_num_clusters` controls multi-cluster load balancing for concurrent query traffic.
+
+### Check available node types for GPU workloads
+
+> "What GPU instance types are available in my workspace for model training?"
+
+```python
+list_compute(resource="node_types")
+```
+
+Filter the response for entries with `num_gpus > 0`. The `node_type_id` values you see here are the exact strings to pass to `manage_cluster`. Node type availability is region- and cloud-specific — always check before hardcoding a node type in a reusable script.
+
+## Watch Out For
+
+- **`delete` is permanent** — `manage_cluster(action="delete", ...)` removes the cluster configuration entirely. Use `terminate` if you might need the cluster again. There is no recycle bin.
+- **Cluster creation is asynchronous** — `manage_cluster(action="create", ...)` returns immediately but the cluster takes minutes to reach RUNNING state. Don't submit `execute_code` calls targeting a cluster ID until `list_compute` confirms it's RUNNING.
+- **SQL warehouses are not clusters** — `manage_sql_warehouse` and `manage_cluster` manage entirely separate resource types. SQL warehouses handle SQL workloads; clusters handle Spark jobs, notebooks, and Python execution. They cannot be substituted for each other.
+- **`num_workers` and autoscaling are mutually exclusive** — passing both `num_workers` and `autoscale_min_workers` will result in an error. Choose one mode per cluster.

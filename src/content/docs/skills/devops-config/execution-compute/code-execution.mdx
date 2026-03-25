@@ -1,0 +1,148 @@
+---
+title: Running Code on Databricks
+description: Execute Python, SQL, Scala, and R on serverless or cluster compute — interactively or from a file — with full context preservation between calls.
+curated: true
+sidebar:
+  order: 1
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-execution-compute`
+
+## What You Can Build
+
+Skip the notebook UI and run code directly against Databricks compute from your local environment. Your AI coding assistant can execute one-off scripts, iterate interactively with state preserved between calls, and submit full files to cluster compute — all without leaving your editor. The same `execute_code` tool covers everything from a quick SQL query to a multi-step ML training run.
+
+## In Action
+
+> "Run this Python snippet on serverless compute to verify my UDF returns the right result before I put it in a pipeline."
+
+```python
+execute_code(
+    code="""
+def clean_phone(raw):
+    digits = ''.join(c for c in raw if c.isdigit())
+    return f"+1{digits}" if len(digits) == 10 else None
+
+test_cases = ["(415) 555-1234", "415.555.1234", "5551234"]
+for t in test_cases:
+    print(f"{t!r} -> {clean_phone(t)!r}")
+""",
+    compute_type="serverless"
+)
+```
+
+**Key decisions:**
+- **`compute_type="serverless"`** starts immediately with no cluster warm-up. Use it for validation, exploration, and anything under a few minutes.
+- **`compute_type="cluster"`** targets a specific long-running cluster — required when you need Spark context, specific library versions, or persistent state across sessions.
+- **`compute_type="auto"`** (the default) picks serverless when available, falls back to an existing running cluster. Safe for most cases.
+- **No `context_id` on first call** — a fresh execution context is created automatically. Capture the returned `context_id` if you plan to follow up.
+- **`language` defaults to `"python"`** — pass `"sql"`, `"scala"`, or `"r"` when needed.
+
+## More Patterns
+
+### Interactive iteration with preserved state
+
+> "Run these data exploration steps one at a time — load the dataset, then inspect it, then compute the summary stats."
+
+```python
+# Step 1 — load data, capture context for reuse
+result = execute_code(
+    code="""
+from pyspark.sql import functions as F
+df = spark.read.table("catalog.schema.transactions")
+print(f"Loaded {df.count():,} rows")
+""",
+    compute_type="cluster"
+)
+
+# Step 2 — reuse the same context; df is still in memory
+execute_code(
+    code="""
+df.select(
+    F.min("amount").alias("min"),
+    F.max("amount").alias("max"),
+    F.avg("amount").alias("avg")
+).show()
+""",
+    context_id=result["context_id"],
+    cluster_id=result["cluster_id"]
+)
+```
+
+`context_id` ties calls to the same execution context on the same cluster. Variables, imports, and cached DataFrames all survive between calls. This is how you do genuine REPL-style iteration without reloading data on every step.
+
+### Execute a local file on cluster compute
+
+> "Run my ETL script against the prod cluster — it's too long to paste inline."
+
+```python
+execute_code(
+    file_path="/Users/me/projects/etl/run_daily_agg.py",
+    compute_type="cluster",
+    cluster_id="1234-567890-abcdef"
+)
+```
+
+`file_path` reads a local file and submits it directly. The cluster must already be running. Use this for scripts that are too large to paste, have complex imports, or need to be version-controlled separately from your prompts.
+
+### Submit a training run to a named workspace path
+
+> "Run my model training code and save it as a notebook in my workspace so I have an audit trail."
+
+```python
+execute_code(
+    code=training_code,
+    compute_type="serverless",
+    workspace_path="/Workspace/Users/user@company.com/ml-project/train",
+    run_name="xgboost-v3-hyperparams"
+)
+```
+
+`workspace_path` saves the execution as a notebook at that location. `run_name` sets the run name in the MLflow experiment if your code calls `mlflow.start_run()`. Use this when you want to recover the exact code that produced a model artifact.
+
+### Run a SQL query and return results
+
+> "Query the orders table and show me the top 10 customers by revenue this quarter."
+
+```python
+execute_code(
+    code="""
+SELECT
+    customer_id,
+    SUM(order_total) AS revenue
+FROM catalog.schema.orders
+WHERE order_date >= '2024-01-01'
+GROUP BY customer_id
+ORDER BY revenue DESC
+LIMIT 10
+""",
+    language="sql",
+    compute_type="serverless"
+)
+```
+
+SQL runs on serverless by default and returns results synchronously. No warehouse setup required — but if you need a persistent SQL warehouse for BI tool compatibility, see [Compute Management](/skills/devops-config/execution-compute/compute-management/).
+
+### Ephemeral context for one-shot runs
+
+> "Run this cleanup job and make sure the context is torn down immediately after."
+
+```python
+execute_code(
+    code="spark.sql('OPTIMIZE catalog.schema.events ZORDER BY (event_date)')",
+    compute_type="cluster",
+    destroy_context_on_completion=True
+)
+```
+
+`destroy_context_on_completion=True` releases the execution context immediately. Use this for fire-and-forget jobs where you don't need to chain follow-up calls. It keeps cluster resources tidy when running multiple independent scripts.
+
+## Watch Out For
+
+- **Serverless has no persistent Spark session between separate calls** — each `execute_code` call with `compute_type="serverless"` and no `context_id` starts fresh. If your code builds on previous state, pass `context_id` back explicitly.
+- **`file_path` requires the cluster to already be running** — serverless compute does not support `file_path`. If you need file execution, use `compute_type="cluster"` and ensure the cluster is in a RUNNING state first.
+- **`context_id` is cluster-specific** — you cannot reuse a context across different clusters. If the cluster restarts, the context is gone and you'll get an error on the next call.
+- **`timeout` defaults to the tool's built-in limit** — for long-running training jobs or large OPTIMIZE operations, pass `timeout` explicitly in seconds to avoid premature cancellation.

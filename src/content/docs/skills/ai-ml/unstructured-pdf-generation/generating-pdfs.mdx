@@ -1,0 +1,130 @@
+---
+title: Generating Synthetic PDFs
+description: Batch-generate or precisely author synthetic PDFs into Unity Catalog Volumes — with full control over size, folder layout, and content quality.
+curated: true
+sidebar:
+  order: 1
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-unstructured-pdf-generation`
+
+## What You Can Build
+
+You can generate dozens of realistic synthetic PDF documents in a single call and land them directly in a Unity Catalog Volume, ready for downstream ingestion. For precise control over an individual document — its title, the question it should answer, and the evaluation guideline — use the single-file variant. Both tools write a paired JSON sidecar alongside every PDF, giving you structured metadata for RAG evaluation without any extra steps.
+
+## In Action
+
+> "Generate 20 synthetic HR policy PDFs for my rag_demo catalog and upload them to Unity Catalog. Use medium-sized documents."
+
+```python
+generate_and_upload_pdfs(
+    catalog="rag_demo",
+    schema="unstructured",
+    description=(
+        "HR policy documents covering employee onboarding, PTO accrual rules, "
+        "code of conduct, remote work eligibility, and performance review cycles. "
+        "Each document should be self-contained and reference specific policy numbers."
+    ),
+    count=20,
+    doc_size="MEDIUM",
+    folder="hr_policies",
+)
+```
+
+**Key decisions:**
+- **`description` drives content quality** — the more specific you are about topics, tone, and structural expectations, the more varied and realistic the output. Vague descriptions produce repetitive documents.
+- **`doc_size` controls token budget** — `SMALL` is fast and good for smoke tests, `MEDIUM` is the default for most demos, `LARGE` produces longer multi-section documents that stress-test chunking strategies.
+- **`folder` organizes by domain** — separate folders per document type (`hr_policies/`, `technical_docs/`) make ingestion pipelines easier to scope later.
+- **`count` with `doc_size="SMALL"`** — if you need volume over depth (e.g., 100 documents for benchmarking retrieval), use `SMALL` to keep generation time reasonable.
+- **JSON sidecars are always written** — every PDF gets a paired `<model_id>.json` with title, category, pdf_path, question, and guideline. You don't need to opt in.
+
+## More Patterns
+
+### Generate a Single Precisely-Authored Document
+
+> "Create a single API authentication guide PDF with a specific question and evaluation guideline. Upload it to the tech_docs folder in my rag_demo catalog."
+
+```python
+generate_and_upload_pdf(
+    catalog="rag_demo",
+    schema="unstructured",
+    title="API Authentication Guide",
+    description=(
+        "A technical reference guide covering OAuth 2.0, API key authentication, "
+        "and JWT token usage for a REST API platform. Include sections on token "
+        "expiration, refresh flows, and error codes for auth failures."
+    ),
+    question="What authentication methods are supported by the API?",
+    guideline=(
+        "Answer should mention OAuth 2.0, API keys, and JWT tokens. "
+        "Should explain token expiration and include at least one error code example."
+    ),
+    folder="tech_docs",
+)
+```
+
+Use `generate_and_upload_pdf` (singular) when you need to control exactly what question a document answers and how responses should be evaluated. This is the right tool for building curated evaluation sets where each document targets a known retrieval scenario.
+
+### Overwrite a Folder for Iterative Development
+
+> "I want to regenerate the hr_policies folder with better descriptions. Overwrite what's already there."
+
+```python
+generate_and_upload_pdfs(
+    catalog="rag_demo",
+    schema="unstructured",
+    description=(
+        "Comprehensive HR policy documents that include effective dates, "
+        "policy owner names, and exception request procedures. Each document "
+        "should cover exactly one policy area."
+    ),
+    count=15,
+    folder="hr_policies",
+    overwrite_folder=True,
+)
+```
+
+Without `overwrite_folder=True`, the tool will refuse to write into a folder that already has content. This prevents accidental duplication during iterative development — but when you intentionally want to replace a dataset with an improved description, pass `True` explicitly.
+
+### Generate Multiple Domain Batches
+
+> "I need three separate document batches for HR, technical docs, and financial reports — each in its own folder."
+
+```python
+batches = [
+    {
+        "description": "Employee handbook sections covering benefits, leave policies, and conduct guidelines.",
+        "count": 10,
+        "folder": "hr_policies",
+    },
+    {
+        "description": "Technical runbooks for Kubernetes cluster operations, incident response, and deployment procedures.",
+        "count": 10,
+        "folder": "technical_docs",
+    },
+    {
+        "description": "Quarterly financial reports with revenue breakdowns, cost analysis, and forward guidance sections.",
+        "count": 10,
+        "folder": "financial_reports",
+    },
+]
+
+for batch in batches:
+    generate_and_upload_pdfs(
+        catalog="rag_demo",
+        schema="unstructured",
+        **batch,
+    )
+```
+
+Running batches sequentially per folder avoids naming collisions and keeps the folder structure clean. Downstream ingestion can then be scoped per folder using different pipeline configurations.
+
+## Watch Out For
+
+- **Underspecified descriptions produce repetitive output** — if the description is a single sentence, the model has little to vary across documents. Aim for a paragraph that names specific subtopics, structural expectations, and tonal cues.
+- **`overwrite_folder` defaults to `False`** — the tool will error if the target folder exists and has content. This is intentional. Pass `overwrite_folder=True` only when you mean to replace the dataset.
+- **Never assume the catalog or schema exist** — run `CREATE SCHEMA IF NOT EXISTS` and `CREATE VOLUME IF NOT EXISTS` before calling the tool if you're not certain the infrastructure is already in place.
+- **`LARGE` documents take significantly longer** — for initial validation of a new description, use `count=3, doc_size="SMALL"` first. Promote to `MEDIUM` or `LARGE` once you're satisfied with the content.

@@ -60,6 +60,7 @@ export default defineConfig({
 								{ label: 'MLflow Evaluation', autogenerate: { directory: 'skills/ai-ml/mlflow-evaluation' } },
 								{ label: 'Model Serving', autogenerate: { directory: 'skills/ai-ml/model-serving' } },
 								{ label: 'Synthetic Data', autogenerate: { directory: 'skills/ai-ml/synthetic-data' } },
+								{ label: 'Unstructured PDF Generation', autogenerate: { directory: 'skills/ai-ml/unstructured-pdf-generation' } },
 							],
 						},
 						{
@@ -85,6 +86,8 @@ export default defineConfig({
 								{ label: 'Jobs Orchestration', autogenerate: { directory: 'skills/devops-config/jobs-orchestration' } },
 								{ label: 'Workspace Config', autogenerate: { directory: 'skills/devops-config/workspace-config' } },
 								{ slug: 'skills/devops-config/python-sdk' },
+								{ label: 'Databricks Docs', autogenerate: { directory: 'skills/devops-config/databricks-docs' } },
+								{ label: 'Execution & Compute', autogenerate: { directory: 'skills/devops-config/execution-compute' } },
 							],
 						},
 					],

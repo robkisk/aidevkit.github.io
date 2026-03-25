@@ -1,0 +1,103 @@
+---
+title: Filling Gaps Across Skills
+description: Use doc lookups to ground other skills with authoritative reference — when MCP tools return partial answers or you need to verify behavior.
+curated: true
+sidebar:
+  order: 2
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-docs`
+
+## What You Can Build
+
+Other AI Dev Kit skills handle orchestration, execution, and workspace operations — but none of them carry a full copy of the Databricks documentation. When a skill gives you a method signature but not the constraint that breaks your use case, or when you need to verify that a feature works the way you think it does before deploying to production, a doc lookup closes that gap. The `databricks-docs` skill slots into any workflow where authoritative reference matters more than speed.
+
+## In Action
+
+> "I used the jobs skill to create a task with `python_wheel_task`, but it's failing with an import error even though the wheel path looks right. Check the Databricks docs for what I'm missing on Python wheel tasks."
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search for "python wheel task" and "libraries"
+3. Fetch the Jobs API / task types reference
+4. Return: python_wheel_task requires the wheel listed separately
+   in the task's `libraries` field — the wheel_path alone is not enough
+```
+
+The jobs skill generates correct task structure, but the library attachment requirement is a constraint the skill doesn't encode. The doc lookup surfaces it immediately: `python_wheel_task` with no `libraries` entry means the cluster has no wheel to import from, which manifests as a `ModuleNotFoundError` at runtime rather than a configuration error at job creation.
+
+**Key decisions:**
+- **Trigger a doc lookup when you see a cryptic runtime error, not a config error** — if the API accepted your payload but the task still fails, a constraint is missing from the reference material your skill was built from
+- **Search by error symptom, not just feature name** — "wheel task import error" returns more targeted sections than "python wheel task reference"
+- **Apply the fix back through the skill** — once you have the missing piece from docs, return to the original skill to regenerate the corrected configuration rather than patching by hand
+
+## More Patterns
+
+### Verify SDP pipeline behavior before a full-refresh deployment
+
+> "I'm about to run a full refresh on a Spark Declarative Pipeline in production. Use the docs skill to confirm exactly what gets reprocessed and whether it drops and recreates the output tables."
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search for "full refresh" under Spark Declarative Pipelines
+3. Fetch the SDP pipeline modes reference
+4. Return: full refresh truncates and rewrites all tables from scratch;
+   streaming table checkpoints are reset; this cannot be undone
+```
+
+The SDP skill generates pipeline definitions but doesn't surface the operational semantics of refresh modes. Before you trigger a full refresh on a 200GB bronze table in production, confirm what it actually does. The answer — truncate, recompute, no rollback — is the kind of detail that changes whether you run it Friday afternoon or schedule it for the weekend.
+
+### Resolve a permissions gap when Genie queries start failing
+
+> "Our Genie space was working fine and now users are getting permission denied on queries. The workspace MCP shows the space is configured correctly. Check the docs for what Unity Catalog privileges Genie requires on the underlying tables."
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search for "Genie" and "AI/BI" and "permissions"
+3. Fetch the Genie space permissions reference
+4. Return: space users need SELECT on every table Genie queries,
+   plus USE SCHEMA and USE CATALOG on the containing objects;
+   the space owner's permissions are not inherited by users
+```
+
+MCP tools can read workspace and Genie configuration, but they can't tell you why a permission denied error is happening — that requires understanding the Unity Catalog privilege inheritance model. The docs lookup identifies the gap: `SELECT` on the table without `USE SCHEMA` on the schema is a silent failure mode that only surfaces at query time.
+
+### Confirm SQL warehouse sizing behavior before provisioning
+
+> "I'm setting up a SQL warehouse for our BI team. The workspace MCP can create it, but I want to understand how cluster size and autoscaling interact before I commit to a configuration."
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search for "SQL warehouse" and "cluster size" and "autoscaling"
+3. Fetch the SQL warehouse configuration reference
+4. Return: cluster size controls workers per cluster; min/max clusters
+   controls horizontal scale-out; serverless skips both in favor of
+   automatic capacity managed by Databricks
+```
+
+The workspace MCP accepts any valid warehouse configuration, but the interaction between `cluster_size`, `min_num_clusters`, and `max_num_clusters` is not obvious. Cluster size is vertical scale (workers per cluster), autoscaling is horizontal scale (number of clusters). Setting a large cluster size with autoscaling disabled is often worse than a smaller size with autoscaling enabled for variable BI workloads.
+
+### Check Vector Search index type constraints before building a RAG pipeline
+
+> "I'm building a RAG pipeline using the vector-search skill. Before generating the index creation code, check the docs for which index types support managed embeddings vs. self-managed."
+
+```
+1. Fetch https://docs.databricks.com/llms.txt
+2. Search for "Vector Search" and "index type" under AI/ML
+3. Fetch the Vector Search index types reference
+4. Return: Delta Sync indexes support both managed and self-managed embeddings;
+   Direct Vector Access indexes only support self-managed;
+   managed embeddings require a Databricks-hosted embedding model endpoint
+```
+
+The vector-search skill generates index creation code, but picking the wrong index type means rewriting the implementation after the fact. Checking the constraint first — managed embeddings only work with Delta Sync indexes — takes 30 seconds and prevents a full rebuild after you've already loaded your document corpus.
+
+## Watch Out For
+
+- **Don't use docs to replace skill output** — skills handle the code generation; docs handle the reference validation. Asking docs to generate a full job definition or SQL pipeline is slower and less accurate than using the right skill for the job
+- **Stale training data affects all skills, not just docs** — if a feature was renamed or deprecated after the model's training cutoff, the doc lookup will return the current name while other skills may still use the old one. The docs skill is your source of truth for current terminology
+- **Cross-referencing two sections beats reading one** — the permissions required for a feature are rarely on the same page as the feature itself. Search for the feature, then search for "permissions" or "privileges" as a separate lookup to get both in scope
+- **Use doc lookups proactively, not just reactively** — the most valuable time to check docs is before you deploy a configuration you're uncertain about, not after a production incident surfaces the gap
