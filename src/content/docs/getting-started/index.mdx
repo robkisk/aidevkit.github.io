@@ -5,9 +5,15 @@ sidebar:
   order: 0
 ---
 
-import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-AI Dev Kit gives your AI coding assistant deep knowledge of the Databricks platform through **24 skills**, **75 MCP tools**, and a curated **Prompt Library**. Instead of writing boilerplate or searching docs, you describe what you want and it builds it — pipelines, queries, apps, vector indexes, and more.
+AI Dev Kit gives your AI coding assistant deep knowledge of the Databricks platform through **25 skills**, **79 MCP tools**, and a curated **Prompt Library**. Instead of writing boilerplate or searching docs, you describe what you want and it builds it — pipelines, queries, apps, vector indexes, and more.
+
+## Choose Your Path
+
+<LinkCard title="CLI — Claude Code / Cursor" description="Install skills and MCP tools directly in your editor. Best for building from code." href="./installation/" />
+
+<LinkCard title="Web UI — Builder App" description="Deploy an interactive web app for your team. Best for exploration, demos, and onboarding." href="./builder-app/" />
 
 ## Try It
 
@@ -32,11 +38,11 @@ Claude will use the right combination of skills and MCP tools to complete each t
 ## What's Included
 
 <CardGrid>
-  <Card title="24 Skills" icon="pencil">
+  <Card title="25 Skills" icon="pencil">
     Pre-built knowledge covering data engineering, SQL analytics, AI/ML,
     app development, governance, and DevOps on Databricks.
   </Card>
-  <Card title="75 MCP Tools" icon="setting">
+  <Card title="79 MCP Tools" icon="setting">
     Direct workspace interaction — run SQL, manage pipelines, deploy apps,
     query vector indexes, and more without leaving your editor.
   </Card>
@@ -49,6 +55,7 @@ Claude will use the right combination of skills and MCP tools to complete each t
 ## Next Steps
 
 - **[Installation](./installation/)** — Install skills and connect the MCP server
-- **[Skills Catalog](../skills/)** — Browse all 24 skills by category
+- **[Builder App](./builder-app/)** — Deploy the web-based builder for your team
+- **[Skills Catalog](../skills/)** — Browse all 25 skills by category
 - **[MCP Tools](../mcp-tools/)** — See the full list of workspace tools
 - **[Prompt Library](../prompt-library/)** — Copy-paste prompts for common tasks

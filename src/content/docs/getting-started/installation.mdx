@@ -9,11 +9,47 @@ import { Tabs, TabItem, Steps } from '@astrojs/starlight/components';
 
 ## Prerequisites
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and working
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Cursor](https://cursor.sh) installed and working
 - A Databricks workspace with a personal access token or CLI profile configured
 - Databricks CLI installed (`brew install databricks` or `pip install databricks-cli`)
 
-## Install Skills
+## Quick Install
+
+The one-liner installer configures the MCP server and skills for Claude Code and Cursor automatically. Run it from any project directory:
+
+<Tabs>
+  <TabItem label="Mac / Linux">
+    ```bash
+    curl -sL https://raw.githubusercontent.com/databricks-solutions/ai-dev-kit/main/install.sh | bash
+    ```
+
+    Follow the interactive prompts to select your Databricks profile and tools.
+  </TabItem>
+
+  <TabItem label="Windows (PowerShell)">
+    ```powershell
+    irm https://raw.githubusercontent.com/databricks-solutions/ai-dev-kit/main/install.ps1 | iex
+    ```
+
+    Follow the interactive prompts to select your Databricks profile and tools.
+  </TabItem>
+</Tabs>
+
+Installs at project level by default — run your AI tool from the same directory. Optional flags:
+
+| Flag | Effect |
+|------|--------|
+| `--global` | Install system-wide instead of project-level |
+| `--tools cursor` | Install for Cursor only |
+| `--force` | Overwrite an existing installation |
+
+Skip to [Verify Installation](#verify-installation) if you used the quick installer.
+
+## Manual Setup
+
+If you prefer to install each component separately, follow these steps.
+
+### Install Skills
 
 Skills teach Claude Code how to work with Databricks services. Install them with a single command:
 
@@ -21,9 +57,9 @@ Skills teach Claude Code how to work with Databricks services. Install them with
 claude skill install databricks-solutions/ai-dev-kit
 ```
 
-This installs all 28 skills covering data engineering, SQL analytics, AI/ML, app development, governance, and DevOps.
+This installs all 25 skills covering data engineering, SQL analytics, AI/ML, app development, governance, and DevOps.
 
-## Install MCP Server
+### Install MCP Server
 
 The MCP server gives Claude Code direct access to your Databricks workspace — running SQL, managing pipelines, deploying apps, and more.
 
