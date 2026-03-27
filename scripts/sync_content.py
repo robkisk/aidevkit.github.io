@@ -783,8 +783,24 @@ def gen_skill_index(skill: Skill, slug: str) -> str:
     body = escape_mdx_angles(strip_heading(skill.body))
 
     intro = SKILL_INDEX_INTROS.get(slug, "")
+
+    # When an intro exists, use it alone — the SKILL.md body is agent
+    # instructions that don't render well as user-facing docs.  The
+    # curated child pages provide the detailed content instead.
     if intro:
-        intro = f"{intro}\n---\n\n"
+        return (
+            f"---\n"
+            f"title: {title}\n"
+            f"description: {desc}\n"
+            f"sidebar:\n"
+            f"  label: {title}\n"
+            f"  order: 0\n"
+            f"  badge:\n"
+            f"    text: New\n"
+            f"    variant: tip\n"
+            f"---\n\n"
+            f"{intro}\n"
+        )
 
     return (
         f"---\n"
@@ -797,7 +813,6 @@ def gen_skill_index(skill: Skill, slug: str) -> str:
         f"    text: New\n"
         f"    variant: tip\n"
         f"---\n\n"
-        f"{intro}"
         f"{body}\n"
     )
 
@@ -806,14 +821,34 @@ def gen_skill_single(skill: Skill, slug: str) -> str:
     """Generate a single-page .mdx from SKILL.md + child content concatenated."""
     title = title_from_slug(slug)
     desc = sanitize_yaml(skill.description)
+
+    intro = SKILL_INDEX_INTROS.get(slug, "")
+
+    # When an intro exists, skip SKILL.md body (agent instructions)
+    # but keep child content which is the actual documentation.
+    if intro:
+        parts = []
+        for child in skill.children:
+            parts.append(child.body.strip())
+        child_body = escape_mdx_angles("\n\n---\n\n".join(parts)) if parts else ""
+        return (
+            f"---\n"
+            f"title: {title}\n"
+            f"description: {desc}\n"
+            f"sidebar:\n"
+            f"  label: {title}\n"
+            f"  badge:\n"
+            f"    text: New\n"
+            f"    variant: tip\n"
+            f"---\n\n"
+            f"{intro}\n"
+            f"\n---\n\n{child_body}\n" if child_body else f"{intro}\n"
+        )
+
     parts = [strip_heading(skill.body)]
     for child in skill.children:
         parts.append(f"\n---\n\n{child.body.strip()}")
     body = escape_mdx_angles("\n".join(parts))
-
-    intro = SKILL_INDEX_INTROS.get(slug, "")
-    if intro:
-        intro = f"{intro}\n---\n\n"
 
     return (
         f"---\n"
@@ -825,7 +860,6 @@ def gen_skill_single(skill: Skill, slug: str) -> str:
         f"    text: New\n"
         f"    variant: tip\n"
         f"---\n\n"
-        f"{intro}"
         f"{body}\n"
     )
 
