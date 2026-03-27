@@ -170,7 +170,7 @@ MCP_PAGE_INTROS: dict[str, str] = {
         "Create vector search endpoints and indexes, run similarity queries, and manage embeddings.\n\n"
         "### Example prompts\n\n"
         '> "Create a storage-optimized vector search endpoint for my RAG app"\n\n'
-        '> "Query my document index for articles similar to \'machine learning best practices\'"\n\n'
+        '> "Query my document index for articles similar to machine learning best practices"\n\n'
         '> "Create a delta sync index on my knowledge_base table using the content column"\n'
     ),
     "apps-lakebase": (
@@ -185,6 +185,222 @@ MCP_PAGE_INTROS: dict[str, str] = {
         "### Example prompts\n\n"
         '> "Generate 10 HR policy PDFs and upload them to my raw_data volume"\n\n'
         '> "Create a single API authentication guide PDF with a question and guideline for RAG evaluation"\n'
+    ),
+}
+
+# Intro content prepended to each skill index page: overview + example prompts
+SKILL_INDEX_INTROS: dict[str, str] = {
+    # ── Data Engineering ──
+    "spark-declarative-pipelines": (
+        "Build medallion-architecture data pipelines on Databricks using streaming tables, "
+        "materialized views, Auto Loader, and change data capture — all with serverless compute.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a bronze-silver-gold pipeline that ingests JSON from cloud storage into a cleaned analytics table"\n\n'
+        '> "Add SCD Type 2 tracking to my customer dimension table"\n\n'
+        '> "Set up Auto Loader to incrementally process new Parquet files from my landing zone"\n'
+    ),
+    "custom-spark-data-sources": (
+        "Build custom Python data sources for Apache Spark using the PySpark DataSource API — "
+        "batch and streaming readers/writers for any external system.\n\n"
+        "### Example prompts\n\n"
+        '> "Build a Spark data source that reads from a REST API with pagination"\n\n'
+        '> "Create a streaming data source that tails a message queue"\n\n'
+        '> "Write a custom Spark connector for our internal database with credential forwarding"\n'
+    ),
+    "spark-structured-streaming": (
+        "Build production streaming pipelines with Kafka ingestion, stateful operations, "
+        "watermarks, multi-sink writes, and stream-to-stream joins.\n\n"
+        "### Example prompts\n\n"
+        '> "Set up a Kafka consumer that writes to Delta with exactly-once semantics"\n\n'
+        '> "Add a 10-minute watermark to my streaming aggregation for late-arriving events"\n\n'
+        '> "Join two Kafka streams on a common key with a 5-minute time window"\n'
+    ),
+    "zerobus-ingest": (
+        "Ingest data in near real-time directly into Delta tables via gRPC — no message bus required. "
+        "Build producers in Python, Java, Go, TypeScript, or Rust.\n\n"
+        "### Example prompts\n\n"
+        '> "Set up a Python Zerobus producer that writes events to my catalog.schema.events table"\n\n'
+        '> "Generate the Protobuf schema from my Unity Catalog table definition"\n\n'
+        '> "Build a Go ingestion client with retry logic and ACK handling"\n'
+    ),
+    # ── SQL & Analytics ──
+    "ai-functions": (
+        "Add AI directly to SQL and PySpark pipelines using built-in functions — classify, extract, "
+        "summarize, forecast, parse documents, and query models without managing endpoints.\n\n"
+        "### Example prompts\n\n"
+        '> "Classify customer feedback into positive, negative, and neutral using ai_classify"\n\n'
+        '> "Extract product names and prices from unstructured email text with ai_extract"\n\n'
+        '> "Build a RAG pipeline: parse PDFs, chunk, index, and query with ai_query"\n'
+    ),
+    "databricks-sql": (
+        "Advanced Databricks SQL features including SQL scripting, stored procedures, materialized views, "
+        "pipe syntax, geospatial functions, and AI-powered SQL.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a stored procedure that refreshes my reporting tables with error handling"\n\n'
+        '> "Rewrite this query using pipe syntax for better readability"\n\n'
+        '> "Add H3 geospatial indexing to my location data for proximity queries"\n'
+    ),
+    "genie-spaces": (
+        "Create Genie spaces for natural language SQL exploration — let users ask questions about their data "
+        "in plain English and get SQL-backed answers.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a Genie space for our sales team with the orders and customers tables"\n\n'
+        '> "Ask my Genie space: what was the month-over-month revenue trend last quarter?"\n\n'
+        '> "Export my Genie space and import it into the production workspace"\n'
+    ),
+    "metric-views": (
+        "Define governed business metrics in YAML and query them consistently across teams and tools "
+        "using Unity Catalog metric views.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a metric view for monthly recurring revenue with customer-segment dimensions"\n\n'
+        '> "Define a metric that calculates order fill rate with time-grain support"\n\n'
+        '> "Query my revenue metric view filtered by region and aggregated quarterly"\n'
+    ),
+    "aibi-dashboards": (
+        "Build and deploy AI/BI dashboards with widgets, filters, parameters, and cross-filtering — "
+        "all programmatically via the MCP server.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a dashboard showing monthly revenue trends with a region filter"\n\n'
+        '> "Add a counter widget showing total active users and a bar chart of signups by week"\n\n'
+        '> "Publish my dashboard and share it with the analytics team"\n'
+    ),
+    # ── AI & ML ──
+    "vector-search": (
+        "Build semantic search and RAG applications using Databricks Vector Search — create endpoints, "
+        "configure delta sync indexes, and query with filters and hybrid search.\n\n"
+        "### Example prompts\n\n"
+        '> "Build an end-to-end RAG pipeline: create a knowledge base table, index it, and query with hybrid search"\n\n'
+        '> "Create a storage-optimized vector search endpoint and delta sync index on my documents table"\n\n'
+        '> "Query my product index for items similar to this description, filtered by category"\n'
+    ),
+    "agent-bricks": (
+        "Create Knowledge Assistants for document Q&A, Genie Spaces for SQL exploration, "
+        "and Supervisor Agents for multi-agent orchestration on Databricks.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a Knowledge Assistant backed by my product documentation vector index"\n\n'
+        '> "Build a Supervisor Agent that routes between a SQL analyst and a docs assistant"\n\n'
+        '> "Set up a Genie-powered agent that answers questions about our sales data"\n'
+    ),
+    "mlflow-evaluation": (
+        "Evaluate AI agents with MLflow 3 — custom scorers, built-in judges for safety and correctness, "
+        "trace-based datasets, and automated prompt optimization with GEPA.\n\n"
+        "### Example prompts\n\n"
+        '> "Write an evaluation suite for my RAG agent with correctness and groundedness scorers"\n\n'
+        '> "Build an eval dataset from production traces"\n\n'
+        '> "Run optimize_prompts to improve the system prompt using GEPA"\n'
+    ),
+    "model-serving": (
+        "Deploy MLflow models and AI agents to production serving endpoints — classical ML, custom pyfunc, "
+        "ChatAgent, and ResponsesAgent patterns.\n\n"
+        "### Example prompts\n\n"
+        '> "Deploy my ChatAgent to a serving endpoint with GPU and auto-scaling"\n\n'
+        '> "Log and register my scikit-learn model, then create a serving endpoint for it"\n\n'
+        '> "Add Vector Search and UC Function tools to my agent before deploying"\n'
+    ),
+    "synthetic-data": (
+        "Generate realistic synthetic datasets at scale using Spark and Faker — "
+        "from thousands to millions of rows in Parquet, JSON, CSV, or Delta format.\n\n"
+        "### Example prompts\n\n"
+        '> "Generate 1 million rows of realistic e-commerce order data with products and customers"\n\n'
+        '> "Create a synthetic healthcare dataset with patient records, visits, and diagnoses"\n\n'
+        '> "Generate 10K rows of IoT sensor data with timestamps and anomalies, output as Delta"\n'
+    ),
+    "unstructured-pdf-generation": (
+        "Generate synthetic PDF documents for RAG testing — create realistic documents with companion "
+        "question/guideline pairs for retrieval evaluation.\n\n"
+        "### Example prompts\n\n"
+        '> "Generate 10 technical documentation PDFs for a cloud platform and upload to my volume"\n\n'
+        '> "Create HR policy PDFs covering employee handbook, leave policies, and benefits"\n'
+    ),
+    # ── Apps & Databases ──
+    "databricks-apps-python": (
+        "Build Python web applications on Databricks Apps using Dash, Streamlit, Gradio, Flask, "
+        "FastAPI, or Reflex — with OAuth, SQL warehouse access, and Lakebase connectivity.\n\n"
+        "### Example prompts\n\n"
+        '> "Build a Streamlit app that queries my sales data and shows interactive charts"\n\n'
+        '> "Create a FastAPI backend with OAuth that reads from a Lakebase database"\n\n'
+        '> "Deploy a Gradio app that lets users interact with my model serving endpoint"\n'
+    ),
+    "lakebase-autoscale": (
+        "Managed PostgreSQL on Databricks with autoscaling compute, scale-to-zero, "
+        "database branching for dev/test, and reverse ETL via synced tables.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a Lakebase Autoscaling project with a dev branch for testing"\n\n'
+        '> "Set up a synced table to reverse ETL my Delta analytics into Lakebase for the app"\n\n'
+        '> "Configure OAuth credentials for my Databricks App to connect to Lakebase"\n'
+    ),
+    "lakebase-provisioned": (
+        "Provisioned PostgreSQL on Databricks for OLTP workloads — fixed-capacity instances "
+        "with reverse ETL, OAuth authentication, and app integration.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a Lakebase Provisioned instance for transactional workloads"\n\n'
+        '> "Set up reverse ETL to sync my Delta reporting tables into Lakebase"\n\n'
+        '> "Connect my FastAPI app to Lakebase using OAuth credentials"\n'
+    ),
+    # ── Governance & Catalog ──
+    "iceberg-tables": (
+        "Work with Apache Iceberg tables on Databricks — Managed Iceberg, External Iceberg Reads, "
+        "Iceberg REST Catalog, Snowflake interop, and external engine access.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a Managed Iceberg table and enable External Iceberg Reads for cross-engine access"\n\n'
+        '> "Configure the Iceberg REST Catalog so Snowflake can read my Delta tables"\n\n'
+        '> "Set up credential vending for external Spark clusters to read my Iceberg tables"\n'
+    ),
+    "unity-catalog": (
+        "Query system tables for audit logs, lineage, and billing data. Manage volume file operations "
+        "and configure data profiling for quality monitoring.\n\n"
+        "### Example prompts\n\n"
+        '> "Show me who accessed my customer table in the last 30 days from system.access.audit"\n\n'
+        '> "Upload this CSV to /Volumes/catalog/schema/landing/ and query it"\n\n'
+        '> "Set up data profiling on my sales table to monitor for anomalies"\n'
+    ),
+    # ── DevOps & Config ──
+    "asset-bundles": (
+        "Create and configure Declarative Automation Bundles (DABs) for multi-environment deployments "
+        "with pipelines, jobs, dashboards, and alerts.\n\n"
+        "### Example prompts\n\n"
+        '> "Initialize a new DAB project with dev, staging, and prod environments"\n\n'
+        '> "Add an SDP pipeline and a nightly job to my existing bundle"\n\n'
+        '> "Configure permissions so the data-eng group can manage the bundle resources"\n'
+    ),
+    "jobs-orchestration": (
+        "Create multi-task Databricks Jobs with notebook, Python, SQL, and wheel tasks — "
+        "plus scheduling, triggers, notifications, and monitoring.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a nightly job that runs my ETL notebook then refreshes the dashboard"\n\n'
+        '> "Add a file arrival trigger that kicks off processing when new data lands"\n\n'
+        '> "Set up Slack notifications for job failures on my production pipeline"\n'
+    ),
+    "workspace-config": (
+        "Manage Databricks CLI authentication, workspace profiles, and connections. "
+        "Switch between workspaces and explore catalog objects.\n\n"
+        "### Example prompts\n\n"
+        '> "Set up the Databricks CLI with OAuth for my workspace"\n\n'
+        '> "Switch to my production workspace profile"\n\n'
+        '> "List all schemas in my analytics catalog"\n'
+    ),
+    "python-sdk": (
+        "Use the Databricks Python SDK, Databricks Connect, CLI, and REST API for "
+        "workspace automation, remote Spark sessions, and platform integration.\n\n"
+        "### Example prompts\n\n"
+        '> "List all clusters in my workspace using the Databricks SDK"\n\n'
+        '> "Set up Databricks Connect for remote Spark development from my laptop"\n\n'
+        '> "Create a Unity Catalog table programmatically using the Python SDK"\n'
+    ),
+    "databricks-docs": (
+        "Look up Databricks documentation using the llms.txt index — find authoritative references "
+        "for APIs, configurations, and platform capabilities.\n\n"
+        "### Example prompts\n\n"
+        '> "Find the docs for configuring Auto Loader schema evolution"\n\n'
+        '> "What are the supported instance types for serverless compute?"\n'
+    ),
+    "execution-compute": (
+        "Execute Python, SQL, Scala, and R code on Databricks compute — serverless or cluster-based. "
+        "Manage clusters and SQL warehouses.\n\n"
+        "### Example prompts\n\n"
+        '> "Run this Python script on serverless compute"\n\n'
+        '> "Create a single-node cluster with ML Runtime 15.4 for my training job"\n\n'
+        '> "Resize my SQL warehouse to handle the end-of-month reporting load"\n'
     ),
 }
 
@@ -566,6 +782,10 @@ def gen_skill_index(skill: Skill, slug: str) -> str:
     desc = sanitize_yaml(skill.description)
     body = escape_mdx_angles(strip_heading(skill.body))
 
+    intro = SKILL_INDEX_INTROS.get(slug, "")
+    if intro:
+        intro = f"{intro}\n---\n\n"
+
     return (
         f"---\n"
         f"title: {title}\n"
@@ -577,6 +797,7 @@ def gen_skill_index(skill: Skill, slug: str) -> str:
         f"    text: New\n"
         f"    variant: tip\n"
         f"---\n\n"
+        f"{intro}"
         f"{body}\n"
     )
 
@@ -590,6 +811,10 @@ def gen_skill_single(skill: Skill, slug: str) -> str:
         parts.append(f"\n---\n\n{child.body.strip()}")
     body = escape_mdx_angles("\n".join(parts))
 
+    intro = SKILL_INDEX_INTROS.get(slug, "")
+    if intro:
+        intro = f"{intro}\n---\n\n"
+
     return (
         f"---\n"
         f"title: {title}\n"
@@ -600,6 +825,7 @@ def gen_skill_single(skill: Skill, slug: str) -> str:
         f"    text: New\n"
         f"    variant: tip\n"
         f"---\n\n"
+        f"{intro}"
         f"{body}\n"
     )
 
