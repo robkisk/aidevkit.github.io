@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Iceberg Tables
-description: Apache Iceberg tables on Databricks — Managed Iceberg tables, External Iceberg Reads (fka Uniform), Compatibility Mode, Iceberg REST Catalog (IRC), Iceberg v...
+description: Create native Iceberg tables, enable UniForm for Delta-to-Iceberg reads, and connect external engines via the Iceberg REST Catalog.
 sidebar:
   label: Iceberg Tables
   order: 0
@@ -9,13 +10,133 @@ sidebar:
     variant: tip
 ---
 
-Work with Apache Iceberg tables on Databricks — Managed Iceberg, External Iceberg Reads, Iceberg REST Catalog, Snowflake interop, and external engine access.
+**Skill:** `databricks-iceberg`
 
-### Example prompts
+## What You Can Build
 
-> "Create a Managed Iceberg table and enable External Iceberg Reads for cross-engine access"
+You can create native Apache Iceberg tables that are fully readable and writable from both Databricks and external engines like Spark, PyIceberg, Snowflake, and Trino. You can also make existing Delta tables readable as Iceberg without migrating, and expose everything through the Iceberg REST Catalog so external tools connect with zero storage credential setup. Ask your AI coding assistant for the right pattern and it will pick between managed Iceberg, UniForm, or Compatibility Mode based on your requirements.
 
-> "Configure the Iceberg REST Catalog so Snowflake can read my Delta tables"
+## In Action
 
-> "Set up credential vending for external Spark clusters to read my Iceberg tables"
+> "Create a managed Iceberg table for order events partitioned by order_date. I need external Spark clusters and PyIceberg clients to read and write this table via the Iceberg REST Catalog."
 
+```sql
+-- Managed Iceberg table with cross-platform partitioning
+-- PARTITIONED BY is standard Iceberg DDL — works on EMR, OSS Spark, Trino, Flink
+CREATE TABLE analytics.silver.order_events (
+  order_id BIGINT,
+  customer_id STRING,
+  amount DECIMAL(10,2),
+  order_date DATE,
+  region STRING
+)
+USING ICEBERG
+PARTITIONED BY (order_date);
+
+-- Grant external engine access via the Iceberg REST Catalog
+GRANT EXTERNAL USE SCHEMA ON SCHEMA analytics.silver TO `data-platform`;
+
+-- Load data
+INSERT INTO analytics.silver.order_events
+SELECT * FROM analytics.bronze.raw_orders
+WHERE order_date >= '2025-01-01';
+
+-- Verify with time travel
+SELECT COUNT(*) FROM analytics.silver.order_events
+  TIMESTAMP AS OF '2025-06-01T00:00:00Z';
+```
+
+**Key decisions:**
+- **`PARTITIONED BY` over `CLUSTER BY`** &mdash; standard Iceberg DDL that any engine can create and read. Both produce the same Liquid Clustering layout internally, but `PARTITIONED BY` auto-disables deletion vectors and row tracking so you skip manual `TBLPROPERTIES`.
+- **`USING ICEBERG` (not Delta + UniForm)** &mdash; full read/write from external engines. UniForm is read-only externally.
+- **`EXTERNAL USE SCHEMA` grant** &mdash; separate from `SELECT`/`MODIFY`. Without it, external engines get `403 Forbidden` even with valid credentials.
+- **No Iceberg library install** &mdash; DBR includes built-in support. Adding one causes version conflicts.
+- **No `write.metadata.path` override** &mdash; Databricks manages metadata locations. Overriding causes corruption.
+
+## More Patterns
+
+### Make an existing Delta table readable as Iceberg
+
+> "Enable UniForm on my customers Delta table so Snowflake can read it without migrating off Delta."
+
+```sql
+-- Disable deletion vectors first (required for UniForm)
+ALTER TABLE analytics.gold.customers
+SET TBLPROPERTIES ('delta.enableDeletionVectors' = 'false');
+
+REORG TABLE analytics.gold.customers APPLY (PURGE);
+
+-- Enable UniForm
+ALTER TABLE analytics.gold.customers
+SET TBLPROPERTIES (
+  'delta.columnMapping.mode' = 'name',
+  'delta.enableIcebergCompatV2' = 'true',
+  'delta.universalFormat.enabledFormats' = 'iceberg'
+);
+```
+
+The table stays Delta internally &mdash; you keep CDF, streaming, and all Delta features. Iceberg metadata is generated asynchronously after each write, so external engines see new data within seconds. This is read-only from the Iceberg side; writes still go through Delta.
+
+### Connect PyIceberg from outside Databricks
+
+> "Read and append to my Iceberg table from a local Python script using PyIceberg."
+
+```python
+from pyiceberg.catalog import load_catalog
+import pyarrow as pa
+
+catalog = load_catalog(
+    "uc",
+    uri="https://my-workspace.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest",
+    warehouse="analytics",
+    token="dapi...",
+)
+
+# Read with pushdown filter
+tbl = catalog.load_table("silver.order_events")
+df = tbl.scan(
+    row_filter="order_date >= '2025-06-01'",
+    limit=1000,
+).to_pandas()
+
+# Append new rows — schema must match exactly
+arrow_schema = pa.schema([
+    pa.field("order_id", pa.int64()),
+    pa.field("customer_id", pa.string()),
+    pa.field("amount", pa.decimal128(10, 2)),
+    pa.field("order_date", pa.date32()),
+    pa.field("region", pa.string()),
+])
+new_rows = pa.Table.from_pylist(
+    [{"order_id": 9001, "customer_id": "C-42", "amount": 149.99,
+      "order_date": "2025-06-15", "region": "us-west"}],
+    schema=arrow_schema,
+)
+tbl.append(new_rows)
+```
+
+The `warehouse` parameter pins the UC catalog, so table identifiers are `schema.table` (not three-level). Cast Arrow types explicitly &mdash; PyArrow defaults to `int64`, but if the Iceberg schema uses `int32`, the append silently corrupts data.
+
+### Enable Compatibility Mode for streaming tables
+
+> "My SDP pipeline has streaming tables that Snowflake needs to read as Iceberg."
+
+```sql
+CREATE OR REFRESH STREAMING TABLE analytics.silver.click_events
+TBLPROPERTIES (
+  'delta.universalFormat.enabledFormats' = 'compatibility',
+  'delta.universalFormat.compatibility.location' = 's3://my-bucket/compat/click_events'
+)
+AS SELECT * FROM STREAM read_files(
+  '/Volumes/analytics/raw/clickstream/',
+  format => 'json'
+);
+```
+
+Compatibility Mode writes a separate Iceberg-format copy to the external location. Regular UniForm does not work on streaming tables or materialized views &mdash; this is the only option. Factor in the extra storage cost for large tables.
+
+## Watch Out For
+- **Installing an Iceberg library on DBR** &mdash; Databricks Runtime bundles Iceberg support. Adding a JAR causes class conflicts and cryptic errors. Remove any `iceberg-spark-runtime` dependencies from your cluster libraries.
+- **`CLUSTER BY` on Iceberg v2 without disabling DVs** &mdash; you get `MANAGED_ICEBERG_ATTEMPTED_TO_ENABLE_CLUSTERING_WITHOUT_DISABLING_DVS_OR_ROW_TRACKING`. Set `'delta.enableDeletionVectors' = false` and `'delta.enableRowTracking' = false` in TBLPROPERTIES, or use `PARTITIONED BY` which handles it automatically.
+- **Expression transforms in `PARTITIONED BY`** &mdash; `bucket()`, `years()`, `months()`, `days()`, `hours()` are not supported on managed Iceberg tables. Only plain column references work.
+- **UniForm async delay** &mdash; Iceberg metadata generation is asynchronous. External engines may not see the latest data for a few seconds after a Delta write. Check status with `DESCRIBE EXTENDED table_name` before blaming credentials.

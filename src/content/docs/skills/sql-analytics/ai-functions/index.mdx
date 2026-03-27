@@ -1,6 +1,7 @@
 ---
+curated: true
 title: AI Functions
-description: Use Databricks built-in AI Functions (ai_classify, ai_extract, ai_summarize, ai_mask, ai_translate, ai_fix_grammar, ai_gen, ai_analyze_sentiment, ai_similari...
+description: Add AI capabilities directly to SQL and PySpark pipelines using built-in functions for classification, extraction, summarization, and more.
 sidebar:
   label: AI Functions
   order: 0
@@ -9,13 +10,93 @@ sidebar:
     variant: tip
 ---
 
-Add AI directly to SQL and PySpark pipelines using built-in functions — classify, extract, summarize, forecast, parse documents, and query models without managing endpoints.
+**Skill:** `databricks-ai-functions`
 
-### Example prompts
+## What You Can Build
 
-> "Classify customer feedback into positive, negative, and neutral using ai_classify"
+You can enrich any table with AI-powered classification, entity extraction, sentiment analysis, PII redaction, and summarization using built-in SQL functions. No model endpoints to deploy, no API keys to manage. Ask your AI coding assistant to add AI Functions to your pipeline and it will wire up the right function for each task, with batch-optimized patterns that scale to millions of rows.
 
-> "Extract product names and prices from unstructured email text with ai_extract"
+## In Action
 
-> "Build a RAG pipeline: parse PDFs, chunk, index, and query with ai_query"
+> "Classify support tickets by priority, extract the product name and error code, and score sentiment -- all in one query against our support\_tickets table."
 
+```sql
+SELECT
+    ticket_id,
+    ticket_text,
+    ai_classify(ticket_text, ARRAY('urgent', 'not urgent', 'spam'))   AS priority,
+    ai_extract(ticket_text, ARRAY('product', 'error_code', 'date'))   AS entities,
+    ai_analyze_sentiment(ticket_text)                                  AS sentiment
+FROM support_tickets;
+```
+
+**Key decisions:**
+- **Task-specific functions over `ai_query`** -- `ai_classify`, `ai_extract`, and `ai_analyze_sentiment` are purpose-built and faster. Reserve `ai_query` for complex JSON schemas or custom model endpoints.
+- **Multiple functions in one SELECT** -- each function call is an independent LLM invocation. Chaining them in one query avoids multiple table scans while keeping each operation isolated.
+- **`ai_extract` returns a STRUCT** -- access nested fields with dot notation: `entities.product`, `entities.error_code`. No JSON parsing needed.
+- **`ARRAY()` for labels and fields** -- both `ai_classify` and `ai_extract` accept SQL arrays. Keep labels clear and mutually exclusive for reliable results.
+
+## More Patterns
+
+### PII redaction before storage
+> "Mask all personally identifiable information in raw customer messages before writing to our cleaned table."
+
+```python
+from pyspark.sql.functions import expr
+
+df_clean = (
+    spark.table("raw_messages")
+    .withColumn(
+        "message_safe",
+        expr("ai_mask(message, array('person', 'email', 'phone', 'address'))")
+    )
+)
+df_clean.write.format("delta").mode("append").saveAsTable("catalog.schema.messages_safe")
+```
+
+`ai_mask` replaces detected PII with category placeholders like `[PERSON]` and `[EMAIL]`. Run it as a PySpark transformation in your silver layer so downstream tables never contain raw PII. The categories you pass in the array control what gets redacted -- omit a category and that type passes through.
+
+### Document ingestion with enrichment
+> "Parse PDFs from a Volume, then extract vendor name, date, and amount from each document."
+
+```python
+from pyspark.sql.functions import expr
+
+df = (
+    spark.read.format("binaryFile")
+    .load("/Volumes/catalog/schema/landing/documents/")
+    .withColumn("parsed", expr("ai_parse_document(content)"))
+    .selectExpr(
+        "path",
+        "parsed:pages[*].elements[*].content AS text_blocks",
+        "parsed:error AS parse_error"
+    )
+    .filter("parse_error IS NULL")
+    .withColumn("summary",  expr("ai_summarize(text_blocks, 50)"))
+    .withColumn("entities", expr("ai_extract(text_blocks, array('date', 'amount', 'vendor'))"))
+)
+```
+
+`ai_parse_document` requires DBR 17.1+. It handles PDFs, Word docs, and images natively. Chain it with task-specific functions for a complete document processing pipeline without any external libraries.
+
+### Time series forecasting
+> "Forecast daily sales through end of 2026 using our historical daily\_sales table."
+
+```sql
+SELECT *
+FROM ai_forecast(
+    observed  => TABLE(SELECT date, sales FROM daily_sales),
+    horizon   => '2026-12-31',
+    time_col  => 'date',
+    value_col => 'sales'
+);
+-- Returns: date, sales_forecast, sales_upper, sales_lower
+```
+
+`ai_forecast` is a table-valued function -- it returns rows, not a column. It requires a Pro or Serverless SQL warehouse. The output includes confidence bounds (`sales_upper`, `sales_lower`) so you can build uncertainty-aware dashboards without a separate modeling step.
+
+## Watch Out For
+- **Reaching for `ai_query` first** -- it is the general-purpose fallback. If a task-specific function exists (`ai_classify`, `ai_extract`, `ai_summarize`, etc.), use it. Task-specific functions are faster and produce more consistent output.
+- **NULL inputs returning NULL** -- every AI function returns NULL when the input column is NULL. Filter with `WHERE col IS NOT NULL` before calling, or your results will be silently incomplete.
+- **Missing `LIMIT` during development** -- each row is an LLM call. A bare `SELECT ai_classify(...) FROM big_table` with 10M rows will run for hours and cost accordingly. Always prototype with `LIMIT 100`.
+- **`ai_translate` language support** -- only English, German, French, Italian, Portuguese, Hindi, Spanish, and Thai. For other languages, fall back to `ai_query` with a multilingual model.

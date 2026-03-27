@@ -1,21 +1,167 @@
 ---
-title: Mlflow Evaluation
-description: "MLflow 3 GenAI agent evaluation. Use when writing mlflow.genai.evaluate() code, creating @scorer functions, using built-in scorers (Guidelines, Correctness, ..."
+curated: true
+title: MLflow Evaluation
+description: Evaluate AI agents with MLflow 3 scorers, build datasets from traces, align judges with domain experts, and optimize prompts with GEPA.
 sidebar:
-  label: Mlflow Evaluation
+  label: MLflow Evaluation
   order: 0
   badge:
     text: New
     variant: tip
 ---
 
-Evaluate AI agents with MLflow 3 — custom scorers, built-in judges for safety and correctness, trace-based datasets, and automated prompt optimization with GEPA.
+**Skill:** `databricks-mlflow-evaluation`
 
-### Example prompts
+## What You Can Build
 
-> "Write an evaluation suite for my RAG agent with correctness and groundedness scorers"
+You can evaluate any AI agent end-to-end — run built-in scorers for safety, correctness, and retrieval groundedness, write custom `@scorer` functions for domain-specific metrics, build evaluation datasets from production traces, align LLM judges with domain expert feedback via MemAlign, and automatically improve system prompts with GEPA optimization. Your AI coding assistant generates the evaluation harness, scorer definitions, and optimization loop in one pass.
 
-> "Build an eval dataset from production traces"
+## In Action
 
-> "Run optimize_prompts to improve the system prompt using GEPA"
+> "Write an evaluation suite for my RAG agent that checks correctness against expected answers and retrieval groundedness, then run it on a test dataset."
 
+```python
+import mlflow
+from mlflow.genai.scorers import Correctness, RetrievalGroundedness
+
+# Define the predict function — receives unpacked kwargs, not a dict
+def predict_fn(query: str) -> str:
+    response = my_rag_agent.invoke(query)
+    return response["output"]
+
+# Build evaluation dataset — nested input structure is required
+eval_data = [
+    {
+        "inputs": {"query": "What is the refund policy?"},
+        "expectations": {"expected_response": "Full refund within 30 days of purchase."}
+    },
+    {
+        "inputs": {"query": "How do I reset my password?"},
+        "expectations": {"expected_response": "Go to Settings > Security > Reset Password."}
+    },
+    {
+        "inputs": {"query": "What regions are supported?"},
+        "expectations": {"expected_response": "US, EU, and APAC regions are supported."}
+    },
+]
+
+# Run evaluation with built-in scorers
+results = mlflow.genai.evaluate(
+    data=eval_data,
+    predict_fn=predict_fn,
+    scorers=[Correctness(), RetrievalGroundedness()]
+)
+
+print(results.metrics)
+# {'correctness/mean': 0.85, 'retrieval_groundedness/mean': 0.92}
+```
+
+**Key decisions:**
+- **`mlflow.genai.evaluate()`** — this is the MLflow 3 API. Using the legacy `mlflow.evaluate()` silently ignores GenAI scorers and produces misleading results.
+- **Nested `\{"inputs": \{"query": "..."\}\}`** — the data format is non-negotiable. Flat structures cause cryptic `KeyError` failures.
+- **`predict_fn` receives `**kwargs`** — the function is called with unpacked keyword arguments (`query="..."`) not a dict. Expecting a dict parameter is the most common integration bug.
+- **Correctness + RetrievalGroundedness** — Correctness compares agent output to expected answers. RetrievalGroundedness checks whether retrieved context actually supports the generated response. Use both for RAG.
+- **Named evaluation runs** — add `run_name="baseline-v1"` to tag runs for A/B comparison later.
+
+## More Patterns
+
+### Custom scorer for domain-specific metrics
+> "Write a scorer that checks whether my agent's SQL output is valid and executable."
+
+```python
+from mlflow.genai.scorers import scorer
+
+@scorer
+def sql_validity(outputs: str) -> dict:
+    """Check if the generated SQL is syntactically valid."""
+    import sqlparse
+
+    parsed = sqlparse.parse(outputs)
+    is_valid = len(parsed) > 0 and parsed[0].get_type() is not None
+
+    return {
+        "sql_is_valid": is_valid,
+        "statement_count": len(parsed),
+    }
+
+results = mlflow.genai.evaluate(
+    data=eval_data,
+    predict_fn=predict_fn,
+    scorers=[sql_validity]
+)
+```
+
+Custom scorers receive the agent's output and return a dict of metric names to values. You can combine built-in and custom scorers in the same `evaluate()` call. For LLM-as-judge scorers, use `make_judge()` instead.
+
+### Build evaluation dataset from production traces
+> "Pull the last week of production traces and build an eval dataset from the ones tagged as high-quality."
+
+```python
+import mlflow
+
+# Search traces with tag filters
+traces = mlflow.search_traces(
+    experiment_names=["production-agent"],
+    filter_string="tags.quality = 'high'",
+    max_results=200
+)
+
+# Convert traces to evaluation dataset format
+eval_data = []
+for trace in traces:
+    eval_data.append({
+        "inputs": {"query": trace.data.request["query"]},
+        "expectations": {
+            "expected_response": trace.data.response["output"]
+        }
+    })
+
+# Use as baseline for regression testing
+results = mlflow.genai.evaluate(
+    data=eval_data,
+    predict_fn=predict_fn,
+    scorers=[Correctness()],
+    run_name="regression-check-v2"
+)
+```
+
+Production traces are the best source of realistic test cases. Tag high-quality traces in production, then extract them into evaluation datasets. This creates a feedback loop: production behavior drives the test suite that gates the next deployment.
+
+### Align judges with domain expert feedback via MemAlign
+> "My built-in Correctness scorer disagrees with our domain experts. Align it using labeled examples."
+
+```python
+from mlflow.genai.judges import make_judge
+from mlflow.genai.align import align
+
+# Create a base judge
+judge = make_judge(
+    name="domain_correctness",
+    judge_prompt="Evaluate whether the response correctly answers the question...",
+    feedback_value_type="float"
+)
+
+# After domain experts complete a labeling session in the UI,
+# align the judge to match their preferences
+aligned_judge = align(
+    judge=judge,
+    labeling_session_name="domain-expert-review-q1",
+    embedding_model="databricks-gte-large-en"
+)
+
+# Re-evaluate with the aligned judge as baseline
+results = mlflow.genai.evaluate(
+    data=eval_data,
+    predict_fn=predict_fn,
+    scorers=[aligned_judge],
+    run_name="aligned-baseline"
+)
+```
+
+MemAlign uses episodic memory from labeled examples to adjust judge scoring. Aligned judges typically produce lower scores than unaligned ones — this means the judge is now more accurate, not that the agent regressed. The label schema `name` must match the judge `name` used in `evaluate()`.
+
+## Watch Out For
+- **`mlflow.evaluate()` vs `mlflow.genai.evaluate()`** — the legacy API silently drops GenAI scorers. Always use `mlflow.genai.evaluate()`.
+- **Flat data structure** — `\{"query": "..."\}` instead of `\{"inputs": \{"query": "..."\}\}` causes `KeyError`. The nested format is mandatory.
+- **Aligned judge scores drop** — after MemAlign, scores often decrease. This is expected calibration, not agent regression. Compare agent versions using the same aligned judge.
+- **GEPA optimization dataset needs expectations** — `optimize_prompts()` requires both `inputs` and `expectations` per record. A plain eval dataset without expectations will fail. Requires MLflow &gt;= 3.5.0.

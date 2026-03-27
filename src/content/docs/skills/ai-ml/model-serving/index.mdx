@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Model Serving
-description: Deploy and query Databricks Model Serving endpoints. Use when (1) deploying MLflow models or AI agents to endpoints, (2) creating ChatAgent/ResponsesAgent ag...
+description: Deploy MLflow models and AI agents to scalable REST endpoints on Databricks with classical ML, custom pyfunc, and ResponsesAgent patterns.
 sidebar:
   label: Model Serving
   order: 0
@@ -9,13 +10,151 @@ sidebar:
     variant: tip
 ---
 
-Deploy MLflow models and AI agents to production serving endpoints — classical ML, custom pyfunc, ChatAgent, and ResponsesAgent patterns.
+**Skill:** `databricks-model-serving`
 
-### Example prompts
+## What You Can Build
 
-> "Deploy my ChatAgent to a serving endpoint with GPU and auto-scaling"
+You can deploy any MLflow model or AI agent to a production REST API endpoint — classical ML classifiers, custom pyfunc models with preprocessing logic, and GenAI agents built with ResponsesAgent or LangGraph. Your AI coding assistant generates the agent code, logs it to Unity Catalog, deploys via async jobs, and wires up tool integrations like Vector Search and UC Functions in a single workflow.
 
-> "Log and register my scikit-learn model, then create a serving endpoint for it"
+## In Action
 
-> "Add Vector Search and UC Function tools to my agent before deploying"
+> "Create a ResponsesAgent with a Vector Search retriever tool, log it to Unity Catalog, and deploy to a serving endpoint."
 
+```python
+import mlflow
+from mlflow.pyfunc import ResponsesAgent, ResponsesAgentResponse
+from databricks_langchain.vector_search_retriever_tool import VectorSearchRetrieverTool
+
+class SupportAgent(ResponsesAgent):
+    def __init__(self):
+        self.retriever = VectorSearchRetrieverTool(
+            index_name="catalog.schema.support_docs_index",
+            num_results=5,
+            columns=["doc_id", "content", "category"],
+        )
+
+    @property
+    def tools(self):
+        return [self.retriever]
+
+    def call(self, messages, context=None, custom_inputs=None):
+        # Your agent logic here — call the LLM with tools
+        response = self._call_llm(messages)
+        return ResponsesAgentResponse(
+            output=[self.create_text_output_item(
+                text=response.content,
+                id="msg_1"
+            )]
+        )
+
+# Log to Unity Catalog with resource declarations
+mlflow.pyfunc.log_model(
+    artifact_path="agent",
+    python_model=SupportAgent(),
+    registered_model_name="catalog.models.support_agent",
+    pip_requirements=[
+        "mlflow==3.6.0",
+        "databricks-langchain",
+        "databricks-agents",
+    ],
+    resources=[
+        {"serving_endpoint": "databricks-meta-llama-3-3-70b-instruct"},
+        {"vector_search_index": "catalog.schema.support_docs_index"},
+    ]
+)
+```
+
+**Key decisions:**
+- **ResponsesAgent over ChatAgent** — ResponsesAgent is the current MLflow 3 pattern. It provides `create_text_output_item()` and other helper methods for structured output. ChatAgent is legacy.
+- **`self.create_text_output_item(text, id)`** — this is the only correct way to build output items. Raw dicts like `\{"role": "assistant", "content": "..."\}` cause `Invalid output format` errors at serving time.
+- **`resources` in `log_model()`** — declares the endpoints and indexes the agent needs. Databricks auto-configures authentication passthrough so the deployed endpoint can access these resources without manual credential setup.
+- **`pip_requirements` with exact versions** — lock every dependency. The serving container installs from scratch, and version drift between logging and serving causes `ModuleNotFoundError` at query time.
+- **Job-based deployment** — `log_model()` registers the model, but deployment to a serving endpoint should use an async job to avoid timeouts. The endpoint takes ~15 minutes to provision.
+
+## More Patterns
+
+### Classical ML with autolog
+> "Train a scikit-learn model and register it to Unity Catalog in one step."
+
+```python
+import mlflow
+import mlflow.sklearn
+from sklearn.ensemble import GradientBoostingClassifier
+
+mlflow.sklearn.autolog(
+    log_input_examples=True,
+    registered_model_name="catalog.models.churn_classifier"
+)
+
+model = GradientBoostingClassifier(n_estimators=200, max_depth=5)
+model.fit(X_train, y_train)
+
+# Model is logged and registered automatically — deploy via UI or SDK
+```
+
+Autolog captures parameters, metrics, input examples, and the model artifact. Setting `registered_model_name` auto-registers to Unity Catalog. The input example becomes the serving endpoint's schema documentation.
+
+### Query a deployed endpoint
+> "Send a chat request to my deployed agent endpoint."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Chat/Agent endpoint
+response = w.serving_endpoints.query(
+    name="support-agent-endpoint",
+    messages=[
+        {"role": "user", "content": "How do I reset my API key?"}
+    ],
+    max_tokens=500
+)
+print(response.choices[0].message.content)
+
+# Classical ML endpoint
+prediction = w.serving_endpoints.query(
+    name="churn-classifier-endpoint",
+    dataframe_records=[
+        {"tenure_months": 24, "monthly_spend": 89.50, "support_tickets": 3}
+    ]
+)
+print(prediction.predictions)
+```
+
+Chat endpoints accept `messages` in the standard OpenAI format. ML endpoints accept `dataframe_records` as a list of row dicts matching the model's input schema.
+
+### Agent with UC Function tools
+> "Add a Unity Catalog function as a tool my agent can call."
+
+```python
+from databricks_langchain import UCFunctionTool
+
+class AnalyticsAgent(ResponsesAgent):
+    def __init__(self):
+        self.tools_list = [
+            UCFunctionTool(function_name="catalog.schema.calculate_churn_risk"),
+            UCFunctionTool(function_name="catalog.schema.get_customer_profile"),
+        ]
+
+    @property
+    def tools(self):
+        return self.tools_list
+
+    def call(self, messages, context=None, custom_inputs=None):
+        response = self._call_llm_with_tools(messages, self.tools_list)
+        return ResponsesAgentResponse(
+            output=[self.create_text_output_item(
+                text=response.content,
+                id="msg_1"
+            )]
+        )
+```
+
+UC Functions expose any SQL or Python function registered in Unity Catalog as a callable tool. The agent gets the function's signature and docstring for context. Grant `EXECUTE` privilege to the agent's service principal.
+
+## Watch Out For
+- **Raw dicts in ResponsesAgent output** — `\{"role": "assistant", "content": "..."\}` fails at serving time. Always use `self.create_text_output_item(text, id)`, `self.create_function_call_item()`, or `self.create_function_call_output_item()`.
+- **Synchronous deployment timeouts** — endpoint provisioning takes ~15 minutes. Use job-based async deployment instead of blocking SDK calls. Poll with `get_serving_endpoint_status()` until state is `READY`.
+- **Missing `resources` in `log_model()`** — without declaring dependent endpoints and indexes, the deployed agent gets authentication errors when trying to call Foundation Model APIs or Vector Search.
+- **DBR version mismatch** — GenAI agent packages require DBR 16.1+. Logging a model on an older runtime and serving on a newer one (or vice versa) causes import failures. Pin your runtime version.

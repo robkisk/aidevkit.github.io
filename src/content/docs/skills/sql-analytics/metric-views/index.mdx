@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Metric Views
-description: "Unity Catalog metric views: define, create, query, and manage governed business metrics in YAML. Use when building standardized KPIs, revenue metrics, order ..."
+description: Define governed business metrics in YAML that query flexibly across teams, dashboards, and Genie spaces.
 sidebar:
   label: Metric Views
   order: 0
@@ -9,13 +10,142 @@ sidebar:
     variant: tip
 ---
 
-Define governed business metrics in YAML and query them consistently across teams and tools using Unity Catalog metric views.
+**Skill:** `databricks-metric-views`
 
-### Example prompts
+## What You Can Build
 
-> "Create a metric view for monthly recurring revenue with customer-segment dimensions"
+You can define reusable business metrics -- revenue, order counts, conversion rates -- as governed Unity Catalog objects that separate measure definitions from dimension groupings. Teams query the same metric view with different GROUP BY dimensions and always get consistent results. Ask your AI coding assistant to create a metric view and it will generate the YAML definition, wire up joins for star schemas, and produce queries using the `MEASURE()` function.
 
-> "Define a metric that calculates order fill rate with time-grain support"
+## In Action
 
-> "Query my revenue metric view filtered by region and aggregated quarterly"
+> "Create a metric view for orders analytics with monthly dimensions, status breakdowns, and measures for total revenue, order count, and revenue per customer."
 
+```sql
+CREATE OR REPLACE VIEW catalog.schema.orders_metrics
+WITH METRICS
+LANGUAGE YAML
+AS $$
+  version: 1.1
+  comment: "Orders KPIs for sales analysis"
+  source: catalog.schema.orders
+  filter: order_date > '2020-01-01'
+  dimensions:
+    - name: Order Month
+      expr: DATE_TRUNC('MONTH', order_date)
+      comment: "Month of order"
+    - name: Order Status
+      expr: CASE
+        WHEN status = 'O' THEN 'Open'
+        WHEN status = 'P' THEN 'Processing'
+        WHEN status = 'F' THEN 'Fulfilled'
+        END
+      comment: "Human-readable order status"
+  measures:
+    - name: Order Count
+      expr: COUNT(1)
+    - name: Total Revenue
+      expr: SUM(total_price)
+      comment: "Sum of total price"
+    - name: Revenue per Customer
+      expr: SUM(total_price) / COUNT(DISTINCT customer_id)
+      comment: "Average revenue per unique customer"
+$$
+```
+
+**Key decisions:**
+- **YAML inside SQL** -- the `$$` block contains the full metric definition. This keeps metrics version-controlled alongside your other DDL while giving you a declarative syntax for dimensions and measures.
+- **Ratio measure (`Revenue per Customer`)** -- metric views handle re-aggregation of ratios correctly. A standard view with `SUM(x)/COUNT(y)` would produce wrong results when further grouped by a dimension. Metric views compute the ratio at query time from the underlying aggregates.
+- **`filter` for global scope** -- the top-level filter applies to every query against this view. Use it for data quality fences (exclude historical junk) rather than business logic that varies by consumer.
+- **Dimension expressions, not raw columns** -- `DATE_TRUNC` and `CASE` in the dimension definition mean consumers never write transformation logic. They just `GROUP BY \`Order Month\`` and get consistent bucketing.
+- **`version: 1.1`** -- requires DBR 17.2+. This version adds `comment` fields on dimensions and measures, which surface in Catalog Explorer and Genie.
+
+## More Patterns
+
+### Query metrics with flexible dimensions
+> "Show me total revenue and order count by month for 2024, broken down by status."
+
+```sql
+SELECT
+  `Order Month`,
+  `Order Status`,
+  MEASURE(`Total Revenue`) AS total_revenue,
+  MEASURE(`Order Count`) AS order_count
+FROM catalog.schema.orders_metrics
+WHERE extract(year FROM `Order Month`) = 2024
+GROUP BY ALL
+ORDER BY ALL
+```
+
+Every measure reference must be wrapped in `MEASURE()`. `SELECT *` is not supported -- you explicitly choose which dimensions and measures to include. This is by design: it forces consumers to be intentional about what they aggregate, preventing accidental cross-joins on high-cardinality dimensions.
+
+### Star schema with joins
+> "Create a revenue metric view that joins orders with the customer dimension for region-based analysis."
+
+```sql
+CREATE OR REPLACE VIEW catalog.schema.revenue_by_region
+WITH METRICS
+LANGUAGE YAML
+AS $$
+  version: 1.1
+  comment: "Revenue metrics with customer region dimensions"
+  source: catalog.schema.fact_orders
+  dimensions:
+    - name: Region
+      expr: customers.region
+    - name: Order Month
+      expr: DATE_TRUNC('MONTH', order_date)
+  measures:
+    - name: Total Revenue
+      expr: SUM(amount)
+    - name: Avg Order Value
+      expr: SUM(amount) / COUNT(1)
+  joins:
+    - name: customers
+      source: catalog.schema.dim_customers
+      on: fact_orders.customer_id = customers.customer_id
+$$
+```
+
+Joins are declared in the YAML, not at query time. The metric view engine resolves them when `MEASURE()` is evaluated, so consumers never write JOIN clauses. This ensures every team uses the same join path and the same grain.
+
+### MCP-based metric management
+> "Create the orders metric view through the MCP tool and then query it programmatically."
+
+```python
+# Create
+manage_metric_views(
+    action="create",
+    full_name="catalog.schema.orders_metrics",
+    source="catalog.schema.orders",
+    or_replace=True,
+    comment="Orders KPIs for sales analysis",
+    filter_expr="order_date > '2020-01-01'",
+    dimensions=[
+        \{"name": "Order Month", "expr": "DATE_TRUNC('MONTH', order_date)"\},
+        \{"name": "Order Status", "expr": "status"\},
+    ],
+    measures=[
+        \{"name": "Order Count", "expr": "COUNT(1)"\},
+        \{"name": "Total Revenue", "expr": "SUM(total_price)"\},
+    ],
+)
+
+# Query
+manage_metric_views(
+    action="query",
+    full_name="catalog.schema.orders_metrics",
+    query_measures=["Total Revenue", "Order Count"],
+    query_dimensions=["Order Month"],
+    where="extract(year FROM `Order Month`) = 2024",
+    order_by="ALL",
+    limit=100,
+)
+```
+
+The MCP tool handles YAML generation under the hood. Use `action="describe"` to inspect an existing metric view's full definition, and `action="grant"` to share it with other teams.
+
+## Watch Out For
+- **`SELECT *` on a metric view** -- it will fail. You must explicitly list dimensions and wrap measures in `MEASURE()`. This is intentional: metric views enforce explicit aggregation to prevent incorrect results.
+- **Backtick quoting for spaced names** -- dimension and measure names with spaces (like `Order Month`) must be backtick-quoted in queries. Missing backticks produce a "cannot resolve column" error.
+- **Joins at query time** -- all joins must be declared in the YAML definition. Adding a `JOIN` clause in your `SELECT` query against a metric view will fail. Move the join into the YAML `joins` block.
+- **DBR version mismatch** -- YAML `version: 1.1` requires DBR 17.2+. Older runtimes support `version: 0.1` but without comments, and the syntax differs. Check your cluster runtime before debugging YAML parse errors.

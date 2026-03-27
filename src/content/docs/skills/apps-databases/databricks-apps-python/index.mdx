@@ -1,21 +1,185 @@
 ---
-title: Databricks Apps Python
-description: Builds Python-based Databricks applications using Dash, Streamlit, Gradio, Flask, FastAPI, or Reflex. Handles OAuth authorization (app and user auth), app re...
+curated: true
+title: Databricks Apps (Python)
+description: Ship Python web apps on Databricks with OAuth, SQL warehouse queries, Lakebase persistence, and model serving — using Streamlit, Dash, FastAPI, or Gradio.
 sidebar:
-  label: Databricks Apps Python
+  label: Databricks Apps (Python)
   order: 0
   badge:
     text: New
     variant: tip
 ---
 
-Build Python web applications on Databricks Apps using Dash, Streamlit, Gradio, Flask, FastAPI, or Reflex — with OAuth, SQL warehouse access, and Lakebase connectivity.
+**Skill:** `databricks-app-python`
 
-### Example prompts
+## What You Can Build
 
-> "Build a Streamlit app that queries my sales data and shows interactive charts"
+You can deploy production Python web apps directly on the Databricks platform — dashboards with Dash, prototypes with Streamlit, ML demos with Gradio, or REST APIs with FastAPI. Each app gets OAuth authentication, resource bindings for SQL warehouses and Lakebase, and access to model serving endpoints. Ask your AI coding assistant for a specific framework and use case and it will generate the app code, `app.yaml` config, and deployment commands in one pass.
 
-> "Create a FastAPI backend with OAuth that reads from a Lakebase database"
+## In Action
 
-> "Deploy a Gradio app that lets users interact with my model serving endpoint"
+> "Build a Streamlit app that queries customer order data from a SQL warehouse and displays an interactive revenue dashboard with filters for date range and region."
 
+```python
+import os
+import streamlit as st
+from databricks.sdk.core import Config
+from databricks import sql
+
+st.set_page_config(page_title="Revenue Dashboard", layout="wide")
+
+@st.cache_resource
+def get_connection():
+    cfg = Config()
+    return sql.connect(
+        server_hostname=cfg.host,
+        http_path=f"/sql/1.0/warehouses/{os.getenv('DATABRICKS_WAREHOUSE_ID')}",
+        credentials_provider=lambda: cfg.authenticate,
+    )
+
+conn = get_connection()
+
+col1, col2 = st.columns(2)
+date_range = col1.date_input("Date range", value=[])
+region = col2.selectbox("Region", ["All", "NA", "EMEA", "APAC"])
+
+query = """
+    SELECT order_date, region, SUM(amount) AS revenue
+    FROM catalog.schema.orders
+    WHERE order_date BETWEEN :start AND :end
+"""
+params = {"start": date_range[0], "end": date_range[1]}
+if region != "All":
+    query += " AND region = :region"
+    params["region"] = region
+query += " GROUP BY order_date, region ORDER BY order_date"
+
+with conn.cursor() as cur:
+    cur.execute(query, params)
+    df = cur.fetchall_arrow().to_pandas()
+
+st.line_chart(df, x="order_date", y="revenue", color="region")
+```
+
+**Key decisions:**
+- **`@st.cache_resource` on the connection** — Streamlit reruns the script on every interaction. Without caching, you open a new SQL connection per click and exhaust the pool within minutes.
+- **`Config()` for authentication** — auto-detects `DATABRICKS_CLIENT_ID`/`DATABRICKS_CLIENT_SECRET` from the service principal injected at deploy time. Never hardcode tokens.
+- **`DATABRICKS_WAREHOUSE_ID` from environment** — declared via `valueFrom` in `app.yaml` so the warehouse ID isn't baked into code. Swap warehouses by changing the resource binding, not the app.
+- **`st.set_page_config()` as the first call** — Streamlit throws a hard error if any other `st.*` call runs before this.
+- **Parameterized SQL** — the Databricks SQL connector supports `:name` parameters, which prevents injection and improves warehouse query caching.
+
+## More Patterns
+
+### FastAPI backend with Lakebase persistence
+
+> "Create a FastAPI app that stores and retrieves feature flags in Lakebase, with OAuth for service-to-service auth."
+
+```python
+import os
+import uuid
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from pydantic import BaseModel
+import psycopg
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.core import Config
+
+w = WorkspaceClient()
+INSTANCE = os.getenv("LAKEBASE_INSTANCE_NAME")
+
+def get_connection():
+    instance = w.database.get_database_instance(name=INSTANCE)
+    cred = w.database.generate_database_credential(
+        request_id=str(uuid.uuid4()),
+        instance_names=[INSTANCE],
+    )
+    return psycopg.connect(
+        host=instance.read_write_dns,
+        dbname=os.getenv("LAKEBASE_DATABASE_NAME", "postgres"),
+        user=w.current_user.me().user_name,
+        password=cred.token,
+        sslmode="require",
+    )
+
+class Flag(BaseModel):
+    name: str
+    enabled: bool = False
+
+app = FastAPI()
+
+@app.post("/flags")
+def create_flag(flag: Flag):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO flags (name, enabled) VALUES (%s, %s) RETURNING id",
+                (flag.name, flag.enabled),
+            )
+            return {"id": cur.fetchone()[0]}
+```
+
+Lakebase requires `psycopg` in `requirements.txt` -- it is not pre-installed. Tokens expire after 1 hour, so production apps need a refresh loop or fresh credentials per request. For low-traffic APIs, generating a token per request is simpler than managing background refresh.
+
+### Gradio ML demo with model serving
+
+> "Build a Gradio chat app that sends user messages to my model serving endpoint and streams responses back."
+
+```python
+import os
+import gradio as gr
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
+
+w = WorkspaceClient()
+endpoint = os.getenv("SERVING_ENDPOINT")
+
+def chat(message, history):
+    messages = [
+        ChatMessage(role=ChatMessageRole.SYSTEM, content="You are a helpful assistant.")
+    ]
+    for user_msg, bot_msg in history:
+        messages.append(ChatMessage(role=ChatMessageRole.USER, content=user_msg))
+        messages.append(ChatMessage(role=ChatMessageRole.ASSISTANT, content=bot_msg))
+    messages.append(ChatMessage(role=ChatMessageRole.USER, content=message))
+
+    response = w.serving_endpoints.query(
+        name=endpoint,
+        messages=messages,
+    )
+    return response.choices[0].message.content
+
+gr.ChatInterface(fn=chat, title="Ask the Model").launch(
+    server_name="0.0.0.0", server_port=int(os.getenv("DATABRICKS_APP_PORT", "8000"))
+)
+```
+
+The `WorkspaceClient()` handles service principal auth automatically. Bind the serving endpoint name through `app.yaml` resources so the same app code works across dev and production endpoints.
+
+### app.yaml resource bindings
+
+> "Configure my app to connect to a SQL warehouse and a Lakebase instance with proper resource declarations."
+
+```yaml
+command: ["streamlit", "run", "app.py"]
+resources:
+  - name: sql-warehouse
+    sql_warehouse:
+      id: ${DATABRICKS_WAREHOUSE_ID}
+      permission: CAN_USE
+  - name: lakebase-db
+    database:
+      instance: my-lakebase-instance
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+  - name: LAKEBASE_INSTANCE_NAME
+    value: my-lakebase-instance
+```
+
+Every external resource -- warehouses, Lakebase instances, serving endpoints, secrets -- gets declared here. The `valueFrom` pattern injects resource IDs as environment variables at runtime, keeping code portable across workspaces.
+
+## Watch Out For
+- **Missing `requirements.txt` entries** — Dash, Streamlit, Gradio, Flask, and FastAPI are pre-installed. But `psycopg2`, `asyncpg`, `dash-bootstrap-components`, and any other third-party package must be listed explicitly or the app crashes on deploy with an import error.
+- **Port binding on non-Streamlit frameworks** — Streamlit auto-binds to the correct port. Flask, FastAPI, and Gradio must read `DATABRICKS_APP_PORT` (defaults to 8000). Using port 8080 or any other value causes a health check failure and the app never reaches "running" state.
+- **User auth tokens only exist when deployed** — the `x-forwarded-access-token` header is injected by the Databricks Apps proxy. Locally, it does not exist. Use the backend toggle pattern (`USE_MOCK_BACKEND` env var) so development works without deploy-only headers.
+- **Unstyled Dash layouts** — Dash ships with no CSS. Add `dash-bootstrap-components` to `requirements.txt` and pass `external_stylesheets=[dbc.themes.BOOTSTRAP]` to the Dash constructor, or every component renders as unstyled HTML.

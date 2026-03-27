@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Databricks Docs
-description: Databricks documentation reference via llms.txt index. Use when other skills do not cover a topic, looking up unfamiliar Databricks features, or needing auth...
+description: Look up Databricks documentation on demand to find authoritative guidance on APIs, configurations, and platform features.
 sidebar:
   label: Databricks Docs
   order: 0
@@ -9,11 +10,88 @@ sidebar:
     variant: tip
 ---
 
-Look up Databricks documentation using the llms.txt index — find authoritative references for APIs, configurations, and platform capabilities.
+**Skill:** `databricks-docs`
 
-### Example prompts
+## What You Can Build
 
-> "Find the docs for configuring Auto Loader schema evolution"
+You get on-demand access to the full Databricks documentation index without leaving your editor. When another skill does not cover a topic -- an unfamiliar API, a new platform feature, or a niche configuration flag -- your AI coding assistant fetches the official docs and applies what it finds. Think of it as a reference librarian that lives alongside your action-oriented skills.
 
-> "What are the supported instance types for serverless compute?"
+## In Action
 
+> "How do I configure Auto Loader schema evolution to handle new columns without breaking my pipeline?"
+
+Your AI coding assistant fetches the `llms.txt` index from Databricks docs, locates the Auto Loader schema evolution page, and returns authoritative guidance:
+
+```
+Source: https://docs.databricks.com/en/ingestion/auto-loader/schema-evolution.html
+
+Auto Loader schema evolution modes:
+- addNewColumns (default): new columns added automatically
+- rescue: unknown columns sent to _rescued_data
+- failOnNewColumns: pipeline fails on schema change
+- none: schema locked, new columns silently dropped
+
+Set via:
+  .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+  .option("cloudFiles.schemaLocation", "/path/to/schema")
+```
+
+**Key decisions:**
+
+- **`llms.txt` as the entry point** -- Databricks publishes `https://docs.databricks.com/llms.txt`, a structured index designed for AI assistants. It is faster and more reliable than crawling arbitrary doc pages.
+- **Reference, not action** -- this skill does not create or modify resources. It finds information that your assistant then applies using the appropriate MCP tools or other skills.
+- **Supplements other skills** -- if `databricks-bundles` covers 90% of your DABs questions, this skill fills the remaining 10% with edge-case docs, release notes, and API details.
+
+## More Patterns
+
+### Discover an unfamiliar feature
+
+> "What is Predictive I/O and should I enable it on my cluster?"
+
+Your assistant fetches the relevant docs section and summarizes the feature, its requirements, and configuration:
+
+```
+Predictive I/O: ML-based optimization that pre-fetches data
+before Spark requests it. Enabled by default on DBR 15.0+.
+
+Requirements:
+- Photon runtime
+- Delta tables with data skipping stats
+- Tables > 128 MB
+
+No cluster config needed -- it activates automatically when
+conditions are met. Disable with:
+  spark.conf.set("spark.databricks.io.predict.enabled", "false")
+```
+
+The docs skill shines when other skills do not have the answer. Rather than guessing, your assistant goes to the source.
+
+### Cross-reference API parameters
+
+> "What are all the valid values for `data_security_mode` when creating a cluster?"
+
+```
+data_security_mode options:
+- SINGLE_USER: single-user access, full language support
+- USER_ISOLATION: multi-user with row/column filtering
+- NONE: legacy no-isolation mode (deprecated)
+- LEGACY_TABLE_ACL: legacy table ACL mode (deprecated)
+- LEGACY_PASSTHROUGH: credential passthrough (deprecated)
+
+Recommended: SINGLE_USER for interactive, USER_ISOLATION
+for shared production clusters.
+```
+
+When you are writing Terraform, SDK code, or bundle configs, the exact enum values matter. This skill pulls them directly from the API reference so you do not rely on memory.
+
+### Find release-specific changes
+
+> "What changed in Databricks Runtime 16.0 that might affect my pipelines?"
+
+Your assistant fetches the release notes for the specified runtime version and highlights breaking changes, new features, and deprecations relevant to your workload. This is particularly useful before upgrading `spark_version` in your bundle configs or cluster definitions.
+
+## Watch Out For
+
+- **Stale cache** -- the `llms.txt` index is fetched live, but individual doc pages can lag behind actual platform behavior by a few days after a release. When a feature behaves differently than the docs describe, check the release notes or changelog.
+- **Reference only, not executable** -- this skill returns documentation text. It does not run commands, create resources, or modify configs. Pair it with action skills like `databricks-bundles` or `databricks-execution-compute` to act on what you learn.
+- **Not a substitute for specific skills** -- if a dedicated skill exists for your task (e.g., `databricks-jobs` for job orchestration), use that skill first. The docs skill is a fallback for topics outside the coverage of specialized skills.

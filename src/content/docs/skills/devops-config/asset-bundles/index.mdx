@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Asset Bundles
-description: Create and configure Declarative Automation Bundles (formerly Asset Bundles) with best practices for multi-environment deployments (CICD). Use when working w...
+description: Deploy Databricks pipelines, jobs, dashboards, and apps across dev/staging/prod environments with Declarative Automation Bundles.
 sidebar:
   label: Asset Bundles
   order: 0
@@ -9,13 +10,156 @@ sidebar:
     variant: tip
 ---
 
-Create and configure Declarative Automation Bundles (DABs) for multi-environment deployments with pipelines, jobs, dashboards, and alerts.
+**Skill:** `databricks-bundles`
 
-### Example prompts
+## What You Can Build
 
-> "Initialize a new DAB project with dev, staging, and prod environments"
+You can define your entire Databricks project -- pipelines, jobs, dashboards, apps, volumes -- as YAML and deploy it identically across dev, staging, and production. Declarative Automation Bundles (DABs) give you environment-specific variables, path resolution, and permission management in a single config. Ask your AI coding assistant to scaffold a new bundle and it will generate the directory structure, resource files, and multi-target configuration in one pass.
 
-> "Add an SDP pipeline and a nightly job to my existing bundle"
+## In Action
 
-> "Configure permissions so the data-eng group can manage the bundle resources"
+> "Create a DAB project with dev and prod targets that deploys a nightly ETL job, a dashboard, and a managed Volume. Parameterize catalog, schema, and warehouse ID per environment."
 
+```yaml
+# databricks.yml
+bundle:
+  name: analytics-pipeline
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    default: "dev_catalog"
+  schema:
+    default: "dev_schema"
+  warehouse_id:
+    lookup:
+      warehouse: "Shared SQL Warehouse"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      profile: dev-profile
+    variables:
+      catalog: "dev_catalog"
+      schema: "dev_schema"
+
+  prod:
+    mode: production
+    workspace:
+      profile: prod-profile
+    variables:
+      catalog: "prod_catalog"
+      schema: "prod_schema"
+```
+
+```yaml
+# resources/etl_job.yml
+resources:
+  jobs:
+    nightly_etl:
+      name: "[${bundle.target}] Nightly ETL"
+      tasks:
+        - task_key: "run_etl"
+          notebook_task:
+            notebook_path: ../src/notebooks/etl.py
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 2
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: "America/Los_Angeles"
+      permissions:
+        - level: CAN_VIEW
+          group_name: "users"
+        - level: CAN_MANAGE
+          group_name: "data-engineers"
+```
+
+**Key decisions:**
+
+- **`lookup` for warehouse_id** -- resolves the warehouse by name at deploy time rather than hardcoding an ID that differs across workspaces. Keeps your config portable.
+- **`mode: development` vs `mode: production`** -- development mode prefixes resource names with the deployer's username, preventing collisions. Production mode uses exact names and enforces stricter permissions.
+- **Variables for catalog/schema** -- every resource references `$\{var.catalog\}` and `$\{var.schema\}`, so switching environments never requires editing resource files.
+- **Permissions per resource** -- job permissions (`CAN_VIEW`, `CAN_MANAGE_RUN`, `CAN_MANAGE`) are set inline. Dashboard permissions use a different set (`CAN_READ`, `CAN_RUN`, `CAN_EDIT`, `CAN_MANAGE`).
+- **`include: resources/*.yml`** -- splits resource definitions into separate files so teams can own individual resources without merge conflicts in `databricks.yml`.
+
+## More Patterns
+
+### Dashboard with parameterized catalog
+
+> "Add a dashboard to my bundle that reads from the correct catalog in each environment."
+
+```yaml
+# resources/dashboard.yml
+resources:
+  dashboards:
+    revenue_dashboard:
+      display_name: "[${bundle.target}] Revenue Dashboard"
+      file_path: ../src/dashboards/revenue.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      dataset_catalog: ${var.catalog}
+      dataset_schema: ${var.schema}
+      permissions:
+        - level: CAN_RUN
+          group_name: "users"
+```
+
+The `dataset_catalog` and `dataset_schema` parameters (CLI v0.281.0+) override the default catalog/schema for every dataset query in the dashboard. Without them, you need per-environment JSON files or string substitution hacks.
+
+### Deploy a Databricks App
+
+> "Add a Dash app to my bundle that connects to Unity Catalog."
+
+```yaml
+# resources/my_app.app.yml
+resources:
+  apps:
+    my_app:
+      name: my-dash-app-${bundle.target}
+      description: "Revenue analytics app"
+      source_code_path: ../src/app
+```
+
+```yaml
+# src/app/app.yaml
+command:
+  - "python"
+  - "dash_app.py"
+
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: "your-warehouse-id"
+  - name: DATABRICKS_CATALOG
+    value: "main"
+```
+
+Apps have a different pattern from other resources: environment variables live in `app.yaml` inside the source directory, not in `databricks.yml`. After `databricks bundle deploy`, you must run `databricks bundle run my_app` to start the app. Check logs with `databricks apps logs my-dash-app-dev`.
+
+### Managed Volumes
+
+> "Add a managed Volume for landing raw files, scoped to each environment's catalog."
+
+```yaml
+# resources/volumes.yml
+resources:
+  volumes:
+    raw_landing:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      name: "raw_landing"
+      volume_type: "MANAGED"
+```
+
+Volumes use `grants` instead of `permissions` -- a different syntax from jobs and dashboards. If you add a `permissions` block to a Volume resource, the deploy will fail silently.
+
+## Watch Out For
+
+- **Path resolution from `resources/`** -- files in `resources/*.yml` are one directory deep, so paths to source files must use `../src/`. Files in `databricks.yml` at the bundle root use `./src/`. Mix these up and validation passes but deployment creates empty or missing resources.
+- **Cannot modify "admins" group on jobs** -- adding `group_name: "admins"` to job permissions throws a cryptic API error. Use specific groups like `"data-engineers"` or user-level `user_name` entries instead.
+- **Volumes use `grants`, not `permissions`** -- every other resource type uses `permissions` blocks. Volumes are the exception. Copy-pasting a permissions block from a job onto a Volume produces no error at validate time but fails at deploy.
+- **Apps require `bundle run` after deploy** -- unlike jobs and pipelines, apps do not start automatically after `databricks bundle deploy`. You must run `databricks bundle run <app_resource_key>` to start them.

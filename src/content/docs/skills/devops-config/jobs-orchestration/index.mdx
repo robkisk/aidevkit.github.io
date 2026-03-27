@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Jobs Orchestration
-description: "Use this skill proactively for ANY Databricks Jobs task - creating, listing, running, updating, or deleting jobs. Triggers include: (1) 'create a job' or 'ne..."
+description: Build multi-task Databricks Jobs with DAG dependencies, flexible triggers, and monitoring via SDK, CLI, or Asset Bundles.
 sidebar:
   label: Jobs Orchestration
   order: 0
@@ -9,13 +10,165 @@ sidebar:
     variant: tip
 ---
 
-Create multi-task Databricks Jobs with notebook, Python, SQL, and wheel tasks — plus scheduling, triggers, notifications, and monitoring.
+**Skill:** `databricks-jobs`
 
-### Example prompts
+## What You Can Build
 
-> "Create a nightly job that runs my ETL notebook then refreshes the dashboard"
+You can orchestrate multi-task data workflows with DAG-based dependencies, cron schedules, event-driven triggers, and failure notifications. Databricks Jobs support notebook, Python, SQL, dbt, and pipeline task types -- all managed through the Python SDK, CLI, or Asset Bundles. Ask your AI coding assistant to wire up a production job and it will generate the task graph, compute config, and trigger definitions in one shot.
 
-> "Add a file arrival trigger that kicks off processing when new data lands"
+## In Action
 
-> "Set up Slack notifications for job failures on my production pipeline"
+> "Create a three-stage ETL job: extract from an API notebook, transform with a Python script, then load into a gold table. Run it nightly at 2 AM Pacific. Use a shared job cluster across all tasks."
 
+```yaml
+# resources/etl_job.yml
+resources:
+  jobs:
+    daily_etl:
+      name: "[${bundle.target}] Daily ETL Pipeline"
+      job_clusters:
+        - job_cluster_key: shared_etl
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 2
+            spark_conf:
+              spark.speculation: "true"
+      tasks:
+        - task_key: extract
+          job_cluster_key: shared_etl
+          notebook_task:
+            notebook_path: ../src/notebooks/extract.py
+
+        - task_key: transform
+          depends_on:
+            - task_key: extract
+          job_cluster_key: shared_etl
+          notebook_task:
+            notebook_path: ../src/notebooks/transform.py
+
+        - task_key: load
+          depends_on:
+            - task_key: transform
+          run_if: ALL_SUCCESS
+          job_cluster_key: shared_etl
+          notebook_task:
+            notebook_path: ../src/notebooks/load.py
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: "America/Los_Angeles"
+      permissions:
+        - level: CAN_VIEW
+          group_name: "data-analysts"
+        - level: CAN_MANAGE_RUN
+          group_name: "data-engineers"
+```
+
+**Key decisions:**
+
+- **`job_cluster_key` for shared compute** -- all three tasks reuse the same cluster definition. This avoids spinning up a new cluster per task, cutting startup overhead from minutes to seconds for tasks after the first.
+- **`depends_on` with explicit DAG edges** -- tasks form a chain where `transform` waits for `extract` and `load` waits for `transform`. The scheduler respects this graph automatically.
+- **`run_if: ALL_SUCCESS`** -- the load task only fires if all upstream tasks succeed. Use `ALL_DONE` instead if you need a cleanup task that runs regardless of failure.
+- **Cron schedule with timezone** -- `0 0 2 * * ?` is 2 AM daily. Always set `timezone_id` explicitly; the default is UTC, which drifts with DST if your data lands on local time boundaries.
+- **Tiered permissions** -- analysts can view run history, engineers can trigger and cancel runs. Only the job owner gets full `CAN_MANAGE` by default.
+
+## More Patterns
+
+### Event-driven file arrival trigger
+
+> "Trigger my ingestion job whenever new Parquet files land in a cloud storage Volume."
+
+```yaml
+resources:
+  jobs:
+    ingest_on_arrival:
+      name: "[${bundle.target}] File Arrival Ingest"
+      trigger:
+        file_arrival:
+          url: "s3://my-bucket/incoming/"
+          min_time_between_triggers_seconds: 300
+          wait_after_last_change_seconds: 60
+      tasks:
+        - task_key: ingest
+          notebook_task:
+            notebook_path: ../src/notebooks/ingest.py
+```
+
+File arrival triggers poll the specified path and fire when new files appear. The `wait_after_last_change_seconds` parameter adds a quiet period so the job does not trigger mid-upload. Set `min_time_between_triggers_seconds` to avoid back-to-back runs during burst uploads.
+
+### Python SDK job creation with parameters
+
+> "Use the Python SDK to create a parameterized job that accepts an environment name and processing date."
+
+```python
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.jobs import (
+    Task, NotebookTask, Source, JobParameterDefinition
+)
+
+w = WorkspaceClient()
+
+job = w.jobs.create(
+    name="parameterized-etl",
+    parameters=[
+        JobParameterDefinition(name="env", default="dev"),
+        JobParameterDefinition(name="date", default="{{start_date}}"),
+    ],
+    tasks=[
+        Task(
+            task_key="process",
+            notebook_task=NotebookTask(
+                notebook_path="/Workspace/Users/user@example.com/process",
+                source=Source.WORKSPACE,
+                base_parameters={
+                    "env": "{{job.parameters.env}}",
+                    "date": "{{job.parameters.date}}",
+                },
+            ),
+        )
+    ],
+)
+print(f"Created job: {job.job_id}")
+
+# Trigger with overrides
+run = w.jobs.run_now(
+    job_id=job.job_id,
+    job_parameters={"env": "prod", "date": "2025-12-01"},
+)
+```
+
+Job-level parameters are accessed in notebooks with `dbutils.widgets.get("env")`. The `\{\{start_date\}\}` dynamic reference resolves to the scheduled trigger time, useful for backfills.
+
+### Conditional error handling with run_if
+
+> "Add a cleanup task that runs after all tasks complete, even if some failed."
+
+```yaml
+tasks:
+  - task_key: extract
+    notebook_task:
+      notebook_path: ../src/notebooks/extract.py
+
+  - task_key: transform
+    depends_on:
+      - task_key: extract
+    notebook_task:
+      notebook_path: ../src/notebooks/transform.py
+
+  - task_key: cleanup
+    depends_on:
+      - task_key: extract
+      - task_key: transform
+    run_if: ALL_DONE
+    notebook_task:
+      notebook_path: ../src/notebooks/cleanup.py
+```
+
+`ALL_DONE` means the cleanup task runs whether upstream tasks succeed or fail. Other options: `AT_LEAST_ONE_FAILED` for alert-only tasks, `NONE_FAILED` to skip cleanup when everything is healthy.
+
+## Watch Out For
+
+- **`pause_status` defaults to `PAUSED`** -- new jobs with schedules or triggers are paused by default. You must set `pause_status: UNPAUSED` or manually unpause in the UI, otherwise the schedule silently never fires.
+- **`task_key` mismatch in `depends_on`** -- task keys are case-sensitive strings. A typo like `Extract` vs `extract` causes a validation error that only surfaces at deploy time, not during `bundle validate`.
+- **Cannot modify "admins" group permissions** -- adding `group_name: "admins"` to a job's permissions block throws an API error. Use specific workspace groups or individual `user_name` entries.
+- **Serverless compute only supports notebook and Python tasks** -- SQL tasks, dbt tasks, and Spark JARs require a cluster. Omitting cluster config on these task types causes a runtime error, not a validation error.

@@ -1,6 +1,7 @@
 ---
-title: Lakebase Autoscale
-description: Patterns and best practices for Lakebase Autoscaling (next-gen managed PostgreSQL). Use when creating or managing Lakebase Autoscaling projects, configuring ...
+curated: true
+title: Lakebase Autoscaling
+description: Provision autoscaling PostgreSQL on Databricks with branching, scale-to-zero, and reverse ETL from Delta Lake.
 sidebar:
   label: Lakebase Autoscale
   order: 0
@@ -9,13 +10,173 @@ sidebar:
     variant: tip
 ---
 
-Managed PostgreSQL on Databricks with autoscaling compute, scale-to-zero, database branching for dev/test, and reverse ETL via synced tables.
+**Skill:** `databricks-lakebase-autoscale`
 
-### Example prompts
+## What You Can Build
 
-> "Create a Lakebase Autoscaling project with a dev branch for testing"
+You can stand up a fully managed PostgreSQL database that scales compute automatically based on load and drops to zero when idle. Lakebase Autoscaling adds Git-like branching for safe dev/test workflows, point-in-time restore, and reverse ETL via synced tables from Delta Lake. Ask your AI coding assistant to create a project and it will generate the SDK calls, branch configuration, and connection code with OAuth token handling.
 
-> "Set up a synced table to reverse ETL my Delta analytics into Lakebase for the app"
+## In Action
 
-> "Configure OAuth credentials for my Databricks App to connect to Lakebase"
+> "Create a Lakebase Autoscaling project for my e-commerce app, connect from a notebook, and verify the connection with a version check."
 
+```python
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.postgres import Project, ProjectSpec
+import psycopg
+
+w = WorkspaceClient()
+
+# Create the project (long-running operation)
+result = w.postgres.create_project(
+    project=Project(
+        spec=ProjectSpec(
+            display_name="E-Commerce App",
+            pg_version="17",
+        )
+    ),
+    project_id="ecommerce-app",
+).wait()
+print(f"Project ready: {result.name}")
+
+# Get the primary endpoint
+endpoint = w.postgres.get_endpoint(
+    name="projects/ecommerce-app/branches/production/endpoints/ep-primary"
+)
+host = endpoint.status.hosts.host
+
+# Generate OAuth credential
+cred = w.postgres.generate_database_credential(
+    endpoint="projects/ecommerce-app/branches/production/endpoints/ep-primary"
+)
+
+# Connect and verify
+conn_string = (
+    f"host={host} "
+    f"dbname=databricks_postgres "
+    f"user={w.current_user.me().user_name} "
+    f"password={cred.token} "
+    f"sslmode=require"
+)
+with psycopg.connect(conn_string) as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT version()")
+        print(cur.fetchone())
+```
+
+**Key decisions:**
+- **`.wait()` on create** — all Lakebase Autoscaling operations are long-running. Without `.wait()`, the SDK returns immediately and subsequent calls fail because the project is not ready.
+- **`pg_version="17"` explicitly** — Postgres 16 and 17 are supported. Pin the version so upgrades are intentional, not accidental.
+- **`sslmode=require`** — mandatory for all connections. Omitting it triggers a connection error.
+- **OAuth token as password** — tokens expire after 1 hour. For notebooks and one-off scripts this is fine. For long-running apps, implement a refresh loop.
+- **Hierarchical resource names** — endpoints follow the pattern `projects/\{id\}/branches/\{id\}/endpoints/\{id\}`. The primary endpoint is always `ep-primary`.
+
+## More Patterns
+
+### Create a dev branch with TTL
+
+> "Spin up an isolated dev branch from production for schema migration testing. Auto-delete it after 7 days."
+
+```python
+from databricks.sdk.service.postgres import Branch, BranchSpec, Duration
+
+branch = w.postgres.create_branch(
+    parent="projects/ecommerce-app",
+    branch=Branch(
+        spec=BranchSpec(
+            source_branch="projects/ecommerce-app/branches/production",
+            ttl=Duration(seconds=604800),  # 7 days
+        )
+    ),
+    branch_id="schema-migration-test",
+).wait()
+print(f"Dev branch ready: {branch.name}")
+
+# Connect to the dev branch instead
+dev_endpoint = w.postgres.get_endpoint(
+    name="projects/ecommerce-app/branches/schema-migration-test/endpoints/ep-primary"
+)
+dev_host = dev_endpoint.status.hosts.host
+```
+
+Branches are copy-on-write -- creation is fast regardless of data size. The TTL ensures abandoned branches clean themselves up. Delete child branches before their parent; the API blocks deletion of branches that have children.
+
+### Configure autoscaling and scale-to-zero
+
+> "Set my production compute to autoscale between 2 and 8 CU, and suspend after 10 minutes of inactivity."
+
+```python
+from databricks.sdk.service.postgres import Endpoint, EndpointSpec, FieldMask
+
+w.postgres.update_endpoint(
+    name="projects/ecommerce-app/branches/production/endpoints/ep-primary",
+    endpoint=Endpoint(
+        name="projects/ecommerce-app/branches/production/endpoints/ep-primary",
+        spec=EndpointSpec(
+            autoscaling_limit_min_cu=2.0,
+            autoscaling_limit_max_cu=8.0,
+            scale_to_zero_seconds=600,  # 10 minutes
+        ),
+    ),
+    update_mask=FieldMask(field_mask=[
+        "spec.autoscaling_limit_min_cu",
+        "spec.autoscaling_limit_max_cu",
+        "spec.scale_to_zero_seconds",
+    ]),
+).wait()
+```
+
+Every update requires an explicit `update_mask` listing the fields being changed. Miss the mask and the API rejects the call. The max-minus-min range cannot exceed 8 CU -- so `2-8` is valid but `0.5-32` is not. Each CU provides approximately 2 GB of RAM.
+
+### SQLAlchemy with token refresh for production apps
+
+> "Wire up SQLAlchemy async engine with automatic OAuth token refresh for my FastAPI backend."
+
+```python
+import asyncio
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import create_async_engine
+from databricks.sdk import WorkspaceClient
+
+_current_token = None
+
+def _generate_token() -> str:
+    w = WorkspaceClient()
+    cred = w.postgres.generate_database_credential(
+        endpoint="projects/ecommerce-app/branches/production/endpoints/ep-primary"
+    )
+    return cred.token
+
+async def _refresh_loop():
+    global _current_token
+    while True:
+        await asyncio.sleep(50 * 60)  # refresh every 50 min (before 1-hour expiry)
+        _current_token = await asyncio.to_thread(_generate_token)
+
+def init_engine(host: str, user: str) -> "AsyncEngine":
+    global _current_token
+    _current_token = _generate_token()
+
+    engine = create_async_engine(
+        f"postgresql+psycopg://{user}@{host}:5432/databricks_postgres",
+        pool_size=5,
+        max_overflow=10,
+        pool_recycle=3600,
+        connect_args={"sslmode": "require"},
+    )
+
+    @event.listens_for(engine.sync_engine, "do_connect")
+    def inject_token(dialect, conn_rec, cargs, cparams):
+        cparams["password"] = _current_token
+
+    asyncio.create_task(_refresh_loop())
+    return engine
+```
+
+The `do_connect` event injects the latest token into every new connection. The background task refreshes at 50 minutes -- 10 minutes before the 1-hour expiry -- so active connections never hit an expired password mid-query.
+
+## Watch Out For
+- **DNS resolution on macOS** — macOS can fail to resolve Lakebase hostnames in some network configurations. Use `dig` to resolve the host manually and pass `hostaddr` alongside `host` in your psycopg connection string.
+- **Autoscaling range limit** — the gap between `autoscaling_limit_min_cu` and `autoscaling_limit_max_cu` cannot exceed 8 CU. The API returns a validation error if you set something like `0.5` to `32`.
+- **Cold start after scale-to-zero** — when compute wakes from zero, the first connection takes a few hundred milliseconds longer. Add retry logic with backoff so your app does not surface a connection-refused error to users.
+- **24-hour idle timeout on connections** — all connections have a 24-hour idle timeout and a 3-day max lifetime. Connection pools must handle stale connections gracefully. Use `pool_recycle=3600` in SQLAlchemy or equivalent keepalive settings.

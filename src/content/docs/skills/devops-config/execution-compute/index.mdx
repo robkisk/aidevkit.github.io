@@ -1,6 +1,7 @@
 ---
-title: Execution Compute
-description: ">-"
+curated: true
+title: Execution & Compute
+description: Run Python, SQL, Scala, and R on Databricks serverless or cluster compute, and manage clusters and SQL warehouses.
 sidebar:
   label: Execution Compute
   order: 0
@@ -9,13 +10,118 @@ sidebar:
     variant: tip
 ---
 
-Execute Python, SQL, Scala, and R code on Databricks compute — serverless or cluster-based. Manage clusters and SQL warehouses.
+**Skill:** `databricks-execution-compute`
 
-### Example prompts
+## What You Can Build
 
-> "Run this Python script on serverless compute"
+You can execute code on Databricks directly from your local editor -- no browser, no notebook UI. Run Python on serverless with zero cluster management, iterate interactively on a running cluster with preserved state, or push a local file to execute remotely. Your AI coding assistant picks the right compute automatically and manages the full lifecycle: execute, capture output, optionally persist as a workspace notebook.
 
-> "Create a single-node cluster with ML Runtime 15.4 for my training job"
+## In Action
 
-> "Resize my SQL warehouse to handle the end-of-month reporting load"
+> "Run this ETL script on serverless compute and save it as a notebook in my workspace for future scheduling."
 
+```python
+# Your AI coding assistant calls execute_code under the hood
+execute_code(
+    code="""
+import pyspark.sql.functions as F
+
+df = (
+    spark.read.table("catalog.schema.raw_events")
+    .filter(F.col("event_date") >= "2025-01-01")
+    .groupBy("user_id", "event_type")
+    .agg(F.count("*").alias("event_count"))
+)
+
+df.write.mode("overwrite").saveAsTable("catalog.schema.user_event_summary")
+dbutils.notebook.exit(f"Wrote {df.count()} rows")
+""",
+    compute_type="serverless",
+    workspace_path="/Workspace/Users/user@example.com/etl/event_summary",
+    run_name="event-summary-v1",
+)
+```
+
+**Key decisions:**
+
+- **`compute_type="serverless"`** -- no cluster to provision or wait for. Serverless spins up dedicated compute in 25-50 seconds and tears it down after execution. Best for Python and SQL workloads that do not need persistent state.
+- **`workspace_path` for persistence** -- saves the code as a notebook in the workspace. Without it, the execution is ephemeral -- results are returned but nothing is saved. Use persistence when you want to schedule the notebook as a job later.
+- **`dbutils.notebook.exit()` for output** -- on serverless, `print()` output is unreliable. Always use `dbutils.notebook.exit()` to return a result string your assistant can display.
+- **`run_name` for traceability** -- names the serverless run so you can find it in the Jobs UI later. Without it, runs get auto-generated names that are hard to identify.
+
+## More Patterns
+
+### Interactive cluster session with state
+
+> "Set up an interactive session on my cluster. Run some setup code, then query the results in a follow-up."
+
+```python
+# First call -- creates an execution context
+result = execute_code(
+    code="""
+import pandas as pd
+df = pd.DataFrame({
+    "region": ["US", "EU", "APAC", "US", "EU"],
+    "revenue": [1200, 950, 800, 1100, 1050],
+})
+spark_df = spark.createDataFrame(df)
+spark_df.createOrReplaceTempView("regional_revenue")
+print("View created")
+""",
+    compute_type="cluster",
+)
+
+# Second call -- reuses the same context, variables persist
+execute_code(
+    code="spark.sql('SELECT region, SUM(revenue) FROM regional_revenue GROUP BY region').show()",
+    context_id=result["context_id"],
+    cluster_id=result["cluster_id"],
+)
+```
+
+The `context_id` preserves variables, temp views, and imports between calls. This is the cluster equivalent of running cells in a notebook. Drop the context when done by passing `destroy_context_on_completion=True` on the last call.
+
+### Run a local file on a cluster
+
+> "Execute my local transform.py file on the dev cluster."
+
+```python
+execute_code(
+    file_path="/Users/me/project/src/transform.py",
+    compute_type="cluster",
+)
+```
+
+The tool detects the language from the file extension (`.py`, `.scala`, `.sql`, `.r`) and uploads it for execution. This is the fastest path from local development to remote testing -- no manual upload, no workspace notebook creation.
+
+### Create and manage clusters
+
+> "Spin up a 4-worker autoscaling cluster with ML Runtime for model training."
+
+```python
+# Create an autoscaling cluster
+manage_cluster(
+    action="create",
+    name="ml-training-cluster",
+    spark_version="15.4.x-ml-scala2.12",
+    node_type_id="i3.xlarge",
+    autoscale_min_workers=2,
+    autoscale_max_workers=8,
+    autotermination_minutes=60,
+)
+
+# Later: terminate when done (does not delete)
+manage_cluster(action="terminate", cluster_id="0123-456789-abcdef")
+
+# Check status while it stops
+list_compute(resource="clusters", cluster_id="0123-456789-abcdef")
+```
+
+`terminate` stops the cluster but preserves its configuration for restarting later. `delete` is permanent and irreversible. Always confirm before deleting.
+
+## Watch Out For
+
+- **`print()` on serverless is unreliable** -- serverless compute does not guarantee stdout capture. Use `dbutils.notebook.exit("result string")` to return data from serverless runs. This catches everyone at least once.
+- **Scala and R require cluster compute** -- serverless only supports Python and SQL. If you pass `language="scala"` with `compute_type="serverless"`, the tool will error. The `auto` compute mode handles this by falling back to cluster, but only if a running cluster exists.
+- **No cluster available, no clear error path** -- if you request cluster execution and no cluster is running, the tool returns `startable_clusters` in the error response. Either start one (3-8 minute wait) or switch to `compute_type="serverless"` for Python workloads.
+- **Context leaks on clusters** -- execution contexts consume memory on the cluster. If you create many contexts without destroying them, the cluster can run out of memory. Pass `destroy_context_on_completion=True` when you are done iterating.

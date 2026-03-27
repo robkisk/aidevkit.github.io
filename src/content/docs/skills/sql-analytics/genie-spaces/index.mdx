@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Genie Spaces
-description: Create and query Databricks Genie Spaces for natural language SQL exploration. Use when building Genie Spaces, exporting and importing Genie Spaces, migratin...
+description: Build natural language SQL interfaces that let business users query data by asking questions in plain English.
 sidebar:
   label: Genie Spaces
   order: 0
@@ -9,13 +10,108 @@ sidebar:
     variant: tip
 ---
 
-Create Genie spaces for natural language SQL exploration — let users ask questions about their data in plain English and get SQL-backed answers.
+**Skill:** `databricks-genie`
 
-### Example prompts
+## What You Can Build
 
-> "Create a Genie space for our sales team with the orders and customers tables"
+You can stand up a natural language data exploration interface backed by Unity Catalog tables. Business users ask questions in plain English, Genie translates them to SQL, runs them on a warehouse, and returns results conversationally. Ask your AI coding assistant to create a Genie Space and it will inspect your tables, wire up the space with sample questions, and configure the description so Genie produces accurate SQL from day one.
 
-> "Ask my Genie space: what was the month-over-month revenue trend last quarter?"
+## In Action
 
-> "Export my Genie space and import it into the production workspace"
+> "Create a Genie Space for the sales team using our orders and customers tables in Unity Catalog. Add sample questions so they know what to ask."
 
+```python
+# Step 1: Inspect the tables first
+get_table_details(
+    catalog="my_catalog",
+    schema="sales",
+    table_stat_level="SIMPLE"
+)
+
+# Step 2: Create the space with guided sample questions
+create_or_update_genie(
+    display_name="Sales Analytics",
+    table_identifiers=[
+        "my_catalog.sales.customers",
+        "my_catalog.sales.orders"
+    ],
+    description="Explore sales data with natural language. "
+                "Tables include customer demographics and order history "
+                "with amounts, dates, and product categories.",
+    sample_questions=[
+        "What were total sales last month?",
+        "Who are our top 10 customers by revenue?",
+        "Show month-over-month revenue trend for Q4"
+    ]
+)
+```
+
+**Key decisions:**
+- **Inspect tables before creating** -- `get_table_details` reveals column names, types, and basic stats. This context drives better descriptions and sample questions, which directly affect Genie's SQL accuracy.
+- **Descriptive `description` field** -- Genie uses this to understand what the tables contain and how they relate. Vague descriptions produce vague SQL.
+- **Sample questions as guidance rails** -- these show up in the Genie UI as suggested queries. They train users on what the space can answer and give Genie concrete examples of expected question patterns.
+- **Unity Catalog three-level names** -- always use `catalog.schema.table` format. Genie resolves table identifiers through Unity Catalog, so partial names will fail.
+
+## More Patterns
+
+### Query a Genie Space programmatically
+> "Ask our Sales Analytics Genie space what the revenue was last quarter, then get the raw data back."
+
+```python
+result = ask_genie(
+    space_id="your_space_id",
+    question="What was total revenue last quarter?"
+)
+# result contains: SQL query, column metadata, data rows, row_count
+```
+
+The Conversation API returns the generated SQL alongside the result data. Use `conversation_id` from the response to ask follow-up questions in the same context -- Genie will remember the prior query and refine from there.
+
+### Export and clone a Genie Space
+> "Export our production Genie Space and create an identical copy for the QA team."
+
+```python
+# Export preserves tables, instructions, SQL examples, and layout
+exported = migrate_genie(type="export", space_id="prod_space_id")
+
+# Import as a new space (same catalog)
+migrate_genie(
+    type="import",
+    warehouse_id=exported["warehouse_id"],
+    serialized_space=exported["serialized_space"],
+    title="Sales Analytics - QA",
+    description=exported["description"]
+)
+```
+
+The serialized payload captures the full space configuration. For cross-workspace migration, use separate MCP server profiles -- one per workspace -- and export from the source, then import via the target. Catalog names can be remapped during import if they differ across environments.
+
+### Update an existing space with new tables
+> "Add the returns table to our existing Sales Analytics Genie Space."
+
+```python
+create_or_update_genie(
+    space_id="existing_space_id",
+    display_name="Sales Analytics",
+    table_identifiers=[
+        "my_catalog.sales.customers",
+        "my_catalog.sales.orders",
+        "my_catalog.sales.returns"
+    ],
+    description="Explore sales data including customer demographics, "
+                "order history, and return records.",
+    sample_questions=[
+        "What were total sales last month?",
+        "What is our return rate by product category?",
+        "Which customers have the highest return frequency?"
+    ]
+)
+```
+
+Pass the `space_id` to update rather than create. Update the description and sample questions to reflect the new table -- Genie's SQL accuracy depends on knowing what data is available.
+
+## Watch Out For
+- **Skipping `get_table_details` before creation** -- if you do not understand the column names and types, the description you write will be too vague for Genie to generate correct SQL. Always inspect first.
+- **Cross-workspace migration with different schema names** -- Genie migration only supports catalog remapping. If schema or table names differ between environments, you will need to manually edit the serialized payload after export.
+- **Missing SQL warehouse** -- Genie executes queries on a SQL warehouse. If none is specified, it auto-detects one, but that can fail in workspaces with restricted warehouse access. Specify the warehouse ID explicitly in production setups.
+- **Stale sample questions after table changes** -- when you add or remove tables, update the sample questions and description. Old questions referencing removed columns cause Genie to generate failing SQL.

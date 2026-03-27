@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Lakebase Provisioned
-description: Patterns and best practices for Lakebase Provisioned (Databricks managed PostgreSQL) for OLTP workloads. Use when creating Lakebase instances, connecting app...
+description: Deploy fixed-capacity managed PostgreSQL on Databricks for OLTP workloads with OAuth auth, reverse ETL, and app integration.
 sidebar:
   label: Lakebase Provisioned
   order: 0
@@ -9,13 +10,196 @@ sidebar:
     variant: tip
 ---
 
-Provisioned PostgreSQL on Databricks for OLTP workloads — fixed-capacity instances with reverse ETL, OAuth authentication, and app integration.
+**Skill:** `databricks-lakebase-provisioned`
 
-### Example prompts
+## What You Can Build
 
-> "Create a Lakebase Provisioned instance for transactional workloads"
+You can provision a fully managed PostgreSQL instance on Databricks for transactional workloads -- CRUD APIs, app state, agent memory, feature flags. Lakebase Provisioned gives you fixed-capacity compute (CU_1 through CU_8), OAuth token-based authentication, Unity Catalog registration, and reverse ETL from Delta tables. Ask your AI coding assistant to create an instance and connect from a notebook or app, and it will generate the SDK calls, credential handling, and connection code.
 
-> "Set up reverse ETL to sync my Delta reporting tables into Lakebase"
+## In Action
 
-> "Connect my FastAPI app to Lakebase using OAuth credentials"
+> "Create a Lakebase Provisioned instance for my order management app, generate OAuth credentials, and connect from a notebook to verify."
 
+```python
+from databricks.sdk import WorkspaceClient
+import psycopg
+import uuid
+
+w = WorkspaceClient()
+
+# Create the instance
+instance = w.database.create_database_instance(
+    name="order-mgmt-db",
+    capacity="CU_2",
+    stopped=False,
+)
+print(f"Instance: {instance.name}")
+print(f"Endpoint: {instance.read_write_dns}")
+
+# Generate OAuth token
+cred = w.database.generate_database_credential(
+    request_id=str(uuid.uuid4()),
+    instance_names=["order-mgmt-db"],
+)
+
+# Connect and verify
+conn_string = (
+    f"host={instance.read_write_dns} "
+    f"dbname=postgres "
+    f"user={w.current_user.me().user_name} "
+    f"password={cred.token} "
+    f"sslmode=require"
+)
+with psycopg.connect(conn_string) as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT version()")
+        print(cur.fetchone())
+```
+
+**Key decisions:**
+- **`capacity="CU_2"` for the instance** — Provisioned uses fixed tiers: `CU_1` (16 GB), `CU_2` (32 GB), `CU_4` (64 GB), `CU_8` (128 GB). Pick based on working set size. You can resize later without data loss.
+- **`request_id` with `uuid.uuid4()`** — the credential API requires a unique request ID for idempotency. Always generate a fresh UUID per call.
+- **`sslmode=require`** — mandatory for all Lakebase connections. Without it, the connection is rejected.
+- **`stopped=False`** — instances can be created in a stopped state to save cost. Explicitly setting `False` means it is ready to accept connections immediately.
+- **Synchronous API** — unlike Lakebase Autoscaling, Provisioned operations return immediately. No `.wait()` needed.
+
+## More Patterns
+
+### SQLAlchemy with automatic token refresh
+
+> "Set up a production-grade SQLAlchemy async engine for my FastAPI app with background token refresh."
+
+```python
+import asyncio
+import uuid
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import create_async_engine
+from databricks.sdk import WorkspaceClient
+
+INSTANCE_NAME = "order-mgmt-db"
+_current_token = None
+
+def _generate_token() -> str:
+    w = WorkspaceClient()
+    cred = w.database.generate_database_credential(
+        request_id=str(uuid.uuid4()),
+        instance_names=[INSTANCE_NAME],
+    )
+    return cred.token
+
+async def _refresh_loop():
+    global _current_token
+    while True:
+        await asyncio.sleep(50 * 60)  # 50 min, before 1-hour expiry
+        _current_token = await asyncio.to_thread(_generate_token)
+
+def init_engine(database: str, username: str) -> "AsyncEngine":
+    global _current_token
+    w = WorkspaceClient()
+    instance = w.database.get_database_instance(name=INSTANCE_NAME)
+    _current_token = _generate_token()
+
+    engine = create_async_engine(
+        f"postgresql+psycopg://{username}@{instance.read_write_dns}:5432/{database}",
+        pool_size=5,
+        max_overflow=10,
+        pool_recycle=3600,
+        connect_args={"sslmode": "require"},
+    )
+
+    @event.listens_for(engine.sync_engine, "do_connect")
+    def inject_token(dialect, conn_rec, cargs, cparams):
+        cparams["password"] = _current_token
+
+    asyncio.create_task(_refresh_loop())
+    return engine
+```
+
+The `do_connect` hook injects the latest token into every new connection. The background task runs every 50 minutes -- 10 minutes before expiry -- so connections never hit a stale password. Set `pool_recycle=3600` to match the token lifetime.
+
+### Register with Unity Catalog and set up reverse ETL
+
+> "Register my Lakebase instance in Unity Catalog and sync the Delta analytics table into it for low-latency API reads."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Register in Unity Catalog for governance
+w.database.register_database_instance(
+    name="order-mgmt-db",
+    catalog="analytics",
+    schema="operational",
+)
+```
+
+```bash
+# Set up reverse ETL via synced table (CLI)
+databricks database create-synced-table \
+    --instance-name order-mgmt-db \
+    --source-table analytics.gold.daily_revenue \
+    --target-table daily_revenue \
+    --scheduling-policy CONTINUOUS
+```
+
+Registration makes Lakebase visible in Unity Catalog for lineage, access control, and discovery. Synced tables push Delta data into PostgreSQL on a schedule -- use `CONTINUOUS` for near-real-time, `TRIGGERED` for batch workflows. This is the reverse ETL pattern: Delta Lake for analytics, Lakebase for the serving layer.
+
+### Databricks Apps integration
+
+> "Wire up my Streamlit app to read and write from Lakebase using the Apps resource binding."
+
+```yaml
+# app.yaml
+command: ["streamlit", "run", "app.py"]
+resources:
+  - name: lakebase
+    database:
+      instance: order-mgmt-db
+env:
+  - name: LAKEBASE_INSTANCE_NAME
+    value: order-mgmt-db
+  - name: LAKEBASE_DATABASE_NAME
+    value: postgres
+```
+
+```python
+import os
+import uuid
+import streamlit as st
+import psycopg
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+INSTANCE = os.getenv("LAKEBASE_INSTANCE_NAME")
+
+@st.cache_resource(ttl=2400)  # 40 min, refresh before token expiry
+def get_connection():
+    instance = w.database.get_database_instance(name=INSTANCE)
+    cred = w.database.generate_database_credential(
+        request_id=str(uuid.uuid4()),
+        instance_names=[INSTANCE],
+    )
+    return psycopg.connect(
+        host=instance.read_write_dns,
+        dbname=os.getenv("LAKEBASE_DATABASE_NAME", "postgres"),
+        user=w.current_user.me().user_name,
+        password=cred.token,
+        sslmode="require",
+    )
+
+conn = get_connection()
+with conn.cursor() as cur:
+    cur.execute("SELECT name, enabled FROM feature_flags ORDER BY name")
+    rows = cur.fetchall()
+
+st.dataframe(rows, column_config={"name": "Flag", "enabled": "Active"})
+```
+
+The `ttl=2400` on `@st.cache_resource` forces Streamlit to recreate the connection (and generate a fresh token) every 40 minutes. This is simpler than a background refresh task for Streamlit apps, where the execution model is request-driven.
+
+## Watch Out For
+- **Token expiry in long-running apps** — OAuth tokens last 1 hour. Any app that holds a connection longer than that (dashboards, APIs, background workers) must implement token refresh. The SQLAlchemy `do_connect` hook pattern above is the cleanest approach for connection pools.
+- **DNS resolution on macOS** — some macOS network configurations fail to resolve Lakebase hostnames. Resolve with `dig` and pass `hostaddr` directly to psycopg alongside the `host` parameter.
+- **Stopped instances** — calling `create_database_instance` with `stopped=True` or stopping an instance via the CLI means all connections are refused until you explicitly start it again. Check `instance.state` before connecting.
+- **`psycopg` not pre-installed in Databricks Apps** — the Apps runtime includes web frameworks but not database drivers. Add `psycopg[binary]` to `requirements.txt` or the app crashes on startup with an import error.

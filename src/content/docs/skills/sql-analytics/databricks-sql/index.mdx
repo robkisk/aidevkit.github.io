@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Databricks SQL
-description: ">-"
+description: Use advanced DBSQL features like SQL scripting, stored procedures, materialized views, pipe syntax, and geospatial functions.
 sidebar:
   label: Databricks SQL
   order: 0
@@ -9,13 +10,118 @@ sidebar:
     variant: tip
 ---
 
-Advanced Databricks SQL features including SQL scripting, stored procedures, materialized views, pipe syntax, geospatial functions, and AI-powered SQL.
+**Skill:** `databricks-dbsql`
 
-### Example prompts
+## What You Can Build
 
-> "Create a stored procedure that refreshes my reporting tables with error handling"
+You can build production SQL pipelines using stored procedures with error handling, materialized views with scheduled refresh, geospatial queries with H3 indexing, and the pipe operator for readable transformations. Ask your AI coding assistant to scaffold any of these patterns and it will generate warehouse-ready SQL with proper three-level naming, Liquid Clustering, and collation support.
 
-> "Rewrite this query using pipe syntax for better readability"
+## In Action
 
-> "Add H3 geospatial indexing to my location data for proximity queries"
+> "Create a stored procedure that upserts staging customers into the dimension table with full error handling. It should take the source table name as input and return the row count."
 
+```sql
+CREATE OR REPLACE PROCEDURE catalog.schema.upsert_customers(
+  IN p_source STRING,
+  OUT p_rows_affected INT
+)
+LANGUAGE SQL
+SQL SECURITY INVOKER
+BEGIN
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    SET p_rows_affected = -1;
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = concat('Upsert failed for source: ', p_source);
+  END;
+
+  MERGE INTO catalog.schema.dim_customer AS t
+  USING (SELECT * FROM identifier(p_source)) AS s
+  ON t.customer_id = s.customer_id
+  WHEN MATCHED THEN UPDATE SET *
+  WHEN NOT MATCHED THEN INSERT *;
+
+  SET p_rows_affected = (SELECT COUNT(*) FROM identifier(p_source));
+END;
+
+-- Invoke:
+CALL catalog.schema.upsert_customers('catalog.schema.staging_customers', ?);
+```
+
+**Key decisions:**
+- **`SQL SECURITY INVOKER`** -- the procedure runs with the caller's permissions, not the creator's. This is the safe default for shared procedures in Unity Catalog.
+- **`identifier(p_source)` for dynamic table names** -- avoids string concatenation and SQL injection. The `identifier()` function resolves a string parameter to a table reference at execution time.
+- **`DECLARE EXIT HANDLER`** -- catches any SQL exception inside the block. Without it, a failed MERGE silently aborts and you never know it happened.
+- **`OUT` parameter for row count** -- lets the caller inspect results without parsing log output. The `?` placeholder in the CALL statement captures the output.
+
+## More Patterns
+
+### Materialized view with scheduled refresh
+> "Create an hourly-refreshed materialized view for daily revenue by region, clustered by order date."
+
+```sql
+CREATE OR REPLACE MATERIALIZED VIEW catalog.schema.daily_revenue
+  CLUSTER BY (order_date)
+  SCHEDULE EVERY 1 HOUR
+  COMMENT 'Hourly-refreshed daily revenue by region'
+AS SELECT
+    order_date,
+    region,
+    SUM(amount) AS total_revenue,
+    COUNT(DISTINCT customer_id) AS unique_customers
+FROM catalog.schema.fact_orders
+JOIN catalog.schema.dim_store USING (store_id)
+GROUP BY order_date, region;
+```
+
+Materialized views require a Pro or Serverless warehouse. `SCHEDULE EVERY 1 HOUR` runs incremental refresh automatically. `CLUSTER BY` applies Liquid Clustering to the materialized output, which speeds up downstream BI queries that filter on date.
+
+### Pipe syntax for readable transformations
+> "Rewrite my 30-day sales analysis query using pipe syntax so it reads top to bottom."
+
+```sql
+FROM catalog.schema.fact_orders
+  |> WHERE order_date >= current_date() - INTERVAL 30 DAYS
+  |> AGGREGATE SUM(amount) AS total, COUNT(*) AS cnt
+     GROUP BY region, product_category
+  |> WHERE total > 10000
+  |> ORDER BY total DESC
+  |> LIMIT 20;
+```
+
+Pipe syntax (DBR 16.1+) inverts the traditional SQL reading order. Each `|>` stage feeds into the next, making complex transformations scannable without nesting subqueries. The second `WHERE` filters the aggregated results -- equivalent to `HAVING`, but clearer because it appears after the aggregation.
+
+### Geospatial proximity search with H3
+> "Find all stores within 5km of each customer using H3 spatial indexing."
+
+```sql
+WITH customer_h3 AS (
+  SELECT *, h3_longlatash3(longitude, latitude, 7) AS h3_cell
+  FROM catalog.schema.customers
+),
+store_h3 AS (
+  SELECT *, h3_longlatash3(longitude, latitude, 7) AS h3_cell
+  FROM catalog.schema.stores
+)
+SELECT
+  c.customer_id,
+  s.store_id,
+  ST_Distance(
+    ST_Point(c.longitude, c.latitude),
+    ST_Point(s.longitude, s.latitude)
+  ) AS distance_m
+FROM customer_h3 c
+JOIN store_h3 s ON h3_ischildof(c.h3_cell, h3_toparent(s.h3_cell, 5))
+WHERE ST_Distance(
+  ST_Point(c.longitude, c.latitude),
+  ST_Point(s.longitude, s.latitude)
+) < 5000;
+```
+
+H3 indexing at resolution 7 gives roughly 1.2km hex cells. The join on `h3_ischildof` prunes the search space before the expensive `ST_Distance` calculation, turning an O(n*m) cross join into a fast spatial lookup.
+
+## Watch Out For
+- **Classic warehouses for AI and MV features** -- materialized views, `http_request`, and AI functions all require a Pro or Serverless SQL warehouse. Classic warehouses silently fail or throw cryptic errors.
+- **`PARTITION BY` on new tables** -- use `CLUSTER BY` (Liquid Clustering) instead. Partitioning is the legacy pattern. Liquid Clustering auto-optimizes file layout and supports up to 4 clustering columns with no partition pruning overhead.
+- **Missing `LIMIT` with AI functions in DBSQL** -- same rule as anywhere: each `ai_classify()` or `ai_extract()` call hits a foundation model. Cap results during development.
+- **Case sensitivity in string columns** -- if your users search for "MacBook" and the data stores "macbook", add `COLLATE UTF8_LCASE` to the column definition. It makes all comparisons case-insensitive without wrapping every query in `LOWER()`.

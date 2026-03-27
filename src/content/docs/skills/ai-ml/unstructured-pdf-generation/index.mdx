@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Unstructured PDF Generation
-description: Generate synthetic PDF documents for RAG and unstructured data use cases. Use when creating test PDFs, demo documents, or evaluation datasets for retrieval s...
+description: Generate synthetic PDF documents with companion Q&A pairs for RAG evaluation and Knowledge Assistant demos on Databricks.
 sidebar:
   label: Unstructured PDF Generation
   order: 0
@@ -9,11 +10,129 @@ sidebar:
     variant: tip
 ---
 
-Generate synthetic PDF documents for RAG testing — create realistic documents with companion question/guideline pairs for retrieval evaluation.
+**Skill:** `databricks-unstructured-pdf-generation`
 
-### Example prompts
+## What You Can Build
 
-> "Generate 10 technical documentation PDFs for a cloud platform and upload to my volume"
+You can generate batches of realistic PDF documents — HR policies, technical docs, financial reports, training materials — and upload them directly to Unity Catalog Volumes with companion JSON files containing question/guideline pairs for RAG evaluation. Your AI coding assistant picks the right MCP tool, configures the domain and size, and produces documents ready to feed into Knowledge Assistants or Vector Search indexes.
 
-> "Create HR policy PDFs covering employee handbook, leave policies, and benefits"
+## In Action
 
+> "Generate 15 technical documentation PDFs for a cloud analytics platform and upload them to my Volume for RAG testing."
+
+```python
+# Batch generation — LLM creates diverse document specs, then generates in parallel
+generate_and_upload_pdfs(
+    catalog="ai_dev_kit",
+    schema="tech_docs",
+    description="""Technical documentation for a SaaS analytics platform including:
+    - Installation and setup guides
+    - REST API references with authentication
+    - Troubleshooting procedures for common errors
+    - Security best practices and compliance
+    - Integration tutorials for third-party tools""",
+    count=15,
+    folder="product_docs",
+    doc_size="MEDIUM",
+    overwrite_folder=True
+)
+
+# Output: /Volumes/ai_dev_kit/tech_docs/raw_data/product_docs/
+#   doc_001.pdf + doc_001.json
+#   doc_002.pdf + doc_002.json
+#   ... (15 pairs)
+```
+
+**Key decisions:**
+- **Batch with `generate_and_upload_pdfs`** — a two-step LLM process: first generates diverse document specifications from your description, then produces PDFs in parallel. Use this when you need variety across a corpus.
+- **`doc_size="MEDIUM"` (~4-6 pages)** — good balance for RAG testing. `SMALL` (~1 page) is fast for demos, `LARGE` (~10+ pages) is thorough for retrieval evaluation.
+- **`overwrite_folder=True`** — cleans the target folder before writing. Always use this when regenerating to avoid stale files mixing with fresh ones.
+- **Companion JSON files** — each PDF gets a JSON sidecar with `title`, `question`, `guideline`, and `pdf_path`. These power automated RAG evaluation: query with the question, score against the guideline.
+- **Detailed descriptions produce better content** — "HR policy documents" is too vague. Listing specific document types and topics gives the LLM enough context to generate diverse, realistic content.
+
+## More Patterns
+
+### Single PDF with precise control
+> "Generate one API authentication guide with a specific evaluation question."
+
+```python
+generate_and_upload_pdf(
+    title="API Authentication Guide",
+    description="""Complete guide to REST API authentication for a cloud platform.
+    Covers OAuth 2.0 flows (authorization code, client credentials),
+    API key management with rotation policies,
+    and JWT token validation with custom claims.""",
+    question="What authentication methods does the API support?",
+    guideline="Answer should mention OAuth 2.0, API keys, and JWT tokens with specific use cases for each",
+    catalog="ai_dev_kit",
+    schema="auth_docs",
+    doc_size="LARGE"
+)
+```
+
+Use `generate_and_upload_pdf` (singular) when you need exact control over one document's title, content scope, and evaluation criteria. The `question` and `guideline` fields go into the companion JSON for downstream RAG scoring.
+
+### HR policy corpus for Knowledge Assistant
+> "Build a complete HR document library for a Knowledge Assistant demo."
+
+```python
+generate_and_upload_pdfs(
+    catalog="ai_dev_kit",
+    schema="hr_demo",
+    description="""HR policy documents for a technology company including:
+    - Employee handbook with remote work and hybrid policies
+    - PTO, sick leave, and parental leave policies with accrual details
+    - Performance review procedures (quarterly check-ins, annual reviews)
+    - Benefits guide covering health, dental, vision, and 401k
+    - Workplace conduct and anti-harassment guidelines
+    - Onboarding checklist for new hires""",
+    count=15,
+    folder="hr_policies",
+    overwrite_folder=True
+)
+
+# Feed directly into a Knowledge Assistant
+manage_ka(
+    action="create_or_update",
+    name="HR Policy Bot",
+    volume_path="/Volumes/ai_dev_kit/hr_demo/raw_data/hr_policies",
+    add_examples_from_volume=True  # auto-loads Q&A from JSON sidecars
+)
+```
+
+The companion JSON files double as Knowledge Assistant examples. With `add_examples_from_volume=True`, the KA automatically extracts question/guideline pairs and seeds them as example interactions once the endpoint is online.
+
+### RAG evaluation pipeline
+> "Use the generated documents to test my retrieval pipeline end-to-end."
+
+```python
+import json
+import glob
+
+# Load all companion JSON files
+volume_path = "/Volumes/ai_dev_kit/tech_docs/raw_data/product_docs"
+questions = []
+for json_file in glob.glob(f"{volume_path}/*.json"):
+    with open(json_file) as f:
+        questions.append(json.load(f))
+
+# Run retrieval evaluation
+for q in questions:
+    # Query your RAG system
+    response = rag_agent.invoke(q["question"])
+
+    # Evaluate using the guideline
+    score = evaluate_response(
+        response=response,
+        guideline=q["guideline"]
+    )
+    print(f"Q: {q['question'][:60]}... Score: {score}")
+```
+
+Each JSON sidecar contains a `question` the document can answer and a `guideline` describing what a correct answer looks like. This is the evaluation harness pattern: generate docs, index them, query with the questions, score against the guidelines.
+
+## Watch Out For
+- **Vague descriptions produce generic content** — "Generate some documents" yields bland output. List specific document types, topics, and domain details. The more context the LLM gets, the more diverse and realistic the corpus.
+- **Volume must exist before generation** — the tools upload to an existing Volume but do not create one. Run `CREATE VOLUME IF NOT EXISTS` first, or use the `databricks-unity-catalog` skill to set it up.
+- **Large batch timeouts** — generating 50+ documents or using `doc_size="LARGE"` can hit MCP tool timeouts. Split into batches of 10-15 documents, or use `SMALL`/`MEDIUM` sizes for faster generation.
+- **LLM endpoint auto-discovery** — the tools find `databricks-gpt-*` endpoints automatically. If none are available in your workspace, set `DATABRICKS_MODEL` and `DATABRICKS_MODEL_NANO` environment variables to point at your preferred endpoints.

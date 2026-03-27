@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Unity Catalog
-description: Unity Catalog system tables and volumes. Use when querying system tables (audit, lineage, billing) or working with volume file operations (upload, download, ...
+description: Query system tables for audit, lineage, and billing insights. Manage volumes for file operations and set up data profiling for quality monitoring.
 sidebar:
   label: Unity Catalog
   order: 0
@@ -9,13 +10,140 @@ sidebar:
     variant: tip
 ---
 
-Query system tables for audit logs, lineage, and billing data. Manage volume file operations and configure data profiling for quality monitoring.
+**Skill:** `databricks-unity-catalog`
 
-### Example prompts
+## What You Can Build
 
-> "Show me who accessed my customer table in the last 30 days from system.access.audit"
+You can build governance dashboards, cost reports, and data quality monitors on top of Unity Catalog system tables and volumes. System tables give you audit logs, table lineage, billing breakdowns, job run history, and query performance &mdash; all queryable with standard SQL. Volumes handle file operations for landing zones and ML assets. Ask your AI coding assistant for a system table query and it will generate the right joins, date filters, and aggregations for your use case.
 
-> "Upload this CSV to /Volumes/catalog/schema/landing/ and query it"
+## In Action
 
-> "Set up data profiling on my sales table to monitor for anomalies"
+> "Show me the full upstream lineage chain for my customer_360 gold table, then find who accessed it in the last 7 days."
 
+```sql
+-- Recursive upstream lineage: trace every table feeding customer_360
+WITH RECURSIVE lineage AS (
+    SELECT
+        source_table_full_name,
+        target_table_full_name,
+        1 AS depth
+    FROM system.access.table_lineage
+    WHERE target_table_full_name = 'analytics.gold.customer_360'
+      AND event_time >= current_date() - 90
+
+    UNION ALL
+
+    SELECT
+        t.source_table_full_name,
+        t.target_table_full_name,
+        l.depth + 1
+    FROM system.access.table_lineage t
+    JOIN lineage l ON t.target_table_full_name = l.source_table_full_name
+    WHERE l.depth < 10
+      AND t.event_time >= current_date() - 90
+)
+SELECT DISTINCT source_table_full_name, target_table_full_name, depth
+FROM lineage
+ORDER BY depth;
+
+-- Who accessed this table in the last 7 days?
+SELECT
+    user_identity.email AS user_email,
+    COUNT(*) AS access_count,
+    MIN(event_time) AS first_access,
+    MAX(event_time) AS last_access
+FROM system.access.audit
+WHERE event_date >= current_date() - 7
+  AND request_params.full_name_arg = 'analytics.gold.customer_360'
+  AND action_name = 'getTable'
+GROUP BY user_identity.email
+ORDER BY access_count DESC;
+```
+
+**Key decisions:**
+- **`event_date` filter on every query** &mdash; system tables are partitioned by date. Filtering on `event_time` alone scans all partitions and is orders of magnitude slower.
+- **Recursive CTE with depth cap** &mdash; lineage can be deeply nested. Cap at 10 to avoid runaway recursion on circular dependencies.
+- **90-day window on lineage** &mdash; lineage retains 365 days, but recent data is more relevant. Narrow the window for faster queries.
+- **`action_name = 'getTable'` for access tracking** &mdash; this captures reads. Use `'commandSubmit'` for query-level tracking, or `'updatePermissions'` for grant changes.
+
+## More Patterns
+
+### Monthly cost breakdown by compute type
+
+> "Break down my DBU spend for the last 30 days by compute type, and show the estimated dollar cost using list prices."
+
+```sql
+SELECT
+    CASE
+        WHEN sku_name LIKE '%ALL_PURPOSE%' THEN 'All-Purpose Compute'
+        WHEN sku_name LIKE '%JOBS%' THEN 'Jobs Compute'
+        WHEN sku_name LIKE '%SQL%' THEN 'SQL Warehouse'
+        WHEN sku_name LIKE '%SERVERLESS%' THEN 'Serverless'
+        ELSE 'Other'
+    END AS compute_type,
+    SUM(u.usage_quantity) AS total_dbus,
+    SUM(u.usage_quantity * p.pricing.default) AS estimated_cost_usd
+FROM system.billing.usage u
+LEFT JOIN system.billing.list_prices p
+    ON u.sku_name = p.sku_name
+    AND u.cloud = p.cloud
+    AND p.price_end_time IS NULL
+WHERE u.usage_date >= current_date() - 30
+GROUP BY 1
+ORDER BY estimated_cost_usd DESC;
+```
+
+The `list_prices` join gives you approximate dollar costs. Filter `price_end_time IS NULL` to get current pricing only. For contract-specific pricing, replace list prices with your negotiated rates.
+
+### Upload files and create a table from a volume
+
+> "Upload a CSV to a landing volume, then create a bronze table from it."
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Upload to landing zone
+w.files.upload_from(
+    file_path="/Volumes/analytics/raw/landing/orders_2025_06.csv",
+    source_path="/local/exports/orders_2025_06.csv",
+    overwrite=True,
+    use_parallel=True,
+)
+```
+
+```sql
+-- Create table from volume files
+CREATE TABLE analytics.bronze.raw_orders AS
+SELECT * FROM read_files(
+  '/Volumes/analytics/raw/landing/orders_2025_06.csv',
+  format => 'csv',
+  header => true,
+  inferSchema => true
+);
+```
+
+Use `use_parallel=True` for files over a few MB &mdash; it splits the upload into concurrent chunks. Volumes use the path format `/Volumes/catalog/schema/volume/path`; double slashes or missing segments produce `INVALID_PARAMETER_VALUE`.
+
+### Track PII column propagation
+
+> "Find everywhere the email column from raw_customers has propagated across my catalog."
+
+```sql
+SELECT DISTINCT
+    target_table_full_name,
+    target_column_name
+FROM system.access.column_lineage
+WHERE source_table_full_name = 'analytics.bronze.raw_customers'
+  AND source_column_name = 'email'
+ORDER BY target_table_full_name;
+```
+
+Column-level lineage tracks how individual columns flow through transformations. This is critical for PII compliance &mdash; if `email` shows up in a gold table without masking, you have a governance gap. Combine with `information_schema.columns` to find columns by name pattern across the entire catalog.
+
+## Watch Out For
+- **Missing date partition filter** &mdash; `WHERE event_time >= '2025-01-01'` scans every partition. Always use `WHERE event_date >= current_date() - N` as the primary filter, then narrow with `event_time` if needed.
+- **System schema not enabled** &mdash; system schemas must be explicitly enabled before querying. If you get "schema not found," run `databricks system-schemas enable --metastore-id <id> --schema-name access` (or `billing`, `query`, etc.).
+- **Confusing `EXTERNAL USE SCHEMA` with volume grants** &mdash; `EXTERNAL USE SCHEMA` is for Iceberg REST Catalog access. Volume operations need `READ VOLUME` / `WRITE VOLUME` grants, plus `USE CATALOG` and `USE SCHEMA` on the parents.
+- **Query history retention is 30 days** &mdash; `system.query.history` only keeps 30 days. If you need longer retention, schedule a job to snapshot it into your own table. Audit logs and lineage retain 365 days.

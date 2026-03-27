@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Agent Bricks
-description: "Create and manage Databricks Agent Bricks: Knowledge Assistants (KA) for document Q&A, Genie Spaces for SQL exploration, and Supervisor Agents (MAS) for mult..."
+description: Build Knowledge Assistants, Genie Spaces, and Supervisor Agents as pre-built AI tiles on Databricks.
 sidebar:
   label: Agent Bricks
   order: 0
@@ -9,13 +10,154 @@ sidebar:
     variant: tip
 ---
 
-Create Knowledge Assistants for document Q&A, Genie Spaces for SQL exploration, and Supervisor Agents for multi-agent orchestration on Databricks.
+**Skill:** `databricks-agent-bricks`
 
-### Example prompts
+## What You Can Build
 
-> "Create a Knowledge Assistant backed by my product documentation vector index"
+You can assemble production conversational AI applications from three pre-built components: Knowledge Assistants for document Q&A over PDFs in Volumes, Genie Spaces for natural-language SQL exploration, and Supervisor Agents that orchestrate multiple agents behind a single routing layer. Your AI coding assistant handles provisioning, agent wiring, and example seeding — you supply the data sources and routing logic.
 
-> "Build a Supervisor Agent that routes between a SQL analyst and a docs assistant"
+## In Action
 
-> "Set up a Genie-powered agent that answers questions about our sales data"
+> "Create a Supervisor Agent that routes between an HR Knowledge Assistant for policy questions and a Genie Space for headcount analytics."
 
+```python
+# Step 1: Create the Knowledge Assistant from HR docs in a Volume
+manage_ka(
+    action="create_or_update",
+    name="HR Policy Assistant",
+    volume_path="/Volumes/hr_catalog/policies/raw_data/hr_docs",
+    description="Answers questions about company HR policies, benefits, and procedures",
+    instructions="Be precise. Cite the specific policy document and section when answering.",
+    add_examples_from_volume=True
+)
+
+# Step 2: Look up the provisioned KA tile ID
+ka = manage_ka(action="find_by_name", name="HR Policy Assistant")
+
+# Step 3: Wire up the Supervisor Agent
+manage_mas(
+    action="create_or_update",
+    name="People Operations Supervisor",
+    agents=[
+        {
+            "name": "policy_expert",
+            "ka_tile_id": ka["tile_id"],
+            "description": "Answers questions about HR policies, benefits, leave, and workplace procedures"
+        },
+        {
+            "name": "headcount_analyst",
+            "genie_space_id": "01abc123-def4-5678-90ab-cdef12345678",
+            "description": "Runs SQL analytics on headcount, attrition, and compensation data"
+        }
+    ],
+    description="Routes people operations questions to the right specialist",
+    instructions="""
+    Route queries as follows:
+    - Policy, benefits, leave questions -> policy_expert
+    - Headcount, attrition, compensation data questions -> headcount_analyst
+    If unclear, ask the user to clarify whether they need a policy answer or data analysis.
+    """
+)
+```
+
+**Key decisions:**
+- **KA from Volume path** — the Knowledge Assistant indexes PDFs and text files directly from a Unity Catalog Volume. No separate Vector Search setup needed; the brick handles it internally.
+- **`add_examples_from_volume=True`** — automatically extracts question/guideline pairs from companion JSON files in the Volume and seeds them as examples once the endpoint is online.
+- **`find_by_name` before wiring** — use this to get the `tile_id` when you know the name but the brick was created in a prior session. Avoids hard-coding IDs.
+- **Agent descriptions drive routing** — the Supervisor uses each agent's `description` to decide where to send queries. Write them as specific behavioral contracts, not vague labels.
+- **Mixed agent types in one Supervisor** — combine KA tiles, Genie spaces, custom endpoints, UC functions, and MCP connections in the same `agents` list. Each entry takes exactly one source identifier.
+
+## More Patterns
+
+### Multi-modal enterprise Supervisor
+> "Build a Supervisor Agent that combines document Q&A, SQL analytics, ML classification, a UC function, and an external ticketing MCP server."
+
+```python
+manage_mas(
+    action="create_or_update",
+    name="Enterprise Support Supervisor",
+    agents=[
+        {
+            "name": "knowledge_base",
+            "ka_tile_id": "f32c5f73-466b-...",
+            "description": "Answers questions about company policies and documentation"
+        },
+        {
+            "name": "analytics_engine",
+            "genie_space_id": "01abc123...",
+            "description": "Runs SQL analytics on usage metrics and operational data"
+        },
+        {
+            "name": "ml_classifier",
+            "endpoint_name": "custom-classification-endpoint",
+            "description": "Classifies support tickets and predicts resolution time"
+        },
+        {
+            "name": "data_enrichment",
+            "uc_function_name": "support.utils.enrich_ticket_data",
+            "description": "Enriches ticket data with customer history and context"
+        },
+        {
+            "name": "ticket_ops",
+            "connection_name": "ticket_system_mcp",
+            "description": "Creates, updates, and closes tickets in external ticketing system"
+        }
+    ],
+    instructions="""
+    Route queries as follows:
+    1. Policy/procedure questions -> knowledge_base
+    2. Data analysis requests -> analytics_engine
+    3. Ticket classification -> ml_classifier
+    4. Customer context lookups -> data_enrichment
+    5. Ticket creation/updates -> ticket_ops
+    Chain agents when a query spans domains: gather info first, then act.
+    """
+)
+```
+
+Five agent types in one Supervisor — each connected through a different source identifier. The routing instructions tell the Supervisor when to chain agents sequentially versus delegate to a single specialist.
+
+### Knowledge Assistant with custom instructions
+> "Create a KA that answers only from indexed documents and refuses to speculate."
+
+```python
+manage_ka(
+    action="create_or_update",
+    name="Compliance KB",
+    volume_path="/Volumes/legal/compliance/raw_data/regulations",
+    description="Answers regulatory compliance questions from indexed documents",
+    instructions="""
+    Answer ONLY from the indexed documents. If the answer is not in the documents,
+    say 'I don't have information about that in the compliance library.'
+    Never speculate or provide general knowledge answers.
+    Always cite the document title and section.
+    """
+)
+```
+
+Custom instructions constrain the KA's behavior. For compliance and legal use cases, explicit guardrails against speculation are critical. The instructions are passed directly to the underlying agent prompt.
+
+### Check provisioning status
+> "My KA was just created — is the endpoint ready yet?"
+
+```python
+# Get current status
+ka_status = manage_ka(
+    action="get",
+    tile_id="f32c5f73-466b-..."
+)
+# Returns: tile_id, name, description, endpoint_status,
+#          knowledge_sources, examples_count
+
+# endpoint_status progression:
+# PROVISIONING -> ONLINE -> (OFFLINE if stopped)
+# Expect 2-5 minutes for PROVISIONING -> ONLINE
+```
+
+Newly created bricks take 2-5 minutes to provision. Poll with `get` until `endpoint_status` shows `ONLINE` before sending queries or building a Supervisor that depends on it.
+
+## Watch Out For
+- **Descriptions are routing contracts** — in a Supervisor Agent, vague descriptions like "handles questions" cause misrouting. Write each agent's description as a specific scope of responsibility.
+- **Endpoint provisioning delay** — new KA and MAS tiles take 2-5 minutes to go from `PROVISIONING` to `ONLINE`. Building a Supervisor before its child agents are online will fail at query time.
+- **No system table for Genie Spaces** — `system.ai.genie_spaces` does not exist. Use `find_genie_by_name` to look up a Genie space by name.
+- **One source per agent entry** — each agent in the `agents` list takes exactly one of `ka_tile_id`, `genie_space_id`, `endpoint_name`, `uc_function_name`, or `connection_name`. Providing multiple causes a validation error.
