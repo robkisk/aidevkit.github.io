@@ -1,217 +1,133 @@
 ---
 title: Dashboards & Genie
-description: MCP tools for building AI/BI dashboards, managing Genie spaces, and defining metric views.
+description: MCP tools for dashboards & genie operations.
 sidebar:
-  order: 4
+  label: Dashboards & Genie
 ---
 
-These tools manage Databricks AI/BI dashboards and Genie spaces — creating visualizations, publishing dashboards, asking natural language questions, and defining reusable metric views.
+Build AI/BI dashboards, manage Genie spaces, and publish analytics.
 
-## create_or_update_dashboard
+### Example prompts
 
-**Description:** Creates a new AI/BI dashboard or updates an existing one. Handles the full dashboard definition including datasets, visualizations, layout, and filters.
+> "Create a dashboard showing monthly revenue trends with a filter for region"
 
-**Parameters:**
+> "Ask my sales Genie space: what were the top products last quarter?"
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| display_name | string | Yes | Dashboard display name |
-| warehouse_id | string | No | SQL warehouse for dashboard queries |
-| serialized_dashboard | object | No | Full dashboard definition (datasets, pages, widgets) |
-| parent_path | string | No | Workspace folder path for the dashboard |
-| dashboard_id | string | No | Existing dashboard ID to update (omit for create) |
-
-**Example prompt:**
-```
-Create a dashboard called "Sales Overview" with charts showing
-monthly revenue, top products, and customer segmentation
-```
-
-**Related skills:** [AI/BI Dashboards](/aidevkit.github.io/skills/sql-analytics/aibi-dashboards/)
-
----
-
-## get_dashboard
-
-**Description:** Retrieves the full definition and metadata of an existing dashboard including its datasets, widgets, layout, and publish status.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| dashboard_id | string | Yes | The dashboard ID to retrieve |
-
-**Example prompt:**
-```
-Show me the configuration of the Sales Overview dashboard
-```
-
-**Related skills:** [AI/BI Dashboards](/aidevkit.github.io/skills/sql-analytics/aibi-dashboards/)
-
----
-
-## delete_dashboard
-
-**Description:** Deletes a dashboard from the workspace. This removes the dashboard definition but does not affect the underlying data.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| dashboard_id | string | Yes | The dashboard ID to delete |
-
-**Example prompt:**
-```
-Delete the old quarterly-report dashboard
-```
-
-**Related skills:** [AI/BI Dashboards](/aidevkit.github.io/skills/sql-analytics/aibi-dashboards/)
-
----
-
-## publish_dashboard
-
-**Description:** Publishes a draft dashboard, making it available to viewers. Optionally sets the warehouse used for published queries and enables/disables embedded credentials.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| dashboard_id | string | Yes | The dashboard to publish |
-| warehouse_id | string | No | SQL warehouse for published queries |
-| embed_credentials | boolean | No | Whether to embed credentials so viewers can run queries without their own warehouse access |
-
-**Example prompt:**
-```
-Publish the Sales Overview dashboard with embedded credentials
-so stakeholders can view it without warehouse access
-```
-
-**Related skills:** [AI/BI Dashboards](/aidevkit.github.io/skills/sql-analytics/aibi-dashboards/)
-
----
-
-## create_or_update_genie
-
-**Description:** Creates a new Genie space or updates an existing one. Genie spaces allow users to ask natural language questions about their data, powered by AI that understands the underlying tables and relationships.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| display_name | string | Yes | Genie space display name |
-| warehouse_id | string | No | SQL warehouse for query execution |
-| table_identifiers | string[] | No | Unity Catalog table names to make queryable |
-| description | string | No | Description of the data and its intended use |
-| instructions | string[] | No | Custom instructions for the AI (business rules, terminology) |
-| genie_space_id | string | No | Existing space ID to update (omit for create) |
-
-**Example prompt:**
-```
-Create a Genie space for the sales team that covers the orders,
-customers, and products tables with instructions about our
-fiscal year starting in February
-```
-
-**Related skills:** [Genie Spaces](/aidevkit.github.io/skills/sql-analytics/genie-spaces/)
-
----
-
-## get_genie
-
-**Description:** Retrieves the configuration and metadata of a Genie space including its connected tables, instructions, and warehouse settings.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| genie_space_id | string | Yes | The Genie space ID to retrieve |
-
-**Example prompt:**
-```
-Show me the settings for the sales-team Genie space
-```
-
-**Related skills:** [Genie Spaces](/aidevkit.github.io/skills/sql-analytics/genie-spaces/)
-
----
-
-## delete_genie
-
-**Description:** Deletes a Genie space from the workspace.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| genie_space_id | string | Yes | The Genie space ID to delete |
-
-**Example prompt:**
-```
-Delete the old test Genie space
-```
-
-**Related skills:** [Genie Spaces](/aidevkit.github.io/skills/sql-analytics/genie-spaces/)
+> "Export my Genie space so I can clone it to another workspace"
 
 ---
 
 ## ask_genie
 
-**Description:** Sends a natural language question to a Genie space and returns the AI-generated SQL query and results. Use this to query data conversationally.
+**Description:** Ask a natural language question to a Genie Space and get the answer.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| genie_space_id | string | Yes | The Genie space to query |
-| question | string | Yes | Natural language question about the data |
+| `space_id` | `str` | Yes | The Genie Space ID to query |
+| `question` | `str` | Yes | The natural language question to ask |
+| `conversation_id` | `Optional[str]` | No | Optional ID from a previous ask_genie response. If provided, continues that conversation (follow-up question). If omitted, starts a new conversation. |
+| `timeout_seconds` | `int` | No | Maximum time to wait for response (default 120) |
 
-**Example prompt:**
-```
-Ask the sales Genie space: "What were the top 5 products
-by revenue last quarter?"
-```
+## create_or_update_dashboard
 
-**Related skills:** [Genie Spaces](/aidevkit.github.io/skills/sql-analytics/genie-spaces/)
+**Description:** Create or update an AI/BI dashboard from JSON content.
 
----
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `display_name` | `str` | Yes | Dashboard display name |
+| `parent_path` | `str` | Yes | Workspace folder path (e.g., "/Workspace/Users/me/dashboards") |
+| `serialized_dashboard` | `Union[str, dict]` | Yes | Dashboard JSON content as string (MUST be tested first!) |
+| `warehouse_id` | `str` | Yes | SQL warehouse ID for query execution |
+| `publish` | `bool` | No | Whether to publish after creation (default: True) |
+
+## create_or_update_genie
+
+**Description:** Create or update a Genie Space for SQL-based data exploration.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `display_name` | `str` | Yes | Display name for the Genie space |
+| `table_identifiers` | `List[str]` | Yes | List of tables to include (e.g., ["catalog.schema.customers", "catalog.schema.orders"]) |
+| `warehouse_id` | `Optional[str]` | No | SQL warehouse ID. If not provided, auto-detects the best available warehouse (prefers running, smaller warehouses) |
+| `description` | `Optional[str]` | No | Optional description of what the Genie space does |
+| `sample_questions` | `Optional[List[str]]` | No | Optional list of sample questions to help users |
+| `space_id` | `Optional[str]` | No | Optional existing space_id to update instead of create |
+| `serialized_space` | `Optional[str]` | No | Optional full serialized space config JSON string (from export_genie). When provided, tables/instructions/SQL examples from the serialized config are used and the public genie/spaces API is called instead of data-rooms. |
+
+## delete_dashboard
+
+**Description:** Soft-delete an AI/BI dashboard by moving it to trash.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `dashboard_id` | `str` | Yes | Dashboard ID to delete |
+
+## delete_genie
+
+**Description:** Delete a Genie Space.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `space_id` | `str` | Yes | The Genie space ID to delete |
+
+## get_dashboard
+
+**Description:** Get AI/BI dashboard details by ID, or list all dashboards.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `dashboard_id` | `str` | No | The dashboard ID. If omitted, lists all dashboards. |
+| `page_size` | `int` | No | Number of dashboards to return when listing (default: 25) |
+
+## get_genie
+
+**Description:** Get details of a Genie Space, or list all spaces.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `space_id` | `Optional[str]` | No | The Genie space ID. If omitted, lists all spaces. |
+| `include_serialized_space` | `bool` | No | If True, include the full serialized space configuration in the response (requires at least CAN EDIT permission). Useful when you want to inspect or export the space config. Default: False. |
 
 ## migrate_genie
 
-**Description:** Migrates a Genie space from legacy configuration to the current format, preserving tables, instructions, and settings.
+**Description:** Export or import a Genie Space for cloning and cross-workspace migration.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| genie_space_id | string | Yes | The Genie space ID to migrate |
+| `type` | `str` | Yes | Operation to perform — "export" or "import" |
+| `space_id` | `Optional[str]` | No | (export) The Genie space ID to export |
+| `warehouse_id` | `Optional[str]` | No | (import) SQL warehouse ID for the new space. Use list_warehouses() or get_best_warehouse() to find one. |
+| `serialized_space` | `Optional[str]` | No | (import) JSON string from a prior export containing the full space configuration. Can also be constructed manually: '\{"version":2,"data_sources":\{"tables":[\{"identifier":"cat.schema.table"\}]\}\}' |
+| `title` | `Optional[str]` | No | (import) Optional title override |
+| `description` | `Optional[str]` | No | (import) Optional description override |
+| `parent_path` | `Optional[str]` | No | (import) Optional workspace folder path for the new space (e.g., "/Workspace/Users/you@company.com/Genie Spaces") |
 
-**Example prompt:**
-```
-Migrate the legacy analytics Genie space to the new format
-```
+## publish_dashboard
 
-**Related skills:** [Genie Spaces](/aidevkit.github.io/skills/sql-analytics/genie-spaces/)
-
----
-
-## manage_metric_views
-
-**Description:** Multi-action tool for managing metric views — reusable metric definitions that provide consistent calculations across dashboards, Genie spaces, and SQL queries.
+**Description:** Publish or unpublish an AI/BI dashboard.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `create`, `get`, `list`, `update`, or `delete` |
-| name | string | No | Metric view name (three-level: `catalog.schema.name`) |
-| definition | object | No | Metric view YAML definition including measures, dimensions, and filters |
+| `dashboard_id` | `str` | Yes | Dashboard ID |
+| `warehouse_id` | `str` | No | SQL warehouse ID for query execution (required for publish) |
+| `publish` | `bool` | No | True to publish (default), False to unpublish |
+| `embed_credentials` | `bool` | No | Whether to embed credentials (default: True) |
 
-**Example prompt:**
-```
-Create a metric view for monthly recurring revenue (MRR)
-based on the subscriptions table with dimensions for
-region and product tier
-```
-
-**Related skills:** [Metric Views](/aidevkit.github.io/skills/sql-analytics/metric-views/)

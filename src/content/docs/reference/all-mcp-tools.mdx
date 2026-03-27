@@ -1,102 +1,85 @@
 ---
 title: All MCP Tools
-description: Alphabetical index of all 79 MCP tools provided by the AI Dev Kit MCP server.
-sidebar:
-  order: 0
+description: Complete reference of all MCP tools available in the AI Dev Kit.
 ---
 
-A complete alphabetical reference of every MCP tool exposed by the AI Dev Kit server. Click any tool name to jump to its full documentation with parameters, examples, and related skills.
+## MCP Tools Reference
 
 | Tool | Category | Description |
 |---|---|---|
-| [`ask_genie`](../mcp-tools/dashboards-genie/#ask_genie) | Dashboards & Genie | Ask a natural language question to a Genie Space and get AI-generated SQL results |
-| [`create_or_update_app`](../mcp-tools/apps-lakebase/#create_or_update_app) | Apps & Lakebase | Create or update a Databricks App with resources and source code |
-| [`create_or_update_dashboard`](../mcp-tools/dashboards-genie/#create_or_update_dashboard) | Dashboards & Genie | Create or update an AI/BI dashboard with datasets, widgets, and layout |
-| [`create_or_update_genie`](../mcp-tools/dashboards-genie/#create_or_update_genie) | Dashboards & Genie | Create or update a Genie Space for natural language SQL exploration |
-| [`create_or_update_lakebase_branch`](../mcp-tools/apps-lakebase/#create_or_update_lakebase_branch) | Apps & Lakebase | Create or update an isolated Lakebase branch for dev/test |
-| [`create_or_update_lakebase_database`](../mcp-tools/apps-lakebase/#create_or_update_lakebase_database) | Apps & Lakebase | Create or update a managed PostgreSQL-compatible Lakebase database |
-| [`create_or_update_lakebase_sync`](../mcp-tools/apps-lakebase/#create_or_update_lakebase_sync) | Apps & Lakebase | Create or update a sync between a Delta table and Lakebase |
-| [`create_or_update_pipeline`](../mcp-tools/pipelines-jobs/#create_or_update_pipeline) | Pipelines & Jobs | Create or update a Spark Declarative Pipeline with full configuration |
-| [`create_or_update_vs_endpoint`](../mcp-tools/vector-search/#create_or_update_vs_endpoint) | Vector Search | Create or update a Vector Search endpoint (Standard or Storage-Optimized) |
-| [`create_or_update_vs_index`](../mcp-tools/vector-search/#create_or_update_vs_index) | Vector Search | Create or update a Vector Search index (Delta Sync or Direct Access) |
-| [`create_pipeline`](../mcp-tools/pipelines-jobs/#create_pipeline) | Pipelines & Jobs | Create a new Spark Declarative Pipeline (fails if already exists) |
-| [`create_volume_directory`](../mcp-tools/compute-workspace/#create_volume_directory) | Compute & Workspace | Create a directory inside a Unity Catalog volume |
-| [`delete_app`](../mcp-tools/apps-lakebase/#delete_app) | Apps & Lakebase | Delete a Databricks App and free its compute resources |
-| [`delete_dashboard`](../mcp-tools/dashboards-genie/#delete_dashboard) | Dashboards & Genie | Delete a dashboard from the workspace |
-| [`delete_genie`](../mcp-tools/dashboards-genie/#delete_genie) | Dashboards & Genie | Delete a Genie Space from the workspace |
-| [`delete_lakebase_branch`](../mcp-tools/apps-lakebase/#delete_lakebase_branch) | Apps & Lakebase | Delete a Lakebase branch without affecting the parent database |
-| [`delete_lakebase_database`](../mcp-tools/apps-lakebase/#delete_lakebase_database) | Apps & Lakebase | Delete a Lakebase database and all its data (irreversible) |
-| [`delete_lakebase_sync`](../mcp-tools/apps-lakebase/#delete_lakebase_sync) | Apps & Lakebase | Delete a sync between a lakehouse table and Lakebase |
-| [`delete_pipeline`](../mcp-tools/pipelines-jobs/#delete_pipeline) | Pipelines & Jobs | Permanently delete a pipeline and its metadata |
-| [`delete_tracked_resource`](../mcp-tools/compute-workspace/#delete_tracked_resource) | Compute & Workspace | Delete a resource created and tracked by the MCP server this session |
-| [`delete_volume_directory`](../mcp-tools/compute-workspace/#delete_volume_directory) | Compute & Workspace | Delete a directory and its contents from a UC volume |
-| [`delete_volume_file`](../mcp-tools/compute-workspace/#delete_volume_file) | Compute & Workspace | Delete a file from a Unity Catalog volume |
-| [`delete_vs_endpoint`](../mcp-tools/vector-search/#delete_vs_endpoint) | Vector Search | Delete a Vector Search endpoint (indexes must be removed first) |
-| [`delete_vs_index`](../mcp-tools/vector-search/#delete_vs_index) | Vector Search | Delete a Vector Search index from its endpoint |
-| [`download_from_volume`](../mcp-tools/compute-workspace/#download_from_volume) | Compute & Workspace | Download a file from a UC volume to the local filesystem |
-| [`execute_databricks_command`](../mcp-tools/sql-execution/#execute_databricks_command) | SQL & Execution | Execute Python, SQL, or Scala on a cluster via the command execution API |
-| [`execute_sql`](../mcp-tools/sql-execution/#execute_sql) | SQL & Execution | Run a single SQL statement on a SQL warehouse |
-| [`execute_sql_multi`](../mcp-tools/sql-execution/#execute_sql_multi) | SQL & Execution | Execute multiple SQL statements in sequence on a warehouse |
-| [`find_pipeline_by_name`](../mcp-tools/pipelines-jobs/#find_pipeline_by_name) | Pipelines & Jobs | Search for a pipeline by display name and return its ID |
-| [`generate_lakebase_credential`](../mcp-tools/apps-lakebase/#generate_lakebase_credential) | Apps & Lakebase | Generate temporary PostgreSQL credentials for a Lakebase database |
-| [`get_app`](../mcp-tools/apps-lakebase/#get_app) | Apps & Lakebase | Retrieve configuration, deployment status, and URL of a Databricks App |
-| [`get_best_cluster`](../mcp-tools/compute-workspace/#get_best_cluster) | Compute & Workspace | Find the most suitable running all-purpose cluster |
-| [`get_best_warehouse`](../mcp-tools/sql-execution/#get_best_warehouse) | SQL & Execution | Find the most suitable running SQL warehouse |
-| [`get_cluster_status`](../mcp-tools/compute-workspace/#get_cluster_status) | Compute & Workspace | Retrieve detailed status and configuration of a specific cluster |
-| [`get_current_user`](../mcp-tools/compute-workspace/#get_current_user) | Compute & Workspace | Return the authenticated user's info and group memberships |
-| [`get_dashboard`](../mcp-tools/dashboards-genie/#get_dashboard) | Dashboards & Genie | Retrieve the full definition and metadata of a dashboard |
-| [`get_genie`](../mcp-tools/dashboards-genie/#get_genie) | Dashboards & Genie | Retrieve configuration and metadata of a Genie Space |
-| [`get_lakebase_database`](../mcp-tools/apps-lakebase/#get_lakebase_database) | Apps & Lakebase | Retrieve status, config, and connection details of a Lakebase database |
-| [`get_pipeline`](../mcp-tools/pipelines-jobs/#get_pipeline) | Pipelines & Jobs | Retrieve the full configuration and status of a pipeline by ID |
-| [`get_pipeline_events`](../mcp-tools/pipelines-jobs/#get_pipeline_events) | Pipelines & Jobs | Retrieve the event log for a pipeline (updates, failures, quality events) |
-| [`get_serving_endpoint_status`](../mcp-tools/serving-models/#get_serving_endpoint_status) | Serving & Models | Retrieve detailed status and traffic config of a serving endpoint |
-| [`get_table_details`](../mcp-tools/unity-catalog/#get_table_details) | Unity Catalog | Retrieve detailed metadata for a table (columns, partitioning, size) |
-| [`get_update`](../mcp-tools/pipelines-jobs/#get_update) | Pipelines & Jobs | Get the status of a specific pipeline update by update ID |
-| [`get_volume_file_info`](../mcp-tools/compute-workspace/#get_volume_file_info) | Compute & Workspace | Return metadata about a file in a volume (size, modification time) |
-| [`get_vs_endpoint`](../mcp-tools/vector-search/#get_vs_endpoint) | Vector Search | Retrieve status and configuration of a Vector Search endpoint |
-| [`get_vs_index`](../mcp-tools/vector-search/#get_vs_index) | Vector Search | Retrieve status and metadata of a Vector Search index |
-| [`list_clusters`](../mcp-tools/compute-workspace/#list_clusters) | Compute & Workspace | List all clusters with state, configuration, and runtime version |
-| [`list_serving_endpoints`](../mcp-tools/serving-models/#list_serving_endpoints) | Serving & Models | List all model serving endpoints with names, states, and configs |
-| [`list_tracked_resources`](../mcp-tools/compute-workspace/#list_tracked_resources) | Compute & Workspace | List all resources created by the MCP server this session |
-| [`list_volume_files`](../mcp-tools/compute-workspace/#list_volume_files) | Compute & Workspace | List files and directories in a UC volume path |
-| [`list_warehouses`](../mcp-tools/sql-execution/#list_warehouses) | SQL & Execution | List all SQL warehouses with status, size, and configuration |
-| [`manage_job_runs`](../mcp-tools/pipelines-jobs/#manage_job_runs) | Pipelines & Jobs | Trigger, list, get, cancel, or export job runs |
-| [`manage_jobs`](../mcp-tools/pipelines-jobs/#manage_jobs) | Pipelines & Jobs | Create, update, list, get, delete, or reset Databricks Jobs |
-| [`manage_ka`](../mcp-tools/serving-models/#manage_ka) | Serving & Models | Create, get, list, update, or delete Knowledge Assistants |
-| [`manage_mas`](../mcp-tools/serving-models/#manage_mas) | Serving & Models | Create, get, list, update, or delete Multi-Agent Systems |
-| [`manage_metric_views`](../mcp-tools/dashboards-genie/#manage_metric_views) | Dashboards & Genie | Create, get, list, update, or delete reusable metric view definitions |
-| [`manage_uc_connections`](../mcp-tools/unity-catalog/#manage_uc_connections) | Unity Catalog | Manage connections to external data sources (PostgreSQL, MySQL, Snowflake) |
-| [`manage_uc_grants`](../mcp-tools/unity-catalog/#manage_uc_grants) | Unity Catalog | Grant, revoke, or list permissions on Unity Catalog objects |
-| [`manage_uc_monitors`](../mcp-tools/unity-catalog/#manage_uc_monitors) | Unity Catalog | Create and manage Data Profiling monitors for data quality and drift |
-| [`manage_uc_objects`](../mcp-tools/unity-catalog/#manage_uc_objects) | Unity Catalog | Manage catalogs, schemas, tables, views, and functions |
-| [`manage_uc_security_policies`](../mcp-tools/unity-catalog/#manage_uc_security_policies) | Unity Catalog | Manage row filters, column masks, and access control policies |
-| [`manage_uc_sharing`](../mcp-tools/unity-catalog/#manage_uc_sharing) | Unity Catalog | Manage Delta Sharing — shares, recipients, and shared objects |
-| [`manage_uc_storage`](../mcp-tools/unity-catalog/#manage_uc_storage) | Unity Catalog | Manage external storage credentials and locations |
-| [`manage_uc_tags`](../mcp-tools/unity-catalog/#manage_uc_tags) | Unity Catalog | Set, delete, or list tags on Unity Catalog objects |
-| [`manage_vs_data`](../mcp-tools/vector-search/#manage_vs_data) | Vector Search | Upsert or delete data in a Direct Access Vector Search index |
-| [`manage_workspace`](../mcp-tools/compute-workspace/#manage_workspace) | Compute & Workspace | List, import, export, create, or delete workspace objects |
-| [`migrate_genie`](../mcp-tools/dashboards-genie/#migrate_genie) | Dashboards & Genie | Migrate a legacy Genie Space to the current format |
-| [`publish_dashboard`](../mcp-tools/dashboards-genie/#publish_dashboard) | Dashboards & Genie | Publish a draft dashboard with optional embedded credentials |
-| [`query_serving_endpoint`](../mcp-tools/serving-models/#query_serving_endpoint) | Serving & Models | Send inference requests to a model serving endpoint |
-| [`query_vs_index`](../mcp-tools/vector-search/#query_vs_index) | Vector Search | Query a Vector Search index with text, vectors, or hybrid search |
-| [`run_python_file_on_databricks`](../mcp-tools/sql-execution/#run_python_file_on_databricks) | SQL & Execution | Upload and execute a local Python file on a cluster |
-| [`start_cluster`](../mcp-tools/compute-workspace/#start_cluster) | Compute & Workspace | Start a terminated cluster |
-| [`start_update`](../mcp-tools/pipelines-jobs/#start_update) | Pipelines & Jobs | Trigger a pipeline update (full refresh or incremental) |
-| [`stop_pipeline`](../mcp-tools/pipelines-jobs/#stop_pipeline) | Pipelines & Jobs | Stop a running pipeline and cancel in-progress updates |
-| [`update_pipeline`](../mcp-tools/pipelines-jobs/#update_pipeline) | Pipelines & Jobs | Modify the configuration of an existing pipeline |
-| [`upload_file`](../mcp-tools/compute-workspace/#upload_file) | Compute & Workspace | Upload a local file to the Databricks workspace |
-| [`upload_folder`](../mcp-tools/compute-workspace/#upload_folder) | Compute & Workspace | Upload an entire local directory to the workspace |
-| [`upload_to_volume`](../mcp-tools/compute-workspace/#upload_to_volume) | Compute & Workspace | Upload a local file to a Unity Catalog volume |
-
-### Tools by Category
-
-| Category | Count | Page |
-|---|---|---|
-| [SQL & Execution](../mcp-tools/sql-execution/) | 7 | `execute_sql`, `execute_sql_multi`, `execute_databricks_command`, `run_python_file_on_databricks`, `get_best_warehouse`, `list_warehouses`, `get_best_cluster` |
-| [Pipelines & Jobs](../mcp-tools/pipelines-jobs/) | 12 | `create_or_update_pipeline`, `create_pipeline`, `get_pipeline`, `find_pipeline_by_name`, `start_update`, `get_update`, `stop_pipeline`, `update_pipeline`, `get_pipeline_events`, `delete_pipeline`, `manage_jobs`, `manage_job_runs` |
-| [Unity Catalog](../mcp-tools/unity-catalog/) | 9 | `manage_uc_objects`, `get_table_details`, `manage_uc_grants`, `manage_uc_tags`, `manage_uc_monitors`, `manage_uc_sharing`, `manage_uc_storage`, `manage_uc_connections`, `manage_uc_security_policies` |
-| [Dashboards & Genie](../mcp-tools/dashboards-genie/) | 10 | `create_or_update_dashboard`, `get_dashboard`, `delete_dashboard`, `publish_dashboard`, `create_or_update_genie`, `get_genie`, `delete_genie`, `ask_genie`, `migrate_genie`, `manage_metric_views` |
-| [Vector Search](../mcp-tools/vector-search/) | 8 | `create_or_update_vs_endpoint`, `get_vs_endpoint`, `delete_vs_endpoint`, `create_or_update_vs_index`, `get_vs_index`, `delete_vs_index`, `query_vs_index`, `manage_vs_data` |
-| [Apps & Lakebase](../mcp-tools/apps-lakebase/) | 11 | `create_or_update_app`, `get_app`, `delete_app`, `create_or_update_lakebase_database`, `get_lakebase_database`, `delete_lakebase_database`, `generate_lakebase_credential`, `create_or_update_lakebase_branch`, `delete_lakebase_branch`, `create_or_update_lakebase_sync`, `delete_lakebase_sync` |
-| [Serving & Models](../mcp-tools/serving-models/) | 5 | `list_serving_endpoints`, `get_serving_endpoint_status`, `query_serving_endpoint`, `manage_ka`, `manage_mas` |
-| [Compute & Workspace](../mcp-tools/compute-workspace/) | 17 | `list_clusters`, `get_cluster_status`, `start_cluster`, `get_best_cluster`, `get_current_user`, `manage_workspace`, `upload_file`, `upload_folder`, `upload_to_volume`, `download_from_volume`, `list_volume_files`, `get_volume_file_info`, `create_volume_directory`, `delete_volume_file`, `delete_volume_directory`, `delete_tracked_resource`, `list_tracked_resources` |
+| [create_or_update_app](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Create a Databricks App if it doesn't exist, and optionally deploy it. |
+| [create_or_update_lakebase_branch](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Create or update a Lakebase Autoscale branch with its compute endpoint. |
+| [create_or_update_lakebase_database](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Create or update a Lakebase managed PostgreSQL database. |
+| [create_or_update_lakebase_sync](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Set up reverse ETL from a Delta table to Lakebase. |
+| [delete_app](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Delete a Databricks App. |
+| [delete_lakebase_branch](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Delete a Lakebase Autoscale branch and its compute endpoints. |
+| [delete_lakebase_database](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Delete a Lakebase database and its resources. |
+| [delete_lakebase_sync](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Remove a Lakebase synced table and optionally its UC catalog registration. |
+| [generate_lakebase_credential](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Generate an OAuth token for connecting to a Lakebase database. |
+| [get_app](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Get app details by name, or list all apps. |
+| [get_lakebase_database](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Get details of a Lakebase database, or list all databases. |
+| [manage_ka](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Create or update a Knowledge Assistant (KA) with document knowledge sources. |
+| [manage_mas](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Create or update a Supervisor Agent (formerly Multi-Agent Supervisor, MAS). |
+| [execute_code](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Execute code on Databricks — serverless or cluster compute. |
+| [list_compute](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | List and inspect compute resources: clusters, node types, or spark versions. |
+| [manage_cluster](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Create, modify, start, terminate, or delete a Databricks cluster. |
+| [manage_sql_warehouse](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Create, modify, or delete a Databricks SQL warehouse. |
+| [manage_workspace](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Manage the active Databricks workspace connection. |
+| [upload_file](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Upload a single file to Databricks workspace. |
+| [upload_folder](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Upload an entire local folder to Databricks workspace. |
+| [ask_genie](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Ask a natural language question to a Genie Space and get the answer. |
+| [create_or_update_dashboard](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Create or update an AI/BI dashboard from JSON content. |
+| [create_or_update_genie](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Create or update a Genie Space for SQL-based data exploration. |
+| [delete_dashboard](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Soft-delete an AI/BI dashboard by moving it to trash. |
+| [delete_genie](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Delete a Genie Space. |
+| [get_dashboard](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Get AI/BI dashboard details by ID, or list all dashboards. |
+| [get_genie](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Get details of a Genie Space, or list all spaces. |
+| [migrate_genie](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Export or import a Genie Space for cloning and cross-workspace migration. |
+| [publish_dashboard](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Publish or unpublish an AI/BI dashboard. |
+| [generate_and_upload_pdf](/aidevkit.github.io/mcp-tools/pdf-generation/) | PDF Generation | Generate a single PDF document and upload to a Unity Catalog volume. |
+| [generate_and_upload_pdfs](/aidevkit.github.io/mcp-tools/pdf-generation/) | PDF Generation | Generate synthetic PDF documents and upload to a Unity Catalog volume. |
+| [create_or_update_pipeline](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Create or update a pipeline by name, optionally run it. Uses Unity Catalog + serverless. |
+| [create_pipeline](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Create a new Spark Declarative Pipeline (SDP). Unity Catalog, serverless by default. |
+| [delete_pipeline](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Delete a pipeline. |
+| [find_pipeline_by_name](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Find a pipeline by name and return its ID. |
+| [get_pipeline](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Get pipeline details and configuration. |
+| [get_pipeline_events](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Get pipeline events for debugging. Returns ERROR/WARN by default. |
+| [get_update](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Get pipeline update status. Auto-fetches errors if failed. |
+| [manage_job_runs](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Manage Databricks job runs: trigger, monitor, and control. |
+| [manage_jobs](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Manage Databricks jobs: create, get, list, find by name, update, and delete. |
+| [start_update](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Start a pipeline update. Waits for completion by default. |
+| [stop_pipeline](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Stop a running pipeline. |
+| [update_pipeline](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Update pipeline configuration. |
+| [get_serving_endpoint_status](/aidevkit.github.io/mcp-tools/serving-models/) | Serving & Models | Get the status of a Model Serving endpoint. |
+| [list_serving_endpoints](/aidevkit.github.io/mcp-tools/serving-models/) | Serving & Models | List Model Serving endpoints in the workspace. |
+| [query_serving_endpoint](/aidevkit.github.io/mcp-tools/serving-models/) | Serving & Models | Query a Model Serving endpoint. |
+| [execute_sql](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Execute a SQL query on a Databricks SQL Warehouse. |
+| [execute_sql_multi](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Execute multiple SQL statements with dependency-aware parallelism. |
+| [get_best_warehouse](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Get the ID of the best available SQL warehouse. |
+| [get_table_details](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Get table schema and statistics for one or more tables. |
+| [get_volume_folder_details](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Get schema and statistics for data files in a Databricks Volume folder. |
+| [list_warehouses](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | List all SQL warehouses in the workspace. |
+| [create_volume_directory](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Create a directory in a Unity Catalog volume. |
+| [delete_volume_directory](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Delete an empty directory from a Unity Catalog volume. |
+| [delete_volume_file](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Delete a file from a Unity Catalog volume. |
+| [download_from_volume](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Download a file from a Unity Catalog volume to local path. |
+| [get_volume_file_info](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Get metadata for a file in a Unity Catalog volume. |
+| [list_volume_files](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | List files and directories in a Unity Catalog volume path. |
+| [manage_metric_views](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage Unity Catalog metric views: create, alter, describe, query, drop, and grant. |
+| [manage_uc_connections](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage Lakehouse Federation foreign connections. |
+| [manage_uc_grants](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage permissions on Unity Catalog securables. |
+| [manage_uc_monitors](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage Lakehouse quality monitors on tables. |
+| [manage_uc_objects](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage Unity Catalog namespace objects: catalogs, schemas, volumes, functions. |
+| [manage_uc_security_policies](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage row-level security and column masking policies. |
+| [manage_uc_sharing](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage Delta Sharing: shares, recipients, and providers. |
+| [manage_uc_storage](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage storage credentials and external locations. |
+| [manage_uc_tags](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage tags and comments on Unity Catalog objects. |
+| [upload_to_volume](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Upload a local file to a Unity Catalog volume. |
+| [create_or_update_vs_endpoint](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Idempotent create for Vector Search endpoints. Returns existing if one with the same name already exists (endpoints are  |
+| [create_or_update_vs_index](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Idempotent create for Vector Search indexes. Returns existing if one with the same name already exists. Triggers an init |
+| [delete_vs_endpoint](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Delete a Vector Search endpoint. |
+| [delete_vs_index](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Delete a Vector Search index. |
+| [get_vs_endpoint](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Get Vector Search endpoint details, or list all endpoints. |
+| [get_vs_index](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Get Vector Search index details, or list indexes. |
+| [manage_vs_data](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Manage data in a Vector Search index: upsert, delete, scan, or sync. |
+| [query_vs_index](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Query a Vector Search index for similar documents. |

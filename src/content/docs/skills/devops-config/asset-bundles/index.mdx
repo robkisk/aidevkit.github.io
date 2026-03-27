@@ -1,100 +1,329 @@
 ---
 title: Asset Bundles
-description: Create and configure Declarative Automation Bundles (DABs) for multi-environment deployments with dashboards, pipelines, jobs, and alerts.
+description: Create and configure Declarative Automation Bundles (formerly Asset Bundles) with best practices for multi-environment deployments (CICD). Use when working w...
 sidebar:
   label: Asset Bundles
-  order: 1
+  order: 0
+  badge:
+    text: New
+    variant: tip
 ---
 
-**Skill:** `databricks-bundles`
 
-## Overview
 
-The Asset Bundles skill teaches Claude Code how to create and manage Declarative Automation Bundles (formerly Databricks Asset Bundles / DABs) for Infrastructure-as-Code deployments. It covers project creation, resource configuration (dashboards, SDP pipelines, jobs, alerts), multi-environment targets (dev/staging/prod), permissions, and deployment workflows.
 
-## Capabilities
 
-- Create new DAB projects with `databricks bundle init`
-- Add resources: dashboards, SDP pipelines, jobs, alerts, apps
-- Configure multi-environment targets with variable overrides
-- Set permissions per environment using `run_as` and `permissions`
-- Validate, deploy, and run bundles with the Databricks CLI
-- Configure SDP pipeline resources with streaming or batch patterns
-- Set up SQL alerts with proper schema validation
 
-## Related MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `manage_jobs` | Create and manage jobs |
-| `manage_job_runs` | Trigger and monitor job runs |
-| `create_or_update_pipeline` | Create SDP pipelines |
-| `create_or_update_dashboard` | Create dashboards |
 
-## Example Prompts
+
+
 
 ```
-Create a new DAB project with a notebook job that runs
-daily on a serverless cluster
+project/
+├── databricks.yml           # Main config + targets
+├── resources/*.yml          # Resource definitions
+└── src/                     # Code/dashboard files
 ```
 
-```
-Add a staging target to my bundle with a different SQL
-warehouse and run_as service principal
-```
 
-```
-Configure an SDP pipeline resource in my bundle with
-continuous execution mode
-```
-
-## Key Concepts
-
-### Bundle Structure
 
 ```yaml
 bundle:
-  name: my-project
+  name: project-name
 
-resources:
-  jobs:
-    my_job:
-      name: my-etl-job
-      tasks:
-        - task_key: main
-          notebook_task:
-            notebook_path: ./src/main.py
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    default: "default_catalog"
+  schema:
+    default: "default_schema"
+  warehouse_id:
+    lookup:
+      warehouse: "Shared SQL Warehouse"
 
 targets:
   dev:
     default: true
+    mode: development
     workspace:
-      host: https://dev.cloud.databricks.com
+      profile: dev-profile
+    variables:
+      catalog: "dev_catalog"
+      schema: "dev_schema"
+
   prod:
+    mode: production
     workspace:
-      host: https://prod.cloud.databricks.com
-    run_as:
-      service_principal_name: prod-deployer
+      profile: prod-profile
+    variables:
+      catalog: "prod_catalog"
+      schema: "prod_schema"
 ```
 
-### Deployment Workflow
+
+
+
+
+```yaml
+resources:
+  dashboards:
+    dashboard_name:
+      display_name: "[${bundle.target}] Dashboard Title"
+      file_path: ../src/dashboards/dashboard.lvdash.json  # Relative to resources/
+      warehouse_id: ${var.warehouse_id}
+      dataset_catalog: ${var.catalog} # Default catalog used by all datasets in the dashboard if not otherwise specified in the query
+      dataset_schema: ${var.schema} # Default schema used by all datasets in the dashboard if not otherwise specified in the query
+      permissions:
+        - level: CAN_RUN
+          group_name: "users"
+```
+
+`CAN_READ``CAN_RUN``CAN_EDIT``CAN_MANAGE`
+
+
+
+
+
+
+
+
+
+
+
+```yaml
+resources:
+  jobs:
+    job_name:
+      name: "[${bundle.target}] Job Name"
+      tasks:
+        - task_key: "main_task"
+          notebook_task:
+            notebook_path: ../src/notebooks/main.py  # Relative to resources/
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 2
+      schedule:
+        quartz_cron_expression: "0 0 9 * * ?"
+        timezone_id: "America/Los_Angeles"
+      permissions:
+        - level: CAN_VIEW
+          group_name: "users"
+```
+
+`CAN_VIEW``CAN_MANAGE_RUN``CAN_MANAGE`
+
+
+
+
+
+
+
+
+
+`resources/*.yml``../src/...``../src/dashboards/file.json`
+`databricks.yml``./src/...``./src/dashboards/file.json`
+
+`resources/``../``databricks.yml``./`
+
+
+
+```yaml
+resources:
+  volumes:
+    my_volume:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      name: "volume_name"
+      volume_type: "MANAGED"
+```
+
+`grants``permissions`
+
+
+
+
+
+`app.yaml`
+
+
 
 ```bash
-databricks bundle validate -t dev
-databricks bundle deploy -t dev
-databricks bundle run my_job -t dev
+# Generate bundle config from existing CLI-deployed app
+databricks bundle generate app --existing-app-name my-app --key my_app --profile DEFAULT
+
+# This creates:
+# - resources/my_app.app.yml (minimal resource definition)
+# - src/app/ (downloaded source files including app.yaml)
 ```
 
-### Best Practices
 
-- Always validate before deployment
-- Use environment-specific variables in `targets`
-- Keep sensitive values in environment variables
-- Use the Direct Deployment Engine for faster deploys
 
-## References
 
-- [DABs Documentation](https://docs.databricks.com/aws/en/dev-tools/bundles)
-- [Bundle Examples](https://github.com/databricks/bundle-examples)
-- [Bundle Settings](https://docs.databricks.com/aws/en/dev-tools/bundles/settings)
-- [Direct Deployment Engine](https://docs.databricks.com/aws/en/dev-tools/bundles/direct)
+```yaml
+resources:
+  apps:
+    my_app:
+      name: my-app-${bundle.target}        # Environment-specific naming
+      description: "My application"
+      source_code_path: ../src/app         # Relative to resources/ dir
+```
+
+
+```yaml
+command:
+  - "python"
+  - "dash_app.py"
+
+env:
+  - name: USE_MOCK_BACKEND
+    value: "false"
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: "your-warehouse-id"
+  - name: DATABRICKS_CATALOG
+    value: "main"
+  - name: DATABRICKS_SCHEMA
+    value: "my_schema"
+```
+
+
+```yaml
+bundle:
+  name: my-bundle
+
+include:
+  - resources/*.yml
+
+variables:
+  warehouse_id:
+    default: "default-warehouse-id"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      profile: dev-profile
+    variables:
+      warehouse_id: "dev-warehouse-id"
+```
+
+
+
+
+
+`app.yaml`
+
+
+
+`source_code_path: ..`
+
+
+
+`databricks bundle schema`
+
+
+
+
+
+
+```bash
+databricks bundle validate                    # Validate default target
+databricks bundle validate -t prod           # Validate specific target
+```
+
+
+```bash
+databricks bundle deploy                      # Deploy to default target
+databricks bundle deploy -t prod             # Deploy to specific target
+databricks bundle deploy --auto-approve      # Skip confirmation prompts
+databricks bundle deploy --force             # Force overwrite remote changes
+```
+
+
+```bash
+databricks bundle run resource_name          # Run a pipeline or job
+databricks bundle run pipeline_name -t prod  # Run in specific environment
+
+# Apps require bundle run to start after deployment
+databricks bundle run app_resource_key -t dev    # Start/deploy the app
+```
+
+
+
+
+```bash
+# View logs for deployed apps
+databricks apps logs <app-name> --profile <profile-name>
+
+# Examples:
+databricks apps logs my-dash-app-dev -p DEFAULT
+databricks apps logs my-streamlit-app-prod -p DEFAULT
+```
+
+
+`[SYSTEM]`
+`[APP]`
+
+
+
+
+
+`Deployment successful`
+`App started successfully`
+`Initialized real backend`
+`Error:`
+`Requirements installed`
+
+
+```bash
+databricks bundle destroy -t dev
+databricks bundle destroy -t prod --auto-approve
+```
+
+
+
+
+
+
+
+`databricks apps logs <app-name>`
+
+
+`../src/``./src/`
+
+
+`grants``permissions`
+
+`databricks bundle run <resource_key>`
+`app.yaml`
+`../`
+`databricks apps logs <app-name>`
+
+
+
+`../src/``./src/`
+
+`development``production`
+`"users"`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

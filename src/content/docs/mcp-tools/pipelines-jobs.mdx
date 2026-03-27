@@ -1,263 +1,212 @@
 ---
 title: Pipelines & Jobs
-description: MCP tools for creating and managing Spark Declarative Pipelines and orchestration jobs.
+description: MCP tools for pipelines & jobs operations.
 sidebar:
-  order: 2
+  label: Pipelines & Jobs
 ---
 
-These tools manage Spark Declarative Pipelines (SDP) and Databricks Jobs — creating pipelines, triggering updates, monitoring runs, and orchestrating multi-task workflows.
+Create and manage Spark Declarative Pipelines and orchestration jobs.
+
+### Example prompts
+
+> "Create a streaming pipeline that ingests from my landing zone into a silver table"
+
+> "Show me the last 5 runs for my nightly-etl job"
+
+> "Check the event log for my pipeline to see why it failed"
+
+---
 
 ## create_or_update_pipeline
 
-**Description:** Creates a new Spark Declarative Pipeline or updates an existing one. Handles the full pipeline configuration including source notebooks, target schema, clusters, and continuous/triggered mode.
+**Description:** Create or update a pipeline by name, optionally run it. Uses Unity Catalog + serverless.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| name | string | Yes | Pipeline name |
-| target | string | No | Target schema for materialized tables |
-| catalog | string | No | Unity Catalog catalog name |
-| configuration | object | No | Pipeline-level Spark and SDP configuration |
-| libraries | array | No | Notebook or file paths containing pipeline code |
-| continuous | boolean | No | Whether to run continuously or on trigger |
-| channel | string | No | `CURRENT` or `PREVIEW` runtime channel |
-| cluster_spec | object | No | Cluster configuration for pipeline compute |
-
-**Example prompt:**
-```
-Create a pipeline called sales_etl that reads from the raw notebook
-in /Workspace/pipelines/ and writes to the analytics catalog
-```
-
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
+| `name` | `str` | Yes | Pipeline name (used for lookup and creation) |
+| `root_path` | `str` | Yes | Root folder for source code (added to sys.path) |
+| `catalog` | `str` | Yes | Unity Catalog name |
+| `schema` | `str` | Yes | Schema name for output tables |
+| `workspace_file_paths` | `List[str]` | Yes | List of workspace .sql or .py file paths |
+| `start_run` | `bool` | No | Start pipeline update after create/update |
+| `wait_for_completion` | `bool` | No | Wait for run to complete |
+| `full_refresh` | `bool` | No | Full refresh when starting (default: True) |
+| `timeout` | `int` | No | Max wait time in seconds (default: 1800) |
+| `extra_settings` | `Dict[str, Any]` | No | Additional pipeline settings dict |
 
 ## create_pipeline
 
-**Description:** Creates a new Spark Declarative Pipeline with the specified configuration. Unlike `create_or_update_pipeline`, this always creates a new pipeline and fails if a pipeline with the same settings already exists.
+**Description:** Create a new Spark Declarative Pipeline (SDP). Unity Catalog, serverless by default.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| name | string | Yes | Pipeline name |
-| target | string | No | Target schema for materialized tables |
-| catalog | string | No | Unity Catalog catalog name |
-| libraries | array | No | Notebook or file paths containing pipeline code |
-| continuous | boolean | No | Whether to run continuously or on trigger |
-
-**Example prompt:**
-```
-Create a new pipeline named ingest_events targeting the bronze schema
-```
-
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
-
-## get_pipeline
-
-**Description:** Retrieves the full configuration and current status of a pipeline by its ID. Returns details including state, last update status, cluster info, and pipeline settings.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| pipeline_id | string | Yes | The pipeline ID to look up |
-
-**Example prompt:**
-```
-Show me the status and config of pipeline abc123
-```
-
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
-
-## find_pipeline_by_name
-
-**Description:** Searches for a pipeline by its display name. Returns matching pipelines with their IDs, useful when you know the name but not the ID.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| name | string | Yes | Pipeline name to search for |
-
-**Example prompt:**
-```
-Find the pipeline called sales_etl and show me its ID
-```
-
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
-
-## start_update
-
-**Description:** Triggers a pipeline update (run). Can perform a full refresh of all tables or an incremental update depending on the parameters.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| pipeline_id | string | Yes | The pipeline to update |
-| full_refresh | boolean | No | Whether to fully recompute all tables. Defaults to `false` (incremental) |
-| refresh_selection | string[] | No | Specific tables to refresh instead of the full pipeline |
-
-**Example prompt:**
-```
-Trigger a full refresh of the sales_etl pipeline
-```
-
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
-
-## get_update
-
-**Description:** Gets the status of a specific pipeline update by its update ID. Returns progress, state, and any error details.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| pipeline_id | string | Yes | The pipeline ID |
-| update_id | string | Yes | The specific update ID to check |
-
-**Example prompt:**
-```
-Check the status of the last update for my pipeline
-```
-
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
-
-## stop_pipeline
-
-**Description:** Stops a running pipeline, cancelling any in-progress update.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| pipeline_id | string | Yes | The pipeline to stop |
-
-**Example prompt:**
-```
-Stop the sales_etl pipeline immediately
-```
-
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
-
-## update_pipeline
-
-**Description:** Modifies the configuration of an existing pipeline without creating a new one. Use this to change settings like target schema, cluster config, or notebook paths.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| pipeline_id | string | Yes | The pipeline to update |
-| name | string | No | New pipeline name |
-| target | string | No | New target schema |
-| configuration | object | No | Updated pipeline configuration |
-| libraries | array | No | Updated notebook or file paths |
-
-**Example prompt:**
-```
-Update the sales_etl pipeline to use the production catalog
-and a larger cluster
-```
-
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
-
-## get_pipeline_events
-
-**Description:** Retrieves the event log for a pipeline. Includes update starts, completions, failures, data quality events, and schema changes.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| pipeline_id | string | Yes | The pipeline ID |
-| max_results | number | No | Maximum events to return |
-| order_by | string | No | Sort order: `timestamp asc` or `timestamp desc` |
-
-**Example prompt:**
-```
-Show me the recent events and errors for the sales_etl pipeline
-```
-
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
+| `name` | `str` | Yes | Pipeline name |
+| `root_path` | `str` | Yes | Root folder for source code (added to sys.path) |
+| `catalog` | `str` | Yes | Unity Catalog name |
+| `schema` | `str` | Yes | Schema name for output tables |
+| `workspace_file_paths` | `List[str]` | Yes | List of workspace .sql or .py file paths |
+| `extra_settings` | `Dict[str, Any]` | No | Additional pipeline settings dict |
 
 ## delete_pipeline
 
-**Description:** Permanently deletes a pipeline and all its metadata. The underlying tables in the target schema are not deleted.
+**Description:** Delete a pipeline.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| pipeline_id | string | Yes | The pipeline to delete |
+| `pipeline_id` | `str` | Yes | Pipeline ID |
 
-**Example prompt:**
-```
-Delete the old test_pipeline that we no longer need
-```
+## find_pipeline_by_name
 
-**Related skills:** [Spark Declarative Pipelines](/aidevkit.github.io/skills/data-engineering/spark-declarative-pipelines/)
-
----
-
-## manage_jobs
-
-**Description:** Multi-action tool for managing Databricks Jobs. Supports creating, updating, listing, getting, and deleting jobs with their task configurations, schedules, and cluster settings.
+**Description:** Find a pipeline by name and return its ID.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `create`, `update`, `get`, `list`, `delete`, or `reset` |
-| job_id | number | No | Job ID (required for `get`, `update`, `delete`, `reset`) |
-| settings | object | No | Job settings including name, tasks, schedule, and cluster config |
+| `name` | `str` | Yes | Pipeline name to search for |
 
-**Example prompt:**
-```
-Create a job called nightly_etl that runs the sales_pipeline notebook
-every day at 2am UTC with email alerts on failure
-```
+## get_pipeline
 
-**Related skills:** [Jobs & Orchestration](/aidevkit.github.io/skills/devops-config/jobs-orchestration/)
+**Description:** Get pipeline details and configuration.
 
----
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `pipeline_id` | `str` | Yes | Pipeline ID |
+
+## get_pipeline_events
+
+**Description:** Get pipeline events for debugging. Returns ERROR/WARN by default.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `pipeline_id` | `str` | Yes | Pipeline ID |
+| `max_results` | `int` | No | Max events to return (default: 5) |
+| `event_log_level` | `str` | No | ERROR, WARN (includes ERROR), or INFO (all events) |
+| `update_id` | `str` | No | Filter to specific update |
+
+## get_update
+
+**Description:** Get pipeline update status. Auto-fetches errors if failed.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `pipeline_id` | `str` | Yes | Pipeline ID |
+| `update_id` | `str` | Yes | Update ID from start_update |
+| `include_config` | `bool` | No | Include full pipeline config (default: False) |
+| `full_error_details` | `bool` | No | Include full stack traces (default: False) |
 
 ## manage_job_runs
 
-**Description:** Multi-action tool for managing job runs. Supports triggering new runs, listing run history, getting run status, cancelling runs, and exporting run output.
+**Description:** Manage Databricks job runs: trigger, monitor, and control.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `run_now`, `list`, `get`, `cancel`, `export` |
-| job_id | number | No | Job ID (required for `run_now`, `list`) |
-| run_id | number | No | Run ID (required for `get`, `cancel`, `export`) |
-| notebook_params | object | No | Parameters to pass when triggering a run |
+| `action` | `str` | Yes | "run_now", "get", "get_output", "cancel", "list", or "wait" |
+| `job_id` | `int` | No | Job ID (for run_now, or list filter) |
+| `run_id` | `int` | No | Run ID (for get, get_output, cancel, wait) |
+| `idempotency_token` | `str` | No | Token to ensure idempotent job runs (for run_now) |
+| `jar_params` | `List[str]` | No | Parameters for JAR tasks (for run_now) |
+| `notebook_params` | `Dict[str, str]` | No | Parameters for notebook tasks (for run_now) |
+| `python_params` | `List[str]` | No | Parameters for Python tasks (for run_now) |
+| `spark_submit_params` | `List[str]` | No | Parameters for spark-submit tasks (for run_now) |
+| `python_named_params` | `Dict[str, str]` | No | Named parameters for Python tasks (for run_now) |
+| `pipeline_params` | `Dict[str, Any]` | No | Parameters for pipeline tasks (for run_now) |
+| `sql_params` | `Dict[str, str]` | No | Parameters for SQL tasks (for run_now) |
+| `dbt_commands` | `List[str]` | No | Commands for dbt tasks (for run_now) |
+| `queue` | `Dict[str, Any]` | No | Queue settings for this run (for run_now) |
+| `active_only` | `bool` | No | If True, only return active runs (for list) |
+| `completed_only` | `bool` | No | If True, only return completed runs (for list) |
+| `limit` | `int` | No | Maximum number of runs to return (for list, default: 25) |
+| `offset` | `int` | No | Offset for pagination (for list) |
+| `start_time_from` | `int` | No | Filter by start time in epoch milliseconds (for list) |
+| `start_time_to` | `int` | No | Filter by start time in epoch milliseconds (for list) |
+| `timeout` | `int` | No | Maximum wait time in seconds (for wait, default: 3600) |
+| `poll_interval` | `int` | No | Time between status checks in seconds (for wait, default: 10) |
 
-**Example prompt:**
-```
-Trigger the nightly_etl job with the parameter date=2025-01-15
-and show me the run status
-```
+## manage_jobs
 
-**Related skills:** [Jobs & Orchestration](/aidevkit.github.io/skills/devops-config/jobs-orchestration/)
+**Description:** Manage Databricks jobs: create, get, list, find by name, update, and delete.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | Yes | "create", "get", "list", "find_by_name", "update", or "delete" |
+| `job_id` | `int` | No | Job ID (for get, update, delete) |
+| `name` | `str` | No | Job name (for create, find_by_name, or list filter) |
+| `tasks` | `List[Dict[str, Any]]` | No | List of task definitions (for create/update). Each task should have: - task_key: Unique identifier - description: Optional task description - depends_on: Optional list of task dependencies - [task_type]: One of spark_python_task, notebook_task, python_wheel_task, spark_jar_task, spark_submit_task, pipeline_task, sql_task, dbt_task, run_job_task - [compute]: One of new_cluster, existing_cluster_id, job_cluster_key, compute_key |
+| `job_clusters` | `List[Dict[str, Any]]` | No | Job cluster definitions (for create/update, non-serverless tasks) |
+| `environments` | `List[Dict[str, Any]]` | No | Environment definitions for serverless tasks with custom dependencies (for create/update). Each dict: environment_key, spec (with client and dependencies list) |
+| `tags` | `Dict[str, str]` | No | Tags dict for organization (for create/update) |
+| `timeout_seconds` | `int` | No | Job-level timeout in seconds (for create/update) |
+| `max_concurrent_runs` | `int` | No | Maximum concurrent runs (for create/update) |
+| `email_notifications` | `Dict[str, Any]` | No | Email notification settings (for create/update) |
+| `webhook_notifications` | `Dict[str, Any]` | No | Webhook notification settings (for create/update) |
+| `notification_settings` | `Dict[str, Any]` | No | Notification settings for run lifecycle events (for create/update) |
+| `schedule` | `Dict[str, Any]` | No | Schedule configuration (for create/update) |
+| `queue` | `Dict[str, Any]` | No | Queue settings (for create/update) |
+| `run_as` | `Dict[str, Any]` | No | Run-as user/service principal (for create/update) |
+| `git_source` | `Dict[str, Any]` | No | Git source configuration (for create/update) |
+| `parameters` | `List[Dict[str, Any]]` | No | Job parameters (for create/update) |
+| `health` | `Dict[str, Any]` | No | Health monitoring rules (for create/update) |
+| `deployment` | `Dict[str, Any]` | No | Deployment configuration (for create/update) |
+| `limit` | `int` | No | Maximum number of jobs to return for list (default: 25) |
+| `expand_tasks` | `bool` | No | If True, include full task definitions in list results (default: False) |
+
+## start_update
+
+**Description:** Start a pipeline update. Waits for completion by default.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `pipeline_id` | `str` | Yes | Pipeline ID |
+| `refresh_selection` | `List[str]` | No | Table names to refresh |
+| `full_refresh` | `bool` | No | Full refresh all tables |
+| `full_refresh_selection` | `List[str]` | No | Table names for full refresh |
+| `validate_only` | `bool` | No | Dry run without updating data |
+| `wait` | `bool` | No | Wait for completion (default: True) |
+| `timeout` | `int` | No | Max wait time in seconds (default: 300) |
+| `full_error_details` | `bool` | No | Include full stack traces (default: False) |
+
+## stop_pipeline
+
+**Description:** Stop a running pipeline.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `pipeline_id` | `str` | Yes | Pipeline ID |
+
+## update_pipeline
+
+**Description:** Update pipeline configuration.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `pipeline_id` | `str` | Yes | Pipeline ID |
+| `name` | `str` | No | New pipeline name |
+| `root_path` | `str` | No | New root folder for source code |
+| `catalog` | `str` | No | New catalog name |
+| `schema` | `str` | No | New schema name |
+| `workspace_file_paths` | `List[str]` | No | New list of .sql or .py file paths |
+| `extra_settings` | `Dict[str, Any]` | No | Additional pipeline settings dict |
+

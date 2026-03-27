@@ -107,6 +107,9 @@ MCP_FILE_TO_PAGE: dict[str, str] = {
 
 MCP_SKIP_FILES: set[str] = {"__init__", "manifest", "user"}
 
+# MCP tool files that get their own dedicated page
+MCP_FILE_TO_PAGE["pdf"] = "pdf-generation"
+
 MCP_PAGE_TITLES: dict[str, str] = {
     "unity-catalog":     "Unity Catalog",
     "sql-execution":     "SQL Execution",
@@ -116,6 +119,73 @@ MCP_PAGE_TITLES: dict[str, str] = {
     "vector-search":     "Vector Search",
     "dashboards-genie":  "Dashboards & Genie",
     "apps-lakebase":     "Apps & Lakebase",
+    "pdf-generation":    "PDF Generation",
+}
+
+# Intro content prepended to each MCP page: one-liner + example prompts
+MCP_PAGE_INTROS: dict[str, str] = {
+    "sql-execution": (
+        "Run SQL queries, inspect table schemas, and manage warehouse connections.\n\n"
+        "### Example prompts\n\n"
+        '> "Show me the top 10 customers by revenue from the sales table"\n\n'
+        '> "What columns and types does catalog.schema.orders have?"\n\n'
+        '> "Run these three queries in parallel and combine the results"\n'
+    ),
+    "unity-catalog": (
+        "Browse and manage Unity Catalog objects, permissions, volumes, and governance policies.\n\n"
+        "### Example prompts\n\n"
+        '> "List all tables in my_catalog.my_schema"\n\n'
+        '> "Grant SELECT on this table to the data-analysts group"\n\n'
+        '> "Upload this CSV to /Volumes/catalog/schema/landing/data.csv"\n'
+    ),
+    "compute-workspace": (
+        "Execute code on Databricks compute, manage clusters and warehouses, and upload files to the workspace.\n\n"
+        "### Example prompts\n\n"
+        '> "Run this Python script on serverless compute"\n\n'
+        '> "Create a single-node cluster with the latest ML runtime"\n\n'
+        '> "Upload my local project folder to the workspace"\n'
+    ),
+    "pipelines-jobs": (
+        "Create and manage Spark Declarative Pipelines and orchestration jobs.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a streaming pipeline that ingests from my landing zone into a silver table"\n\n'
+        '> "Show me the last 5 runs for my nightly-etl job"\n\n'
+        '> "Check the event log for my pipeline to see why it failed"\n'
+    ),
+    "dashboards-genie": (
+        "Build AI/BI dashboards, manage Genie spaces, and publish analytics.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a dashboard showing monthly revenue trends with a filter for region"\n\n'
+        '> "Ask my sales Genie space: what were the top products last quarter?"\n\n'
+        '> "Export my Genie space so I can clone it to another workspace"\n'
+    ),
+    "serving-models": (
+        "Monitor model serving endpoints and send inference requests.\n\n"
+        "### Example prompts\n\n"
+        '> "Is my agent-endpoint-v2 serving endpoint ready?"\n\n'
+        '> "List all serving endpoints in my workspace"\n\n'
+        '> "Send a test query to my model endpoint with this input"\n'
+    ),
+    "vector-search": (
+        "Create vector search endpoints and indexes, run similarity queries, and manage embeddings.\n\n"
+        "### Example prompts\n\n"
+        '> "Create a storage-optimized vector search endpoint for my RAG app"\n\n'
+        '> "Query my document index for articles similar to \'machine learning best practices\'"\n\n'
+        '> "Create a delta sync index on my knowledge_base table using the content column"\n'
+    ),
+    "apps-lakebase": (
+        "Deploy Databricks Apps, manage Knowledge Assistants and Supervisor Agents, and configure Lakebase databases.\n\n"
+        "### Example prompts\n\n"
+        '> "Deploy my Streamlit app from the workspace folder"\n\n'
+        '> "Create a Lakebase database for my project with autoscaling"\n\n'
+        '> "Set up a Knowledge Assistant backed by my documentation index"\n'
+    ),
+    "pdf-generation": (
+        "Generate synthetic PDF documents and upload them to Unity Catalog volumes for RAG testing and evaluation.\n\n"
+        "### Example prompts\n\n"
+        '> "Generate 10 HR policy PDFs and upload them to my raw_data volume"\n\n'
+        '> "Create a single API authentication guide PDF with a question and guideline for RAG evaluation"\n'
+    ),
 }
 
 CATEGORY_TITLES: dict[str, str] = {
@@ -554,6 +624,20 @@ def gen_child_page(child: ChildPage) -> str:
     )
 
 
+def escape_mdx_inline(text: str) -> str:
+    """Escape MDX-sensitive chars in inline/table content (outside backticks)."""
+    parts = re.split(r"(`[^`]*`)", text)
+    result: list[str] = []
+    for part in parts:
+        if part.startswith("`") and part.endswith("`") and len(part) > 1:
+            result.append(part)
+        else:
+            part = part.replace("<", "&lt;").replace(">", "&gt;")
+            part = part.replace("{", "\\{").replace("}", "\\}")
+            result.append(part)
+    return "".join(result)
+
+
 def gen_mcp_page(page_slug: str, tools: list[MCPTool]) -> str:
     """Generate an MCP tools reference page."""
     title = MCP_PAGE_TITLES.get(page_slug, title_from_slug(page_slug))
@@ -565,7 +649,7 @@ def gen_mcp_page(page_slug: str, tools: list[MCPTool]) -> str:
             rows: list[str] = []
             for p in tool.params:
                 req = "Yes" if p["required"] else "No"
-                desc = p["description"] or "\u2014"
+                desc = escape_mdx_inline(p["description"] or "\u2014")
                 ptype = p["type"].replace("|", "\\|")
                 rows.append(f"| `{p['name']}` | `{ptype}` | {req} | {desc} |")
             param_table = (
@@ -576,9 +660,14 @@ def gen_mcp_page(page_slug: str, tools: list[MCPTool]) -> str:
                 + "\n"
             )
 
-        sections.append(f"## {tool.name}\n\n**Description:** {tool.description}\n{param_table}")
+        tool_desc = escape_mdx_inline(tool.description)
+        sections.append(f"## {tool.name}\n\n**Description:** {tool_desc}\n{param_table}")
 
     body = "\n".join(sections)
+
+    intro = MCP_PAGE_INTROS.get(page_slug, "")
+    if intro:
+        intro = f"{intro}\n---\n\n"
 
     return (
         f"---\n"
@@ -587,6 +676,7 @@ def gen_mcp_page(page_slug: str, tools: list[MCPTool]) -> str:
         f"sidebar:\n"
         f"  label: {title}\n"
         f"---\n\n"
+        f"{intro}"
         f"{body}\n"
     )
 
@@ -600,8 +690,9 @@ def gen_all_skills_ref(skills: dict[str, Skill]) -> str:
         category, slug = SKILL_MAP[name]
         cat_title = CATEGORY_TITLES.get(category, category)
         link = f"/aidevkit.github.io/skills/{category}/{slug}/"
+        desc = escape_mdx_inline(skill.description)
         rows.append(
-            f"| [{title_from_slug(slug)}]({link}) | {cat_title} | {skill.description} |"
+            f"| [{title_from_slug(slug)}]({link}) | {cat_title} | {desc} |"
         )
 
     table = "\n".join(rows)
@@ -625,7 +716,7 @@ def gen_all_mcp_ref(pages: dict[str, list[MCPTool]]) -> str:
         title = MCP_PAGE_TITLES.get(page_slug, title_from_slug(page_slug))
         for tool in sorted(tools, key=lambda t: t.name):
             link = f"/aidevkit.github.io/mcp-tools/{page_slug}/"
-            desc = tool.description[:120]
+            desc = escape_mdx_inline(tool.description[:120])
             rows.append(f"| [{tool.name}]({link}) | {title} | {desc} |")
 
     table = "\n".join(rows)
@@ -646,6 +737,18 @@ def gen_all_mcp_ref(pages: dict[str, list[MCPTool]]) -> str:
 # Sync orchestration
 # ═══════════════════════════════════════════════════════════════════════════
 
+def is_curated(path: Path) -> bool:
+    """Check if an existing file has curated: true in its frontmatter."""
+    if not path.exists():
+        return False
+    try:
+        text = path.read_text()
+        fm, _ = parse_frontmatter(text)
+        return fm.get("curated", "").lower() == "true"
+    except OSError:
+        return False
+
+
 def write_file(
     path: Path, content: str, *, force: bool, dry_run: bool
 ) -> tuple[str, str]:
@@ -653,6 +756,8 @@ def write_file(
     rel = path.relative_to(SITE_ROOT)
     exists = path.exists()
 
+    if exists and is_curated(path):
+        return "skip", f"  . skip (curated): {rel}"
     if exists and not force:
         return "skip", f"  . skip (exists): {rel}"
     if dry_run:

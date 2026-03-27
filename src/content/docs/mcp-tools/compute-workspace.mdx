@@ -1,333 +1,125 @@
 ---
 title: Compute & Workspace
-description: MCP tools for managing clusters, volumes, file uploads, and workspace resources.
+description: MCP tools for compute & workspace operations.
 sidebar:
-  order: 8
+  label: Compute & Workspace
 ---
 
-These tools manage Databricks compute resources (clusters), Unity Catalog volumes (file storage), workspace files, and resource tracking. They handle the infrastructure layer that other tools depend on.
+Execute code on Databricks compute, manage clusters and warehouses, and upload files to the workspace.
 
-## list_clusters
+### Example prompts
 
-**Description:** Lists all clusters in the workspace with their current state, configuration, creator, and runtime version.
+> "Run this Python script on serverless compute"
+
+> "Create a single-node cluster with the latest ML runtime"
+
+> "Upload my local project folder to the workspace"
+
+---
+
+## execute_code
+
+**Description:** Execute code on Databricks — serverless or cluster compute.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| — | — | — | No parameters required |
+| `code` | `str` | No | Code to execute. Required unless file_path is provided. |
+| `file_path` | `str` | No | Local file path to execute instead of code. Language auto-detected from extension (.py, .scala, .sql, .r). |
+| `compute_type` | `str` | No | "serverless", "cluster", or "auto" (default). |
+| `cluster_id` | `str` | No | Cluster ID for cluster compute. Auto-selects if omitted. |
+| `context_id` | `str` | No | Reuse an existing execution context (cluster compute only). Enables state preservation across calls. |
+| `language` | `str` | No | "python" (default), "scala", "sql", or "r". Ignored when file_path is set (auto-detected) or for .ipynb content. |
+| `timeout` | `int` | No | Max wait in seconds. Defaults: serverless=1800, cluster=120, file=600. |
+| `destroy_context_on_completion` | `bool` | No | Destroy cluster execution context after run. Default False (keeps context for reuse). |
+| `workspace_path` | `str` | No | Save code as a notebook at this workspace path (e.g. "/Workspace/Users/user@company.com/project/train"). If omitted, execution is ephemeral. |
+| `run_name` | `str` | No | Human-readable name for the run (serverless only). |
 
-**Example prompt:**
-```
-Show me all the clusters in my workspace and their status
-```
+## list_compute
 
-**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
-
----
-
-## get_cluster_status
-
-**Description:** Retrieves the detailed status of a specific cluster including its state, driver/worker configuration, libraries, Spark version, and auto-termination settings.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| cluster_id | string | Yes | Cluster ID to look up |
-
-**Example prompt:**
-```
-Check the status and configuration of my dev cluster
-```
-
-**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
-
----
-
-## start_cluster
-
-**Description:** Starts a terminated cluster. The cluster will be available for command execution once it reaches the RUNNING state (typically 3-5 minutes).
+**Description:** List and inspect compute resources: clusters, node types, or spark versions.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| cluster_id | string | Yes | Cluster ID to start |
+| `resource` | `str` | No | What to list. One of: - "clusters" (default): List all user-created clusters with state info. - "node_types": List available VM types for cluster creation. - "spark_versions": List available Databricks Runtime versions. |
+| `cluster_id` | `str` | No | (clusters only) If provided, returns detailed status for this specific cluster. Use after starting a cluster to poll until RUNNING. |
+| `auto_select` | `bool` | No | (clusters only) If True, returns the best running cluster (prefers "shared" &gt; "demo" in name). Useful for auto-picking a cluster. |
 
-**Example prompt:**
-```
-Start my dev cluster so I can run some PySpark jobs
-```
+## manage_cluster
 
-**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
-
----
-
-## get_best_cluster
-
-**Description:** Finds the most suitable running all-purpose cluster in the workspace. Prefers clusters that are already running and have available capacity.
+**Description:** Create, modify, start, terminate, or delete a Databricks cluster.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| — | — | — | No parameters required |
+| `action` | `str` | Yes | One of "create", "modify", "start", "terminate", "delete". |
+| `cluster_id` | `str` | No | Required for modify, start, terminate, delete. |
+| `name` | `str` | No | Cluster name. Required for create, optional for modify. |
+| `num_workers` | `int` | No | Fixed worker count (ignored if autoscale is set). Default 1 for create. |
+| `spark_version` | `str` | No | DBR version key (e.g. "15.4.x-scala2.12"). Auto-picks if omitted. |
+| `node_type_id` | `str` | No | Worker node type (e.g. "i3.xlarge"). Auto-picked if omitted. |
+| `autotermination_minutes` | `int` | No | Minutes of inactivity before auto-stop. Default 120. |
+| `data_security_mode` | `str` | No | "SINGLE_USER", "USER_ISOLATION", etc. Default SINGLE_USER. |
+| `spark_conf` | `str` | No | JSON string of Spark config overrides. |
+| `autoscale_min_workers` | `int` | No | Min workers for autoscaling (set with max to enable). |
+| `autoscale_max_workers` | `int` | No | Max workers for autoscaling. |
 
-**Example prompt:**
-```
-Find me an available cluster to run my notebook on
-```
+## manage_sql_warehouse
 
-**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
-
----
-
-## get_current_user
-
-**Description:** Returns information about the authenticated user including username, display name, and group memberships. Useful for verifying authentication and checking permissions.
+**Description:** Create, modify, or delete a Databricks SQL warehouse.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| — | — | — | No parameters required |
-
-**Example prompt:**
-```
-Who am I authenticated as in this workspace?
-```
-
----
+| `action` | `str` | Yes | One of "create", "modify", "delete". |
+| `warehouse_id` | `str` | No | Required for modify and delete. |
+| `name` | `str` | No | Warehouse name. Required for create. |
+| `size` | `str` | No | T-shirt size ("2X-Small" through "4X-Large"). Default "Small". |
+| `min_num_clusters` | `int` | No | Minimum cluster count. Default 1. |
+| `max_num_clusters` | `int` | No | Maximum cluster count for scaling. Default 1. |
+| `auto_stop_mins` | `int` | No | Minutes of inactivity before auto-stop. Default 120. |
+| `warehouse_type` | `str` | No | "PRO" or "CLASSIC". Default "PRO". |
+| `enable_serverless` | `bool` | No | Enable serverless compute. Default True. |
 
 ## manage_workspace
 
-**Description:** Multi-action tool for managing workspace objects — notebooks, folders, files, and repos. Supports listing, importing, exporting, creating, and deleting workspace items.
+**Description:** Manage the active Databricks workspace connection.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `list`, `get_status`, `import`, `export`, `delete`, `mkdirs` |
-| path | string | Yes | Workspace path (e.g., `/Workspace/Users/me/notebook`) |
-| content | string | No | Base64-encoded content for import |
-| format | string | No | Import/export format: `SOURCE`, `HTML`, `JUPYTER`, `DBC` |
-| language | string | No | Language for imports: `PYTHON`, `SQL`, `SCALA`, `R` |
-| overwrite | boolean | No | Whether to overwrite existing objects |
-
-**Example prompt:**
-```
-List all notebooks in my workspace home folder
-```
-
-**Related skills:** [Workspace Config](/aidevkit.github.io/skills/devops-config/workspace-config/)
-
----
+| `action` | `str` | Yes | One of "status", "list", "switch", or "login". |
+| `profile` | `Optional[str]` | No | Profile name from ~/.databrickscfg (for switch). |
+| `host` | `Optional[str]` | No | Workspace URL, e.g. https://adb-123.azuredatabricks.net (for switch or login). |
 
 ## upload_file
 
-**Description:** Uploads a local file to the Databricks workspace. The file is placed at the specified workspace path.
+**Description:** Upload a single file to Databricks workspace.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| local_path | string | Yes | Path to the local file |
-| remote_path | string | Yes | Destination workspace path |
-| overwrite | boolean | No | Whether to overwrite an existing file |
-
-**Example prompt:**
-```
-Upload my local pipeline.py to /Workspace/Shared/pipelines/
-```
-
----
+| `local_path` | `str` | Yes | Path to local file |
+| `workspace_path` | `str` | Yes | Target path in Databricks workspace |
+| `overwrite` | `bool` | No | Whether to overwrite existing file (default: True) |
 
 ## upload_folder
 
-**Description:** Uploads an entire local directory to the Databricks workspace, preserving the folder structure.
+**Description:** Upload an entire local folder to Databricks workspace.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| local_path | string | Yes | Path to the local directory |
-| remote_path | string | Yes | Destination workspace path |
-| overwrite | boolean | No | Whether to overwrite existing files |
+| `local_folder` | `str` | Yes | Path to local folder to upload. Add trailing slash to copy contents only, omit to preserve folder name. |
+| `workspace_folder` | `str` | Yes | Target path in Databricks workspace (e.g., "/Workspace/Users/user@example.com/my-project") |
+| `max_workers` | `int` | No | Maximum parallel upload threads (default: 10) |
+| `overwrite` | `bool` | No | Whether to overwrite existing files (default: True) |
 
-**Example prompt:**
-```
-Upload my entire project folder to /Workspace/Shared/my-project/
-```
-
----
-
-## upload_to_volume
-
-**Description:** Uploads a local file to a Unity Catalog volume. Volumes provide managed cloud storage integrated with UC governance.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| local_path | string | Yes | Path to the local file |
-| volume_path | string | Yes | Destination volume path (e.g., `/Volumes/catalog/schema/volume/file.csv`) |
-| overwrite | boolean | No | Whether to overwrite an existing file |
-
-**Example prompt:**
-```
-Upload the sample_data.csv file to the raw-data volume
-in the analytics catalog
-```
-
-**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
-
----
-
-## download_from_volume
-
-**Description:** Downloads a file from a Unity Catalog volume to the local filesystem.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| volume_path | string | Yes | Source volume path |
-| local_path | string | Yes | Destination local path |
-
-**Example prompt:**
-```
-Download the model_config.json from my models volume
-```
-
-**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
-
----
-
-## list_volume_files
-
-**Description:** Lists files and directories in a Unity Catalog volume path.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| volume_path | string | Yes | Volume path to list (e.g., `/Volumes/catalog/schema/volume/`) |
-
-**Example prompt:**
-```
-Show me what files are in the raw-data volume
-```
-
-**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
-
----
-
-## get_volume_file_info
-
-**Description:** Returns metadata about a specific file in a volume including size, modification time, and path.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| volume_path | string | Yes | Full path to the file in the volume |
-
-**Example prompt:**
-```
-How large is the events.parquet file in my raw-data volume?
-```
-
-**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
-
----
-
-## create_volume_directory
-
-**Description:** Creates a directory inside a Unity Catalog volume.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| volume_path | string | Yes | Directory path to create |
-
-**Example prompt:**
-```
-Create a /2025/01/ directory structure in my raw-data volume
-```
-
-**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
-
----
-
-## delete_volume_file
-
-**Description:** Deletes a file from a Unity Catalog volume.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| volume_path | string | Yes | Path to the file to delete |
-
-**Example prompt:**
-```
-Delete the old backup.csv from the raw-data volume
-```
-
-**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
-
----
-
-## delete_volume_directory
-
-**Description:** Deletes a directory and its contents from a Unity Catalog volume.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| volume_path | string | Yes | Directory path to delete |
-
-**Example prompt:**
-```
-Remove the /tmp/ directory from the staging volume
-```
-
-**Related skills:** [Unity Catalog - Volumes](/aidevkit.github.io/skills/governance-catalog/unity-catalog/volumes/)
-
----
-
-## delete_tracked_resource
-
-**Description:** Deletes a resource that was created and tracked by the MCP server during the current session. The tracking system keeps a record of resources created so they can be cleaned up.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| resource_type | string | Yes | Type of resource: `pipeline`, `dashboard`, `app`, `job`, etc. |
-| resource_id | string | Yes | ID of the resource to delete |
-
-**Example prompt:**
-```
-Clean up the test pipeline I created earlier in this session
-```
-
----
-
-## list_tracked_resources
-
-**Description:** Lists all resources created by the MCP server during the current session. Useful for reviewing what was created and cleaning up test resources.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| — | — | — | No parameters required |
-
-**Example prompt:**
-```
-What resources have been created during this session?
-```

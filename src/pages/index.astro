@@ -11,12 +11,12 @@ const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 
 const features = [
   {
-    stat: '25',
+    stat: '27',
     title: 'Skills',
     description: 'Pre-built knowledge for pipelines, jobs, apps, ML',
   },
   {
-    stat: '79',
+    stat: '76',
     title: 'MCP Tools',
     description: 'Direct API access to your Databricks workspace',
   },
@@ -53,12 +53,12 @@ const steps = [
 ];
 
 const categories = [
-  { name: 'Data Engineering', slug: 'skills/data-engineering/spark-declarative-pipelines' },
-  { name: 'SQL & Analytics', slug: 'skills/sql-analytics/ai-functions' },
-  { name: 'AI & ML', slug: 'skills/ai-ml/vector-search' },
-  { name: 'Apps & Databases', slug: 'skills/apps-databases/databricks-apps-python' },
-  { name: 'Governance & Catalog', slug: 'skills/governance-catalog/iceberg-tables' },
-  { name: 'DevOps & Config', slug: 'skills/devops-config/asset-bundles' },
+  { name: 'Data Engineering', desc: 'Pipelines, streaming, connectors, and ingestion', slug: 'skills/data-engineering' },
+  { name: 'SQL & Analytics', desc: 'AI functions, Genie, dashboards, and metrics', slug: 'skills/sql-analytics' },
+  { name: 'AI & ML', desc: 'RAG, agents, evaluation, and model serving', slug: 'skills/ai-ml' },
+  { name: 'Apps & Databases', desc: 'Web apps, AppKit, and Lakebase PostgreSQL', slug: 'skills/apps-databases' },
+  { name: 'Governance & Catalog', desc: 'Unity Catalog and Iceberg interop', slug: 'skills/governance-catalog' },
+  { name: 'DevOps & Config', desc: 'Bundles, jobs, compute, and SDK patterns', slug: 'skills/devops-config' },
 ];
 ---
 
@@ -318,8 +318,8 @@ const categories = [
 
       .category-card {
         display: flex;
-        align-items: center;
-        justify-content: center;
+        flex-direction: column;
+        align-items: flex-start;
         padding: 1.25rem 1.5rem;
         background: #1B3139;
         border-radius: 8px;
@@ -329,6 +329,19 @@ const categories = [
         font-size: 1rem;
         transition: all 0.2s ease;
         border: 1px solid transparent;
+        gap: 0.25rem;
+      }
+
+      .cat-name {
+        font-weight: 600;
+        font-size: 1.05rem;
+      }
+
+      .cat-desc {
+        font-size: 0.85rem;
+        font-weight: 400;
+        color: #8FA5AD;
+        line-height: 1.4;
       }
 
       .category-card:hover {
@@ -427,7 +440,10 @@ const categories = [
         <h2 class="section-title light">Explore by Category</h2>
         <div class="category-grid">
           {categories.map((c) => (
-            <a href={`${base}${c.slug}/`} class="category-card">{c.name}</a>
+            <a href={`${base}${c.slug}/`} class="category-card">
+              <span class="cat-name">{c.name}</span>
+              <span class="cat-desc">{c.desc}</span>
+            </a>
           ))}
         </div>
       </div>

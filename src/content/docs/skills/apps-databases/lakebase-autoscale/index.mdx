@@ -1,111 +1,298 @@
 ---
-title: Lakebase Autoscaling
-description: Managed PostgreSQL with autoscaling compute, Git-like branching, scale-to-zero, and reverse ETL from Delta Lake.
+title: Lakebase Autoscale
+description: Patterns and best practices for Lakebase Autoscaling (next-gen managed PostgreSQL). Use when creating or managing Lakebase Autoscaling projects, configuring ...
 sidebar:
-  label: Lakebase Autoscaling
-  order: 2
+  label: Lakebase Autoscale
+  order: 0
+  badge:
+    text: New
+    variant: tip
 ---
 
-**Skill:** `databricks-lakebase-autoscale`
 
-## Overview
 
-The Lakebase Autoscaling skill teaches Claude Code how to create and manage Lakebase Autoscaling projects -- Databricks' next-generation managed PostgreSQL service for OLTP workloads. It covers project hierarchy (projects, branches, computes, databases), autoscaling compute from 0.5 to 112 CU, Git-like branching for dev/test workflows, scale-to-zero cost savings, OAuth authentication with token refresh, reverse ETL via synced tables, and CLI management.
 
-## Capabilities
 
-- Create and manage Lakebase Autoscaling projects with Python SDK or CLI
-- Configure autoscaling compute (0.5-112 CU) with scale-to-zero
-- Create isolated database branches for dev/test/staging workflows
-- Connect applications with OAuth tokens and automatic token refresh
-- Sync data from Delta Lake to PostgreSQL via reverse ETL (synced tables)
-- Manage projects, branches, endpoints, roles, and databases via `databricks postgres` CLI
 
-## Related MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `create_or_update_lakebase_database` | Create or update a project (`type="autoscale"`) |
-| `get_lakebase_database` | Get details or list all projects |
-| `delete_lakebase_database` | Delete a project and all resources |
-| `create_or_update_lakebase_branch` | Create or update branches with compute |
-| `delete_lakebase_branch` | Delete a branch |
-| `generate_lakebase_credential` | Generate OAuth token (1-hour expiry) |
-| `create_or_update_lakebase_sync` | Set up reverse ETL synced tables |
 
-## Example Prompts
 
-```
-Create a Lakebase Autoscaling project for my web application
-with a 2-8 CU autoscaling range
-```
 
-```
-Create a development branch from production with a 7-day
-expiration for testing schema changes
-```
 
-```
-Set up reverse ETL to sync my user_profiles Delta table
-to Lakebase with continuous updates
-```
 
-## Key Concepts
 
-### Project Hierarchy
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```
 Project (top-level container)
-  |-- Branch(es) (isolated database environments)
-        |-- Compute (primary R/W endpoint)
-        |-- Read Replica(s) (optional, read-only)
-        |-- Database(s) (Postgres databases)
+  └── Branch(es) (isolated database environments)
+        ├── Compute (primary R/W endpoint)
+        ├── Read Replica(s) (optional, read-only)
+        ├── Role(s) (Postgres roles)
+        └── Database(s) (Postgres databases)
+              └── Schema(s)
 ```
 
-### Quick Start
+
+
+`w.postgres.create_project()`
+`production`
+
+`databricks_postgres`
+
+
+
+
 
 ```python
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.postgres import Project, ProjectSpec
 
 w = WorkspaceClient()
+
+# Create a project (long-running operation)
 operation = w.postgres.create_project(
-    project=Project(spec=ProjectSpec(display_name="My App", pg_version="17")),
+    project=Project(
+        spec=ProjectSpec(
+            display_name="My Application",
+            pg_version="17"
+        )
+    ),
     project_id="my-app"
 )
 result = operation.wait()
+print(f"Created project: {result.name}")
 ```
 
-### CLI Quick Reference
+
+
+
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Generate database credential for connecting (optionally scoped to an endpoint)
+cred = w.postgres.generate_database_credential(
+    endpoint="projects/my-app/branches/production/endpoints/ep-primary"
+)
+token = cred.token  # Use as password in connection string
+# Token expires after 1 hour
+```
+
+
+
+```python
+import psycopg
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Get endpoint details
+endpoint = w.postgres.get_endpoint(
+    name="projects/my-app/branches/production/endpoints/ep-primary"
+)
+host = endpoint.status.hosts.host
+
+# Generate token (scoped to endpoint)
+cred = w.postgres.generate_database_credential(
+    endpoint="projects/my-app/branches/production/endpoints/ep-primary"
+)
+
+# Connect using psycopg3
+conn_string = (
+    f"host={host} "
+    f"dbname=databricks_postgres "
+    f"user={w.current_user.me().user_name} "
+    f"password={cred.token} "
+    f"sslmode=require"
+)
+with psycopg.connect(conn_string) as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT version()")
+        print(cur.fetchone())
+```
+
+
+
+```python
+from databricks.sdk.service.postgres import Branch, BranchSpec, Duration
+
+# Create a dev branch with 7-day expiration
+branch = w.postgres.create_branch(
+    parent="projects/my-app",
+    branch=Branch(
+        spec=BranchSpec(
+            source_branch="projects/my-app/branches/production",
+            ttl=Duration(seconds=604800)  # 7 days
+        )
+    ),
+    branch_id="development"
+).wait()
+print(f"Branch created: {branch.name}")
+```
+
+
+
+```python
+from databricks.sdk.service.postgres import Endpoint, EndpointSpec, FieldMask
+
+# Update compute to autoscale between 2-8 CU
+w.postgres.update_endpoint(
+    name="projects/my-app/branches/production/endpoints/ep-primary",
+    endpoint=Endpoint(
+        name="projects/my-app/branches/production/endpoints/ep-primary",
+        spec=EndpointSpec(
+            autoscaling_limit_min_cu=2.0,
+            autoscaling_limit_max_cu=8.0
+        )
+    ),
+    update_mask=FieldMask(field_mask=[
+        "spec.autoscaling_limit_min_cu",
+        "spec.autoscaling_limit_max_cu"
+    ])
+).wait()
+```
+
+
+
+`type="autoscale"`
+
+
+
+
+
+`create_or_update_lakebase_database``type="autoscale"``display_name``pg_version`
+`get_lakebase_database``name``type="autoscale"`
+`delete_lakebase_database``type="autoscale"`
+
+
+
+
+
+`create_or_update_lakebase_branch``project_name``branch_id``source_branch``ttl_seconds``is_protected``autoscaling_limit_min_cu``autoscaling_limit_max_cu``scale_to_zero_seconds`
+`delete_lakebase_branch`
+
+
+
+
+
+`generate_lakebase_credential``endpoint`
+
+
+
+
+
+
+
+
+
+
 
 ```bash
-databricks postgres create-project --project-id my-app \
+# Create a project
+databricks postgres create-project \
+    --project-id my-app \
     --json '{"spec": {"display_name": "My App", "pg_version": "17"}}'
+
+# List projects
 databricks postgres list-projects
+
+# Get project details
+databricks postgres get-project projects/my-app
+
+# Create a branch
+databricks postgres create-branch projects/my-app development \
+    --json '{"spec": {"source_branch": "projects/my-app/branches/production", "no_expiry": true}}'
+
+# List branches
 databricks postgres list-branches projects/my-app
+
+# Get endpoint details
 databricks postgres get-endpoint projects/my-app/branches/production/endpoints/ep-primary
+
+# Delete a project
+databricks postgres delete-project projects/my-app
 ```
 
-### Autoscaling vs Provisioned
 
-| Aspect | Provisioned | Autoscaling |
-|--------|-------------|-------------|
-| SDK module | `w.database` | `w.postgres` |
-| Capacity | CU_1 to CU_8 (16 GB/CU) | 0.5-112 CU (2 GB/CU) |
-| Branching | Not supported | Full support |
-| Scale-to-zero | Not supported | Configurable timeout |
-| Operations | Synchronous | Long-running (`.wait()`) |
 
-## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| Token expired | Implement token refresh; tokens expire after 1 hour |
-| Connection refused after scale-to-zero | Compute wakes automatically; implement retry logic |
-| DNS resolution fails on macOS | Use `dig` to resolve, pass `hostaddr` to psycopg |
-| Branch deletion blocked | Delete child branches first |
 
-## References
+`w.database``w.postgres`
 
-- [Databricks SDK for Python](https://databricks-sdk-py.readthedocs.io/) -- `w.postgres` module (SDK >= 0.81.0)
-- [Lakebase Documentation](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/lakebase)
+
+
+
+
+
+
+
+
+
+
+
+
+`dig``hostaddr`
+
+
+`sslmode=require`
+`update_mask`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`w.postgres`
+`hostaddr`
+`postgresql+psycopg`
+
+```python
+%pip install -U "databricks-sdk>=0.81.0" "psycopg[binary]>=3.0" sqlalchemy
+```
+
+
+
+
+`projects/{id}/branches/{id}/endpoints/{id}`
+`.wait()`
+
+
+
+
+
+
+
+
+
+
+

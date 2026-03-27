@@ -1,79 +1,195 @@
 ---
-title: Synthetic Data Generation
-description: Generate realistic synthetic data using Spark + Faker + Pandas UDFs — serverless execution, weighted distributions, referential integrity, and multiple output formats.
+title: Synthetic Data
+description: Generate realistic synthetic data using Spark + Faker (strongly recommended). Supports serverless execution, multiple output formats (Parquet/JSON/CSV/Delta)...
 sidebar:
-  label: Synthetic Data Generation
-  order: 4
+  label: Synthetic Data
+  order: 0
+  badge:
+    text: New
+    variant: tip
 ---
 
-**Skill:** `databricks-synthetic-data-gen`
 
-## Overview
 
-The Synthetic Data Generation skill teaches Claude Code how to generate realistic, story-driven synthetic data on Databricks using Spark + Faker + Pandas UDFs. It supports serverless execution, multiple output formats, and scales from thousands to millions of rows. Use it when creating demo datasets, test data, or populating tables for Genie Spaces and data pipelines.
 
-## Capabilities
 
-- Generate data with Spark + Faker + Pandas UDFs (scalable, parallel)
-- Create realistic distributions: log-normal pricing, weighted tiers, seasonal time patterns
-- Maintain referential integrity across related tables
-- Support multiple output formats: Parquet, JSON, CSV, Delta tables
-- Run on serverless compute with managed dependencies
-- Add table and column comments for Unity Catalog discoverability
 
-## Related MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `execute_databricks_command` | Run generation code on clusters |
-| `run_python_file_on_databricks` | Execute generation scripts |
-| `get_best_cluster` | Find a cluster for generation |
 
-## Example Prompts
 
-```
-Generate an e-commerce dataset with 5,000 customers and 15,000
-orders using realistic distributions — Enterprise customers should
-generate 5x more orders than Free tier
-```
 
-```
-Create synthetic IoT sensor data for 50 devices over 6 months
-with daily readings, occasional anomalies, and seasonal patterns
+
+
+
+
+
+
+
+
+
+
+
+`uv``pip``uv`
+
+```bash
+# Preferred
+uv pip install "databricks-connect>=16.4,<17.4" faker numpy pandas holidays
+uv run python generate_data.py
+
+# Fallback if uv not available
+pip install "databricks-connect>=16.4,<17.4" faker numpy pandas holidays
+python generate_data.py
 ```
 
+
+
+
+
+
+
+
+
+
+`.cache()``.persist()``AnalysisException: PERSIST TABLE is not supported on serverless compute`
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```
-Generate a support ticket dataset with customer_id foreign keys
-to the customers table, weighted priority distribution, and
-realistic resolution times
+📍 Output Location: catalog_name.schema_name
+   Volume: /Volumes/catalog_name/schema_name/raw_data/
 ```
 
-## Key Concepts
 
-### Planning Workflow
 
-1. **Gather requirements**: catalog/schema, domain, row counts, relationships
-2. **Present table specification**: columns, descriptions, distributions, assumptions
-3. **Confirm with user**: catalog, distributions, compute preference
-4. **Generate**: master tables first, then related tables with valid FKs
 
-### Critical Rules
 
-- Always use Spark + Faker + Pandas UDFs (not pure Python)
-- Never use `.cache()` or `.persist()` with serverless compute
-- Always ask for catalog/schema -- never default
-- Create infrastructure in script: `CREATE SCHEMA/VOLUME IF NOT EXISTS`
-- Present a plan for user approval before generating code
 
-### Common Patterns
+
+
+
+
+
+
+
+
+
+
+```
+📍 Output Location: {user_catalog}.ecommerce_demo
+   Volume: /Volumes/{user_catalog}/ecommerce_demo/raw_data/
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```python
-# Weighted tier distribution
+from databricks.connect import DatabricksSession, DatabricksEnv
+from pyspark.sql import functions as F
+from pyspark.sql.types import StringType, DoubleType
+import pandas as pd
+import numpy as np
+
+# Setup with managed dependencies (databricks-connect 16.4+)
+env = DatabricksEnv().withDependencies("faker", "pandas", "numpy")
+spark = DatabricksSession.builder.withEnvironment(env).serverless(True).getOrCreate()
+
+# Define Pandas UDFs
+@F.pandas_udf(StringType())
+def fake_name(ids: pd.Series) -> pd.Series:
+    from faker import Faker
+    fake = Faker()
+    return pd.Series([fake.name() for _ in range(len(ids))])
+
+@F.pandas_udf(DoubleType())
+def generate_amount(tiers: pd.Series) -> pd.Series:
+    amounts = []
+    for tier in tiers:
+        if tier == "Enterprise":
+            amounts.append(float(np.random.lognormal(7.5, 0.8)))
+        elif tier == "Pro":
+            amounts.append(float(np.random.lognormal(5.5, 0.7)))
+        else:
+            amounts.append(float(np.random.lognormal(4.0, 0.6)))
+    return pd.Series(amounts)
+
+# Generate customers
+customers_df = (
+    spark.range(0, 10000, numPartitions=16)
+    .select(
+        F.concat(F.lit("CUST-"), F.lpad(F.col("id").cast("string"), 5, "0")).alias("customer_id"),
+        fake_name(F.col("id")).alias("name"),
+        F.when(F.rand() < 0.6, "Free")
+         .when(F.rand() < 0.9, "Pro")
+         .otherwise("Enterprise").alias("tier"),
+    )
+    .withColumn("arr", generate_amount(F.col("tier")))
+)
+
+# Save to Unity Catalog
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
+spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.raw_data")
+customers_df.write.mode("overwrite").parquet(f"/Volumes/{CATALOG}/{SCHEMA}/raw_data/customers")
+```
+
+
+
+
+```python
 F.when(F.rand() < 0.6, "Free")
  .when(F.rand() < 0.9, "Pro")
  .otherwise("Enterprise").alias("tier")
+```
 
-# Log-normal amounts (realistic pricing)
+
+```python
 @F.pandas_udf(DoubleType())
 def generate_amount(tiers: pd.Series) -> pd.Series:
     return pd.Series([
@@ -82,7 +198,77 @@ def generate_amount(tiers: pd.Series) -> pd.Series:
     ])
 ```
 
-## References
 
-- [Databricks Connect](https://docs.databricks.com/aws/en/dev-tools/databricks-connect/)
-- [Faker Documentation](https://faker.readthedocs.io/)
+```python
+from datetime import datetime, timedelta
+END_DATE = datetime.now()
+START_DATE = END_DATE - timedelta(days=180)
+
+F.date_add(F.lit(START_DATE.date()), (F.rand() * 180).cast("int")).alias("order_date")
+```
+
+
+```python
+# Always in script - assume catalog exists
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
+spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.raw_data")
+```
+
+
+
+
+
+`DatabricksEnv().withDependencies(...)`
+`environments`
+`databricks libraries install --json '{"cluster_id": "<cluster_id>", "libraries": [{"pypi": {"package": "faker"}}, {"pypi": {"package": "holidays"}}]}'`
+
+
+
+
+
+
+
+`df.write.parquet(path)`
+`df.write.json(path)`
+`df.write.option("header", "true").csv(path)`
+`df.write.saveAsTable("catalog.schema.table")`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`CREATE SCHEMA/VOLUME IF NOT EXISTS`
+
+
+
+
+
+
+
+
+
+
+
+
+
+`ModuleNotFoundError: faker`
+`pandas_udf`
+`numPartitions``spark.range()`
+
+`PERSIST TABLE is not supported on serverless``.cache()``.persist()`
+`F.window``Window``from pyspark.sql.window import Window``row_number()``rank()``F.window`
+
+

@@ -1,0 +1,17 @@
+---
+title: Data Engineering
+description: Build production data pipelines with streaming ingestion, custom connectors, and real-time processing on Databricks.
+sidebar:
+  hidden: true
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+Build production data pipelines — from streaming ingestion to custom Spark connectors to near real-time delivery.
+
+<CardGrid>
+  <LinkCard title="Spark Declarative Pipelines" description="Medallion-architecture pipelines with streaming tables, materialized views, and Auto Loader." href="./spark-declarative-pipelines/" />
+  <LinkCard title="Spark Structured Streaming" description="Production streaming with Kafka, stateful operations, watermarks, and multi-sink writes." href="./spark-structured-streaming/" />
+  <LinkCard title="Custom Spark Data Sources" description="Python data sources for connecting Spark to external systems via the PySpark DataSource API." href="./custom-spark-data-sources/" />
+  <LinkCard title="Zerobus Ingest" description="Near real-time ingestion into Delta tables via gRPC — no message bus required." href="./zerobus-ingest/" />
+</CardGrid>

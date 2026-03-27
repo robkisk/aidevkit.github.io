@@ -1,74 +1,46 @@
 ---
 title: Custom Spark Data Sources
-description: Build custom Python data sources for Apache Spark 4.0+ using the PySpark DataSource API — batch and streaming readers/writers for external systems.
+description: Build custom Python data sources for Apache Spark using the PySpark DataSource API — batch and streaming readers/writers for external systems. Use this skill...
 sidebar:
   label: Custom Spark Data Sources
-  order: 4
+  order: 0
+  badge:
+    text: New
+    variant: tip
 ---
 
-**Skill:** `spark-python-data-source`
 
-## Overview
 
-The Custom Spark Data Sources skill teaches Claude Code how to build Python connectors for external systems using the PySpark DataSource API. Use it when Spark lacks a native connector for your target system (database, API, message queue, custom protocol) and you need batch or streaming read/write capabilities.
 
-## Capabilities
 
-- Implement batch readers and writers using the `DataSource` API
-- Implement streaming readers and writers with offset tracking
-- Design partitioning strategies (time-based, token-range, ID-range)
-- Handle authentication with priority-based credential chains
-- Map types bidirectionally between Spark and external systems
-- Add retry logic, circuit breakers, and dead letter queues
-- Write unit and integration tests with mocked external systems
-- Harden connectors for production with observability and security
 
-## Related MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `execute_databricks_command` | Test data source registration on a cluster |
-| `run_python_file_on_databricks` | Run connector code on Databricks |
-| `get_best_cluster` | Find a cluster for testing |
-| `execute_sql` | Query output tables from custom sources |
 
-## Example Prompts
 
-```
-Create a Spark data source for reading from MongoDB with sharding support
-```
 
-```
-Build a streaming connector for RabbitMQ with at-least-once delivery
-```
 
-```
-Implement a batch writer for Snowflake with staged uploads
-```
 
-```
-Write a data source for REST API with OAuth2 authentication and pagination
-```
 
-## Key Concepts
+`DataSourceReader``DataSourceWriter`
+`DataSourceStreamReader``DataSourceStreamWriter`
 
-### Architecture
 
-Each data source follows a flat, single-level inheritance structure:
 
-1. **DataSource class** -- entry point that returns readers/writers
-2. **Base Reader/Writer** -- shared logic for options and data processing
-3. **Batch classes** -- inherit from base + `DataSourceReader`/`DataSourceWriter`
-4. **Stream classes** -- inherit from base + `DataSourceStreamReader`/`DataSourceStreamWriter`
 
-### Design Constraints
 
-- **Flat single-level inheritance** -- PySpark serializes reader/writer instances to executors; complex hierarchies break serialization
-- **Import inside executor methods** -- `read()` and `write()` run on remote processes; top-level imports are not available
-- **Minimize dependencies** -- every package must be installed on all executor nodes
-- **No async/await** unless the external system's SDK is async-only
 
-### Project Setup
+
+`class YourBatchWriter(YourWriter, DataSourceWriter)`
+
+`read()``write()``requests`
+
+
+
+
+
+
+
+`uv``poetry``hatch``uv`
 
 ```bash
 uv init your-datasource
@@ -79,18 +51,111 @@ uv add pyspark pytest pytest-spark
 ```
 your-datasource/
 ├── pyproject.toml
-├── src/your_datasource/
-│   ├── __init__.py
-│   └── datasource.py
+├── src/
+│   └── your_datasource/
+│       ├── __init__.py
+│       └── datasource.py
 └── tests/
     ├── conftest.py
     └── test_datasource.py
 ```
 
-## References
 
-- [PySpark DataSource API](https://docs.databricks.com/aws/en/pyspark/datasources)
-- [Apache Spark Python DataSource Tutorial](https://spark.apache.org/docs/latest/api/python/tutorial/sql/python_data_source.html)
-- [awesome-python-datasources](https://github.com/allisonwang-db/awesome-python-datasources)
-- [cyber-spark-data-connectors](https://github.com/alexott/cyber-spark-data-connectors) -- Sentinel, Splunk, REST examples
-- [pyspark-hubspot](https://github.com/dgomez04/pyspark-hubspot) -- REST API pagination example
+
+```bash
+uv run pytest                       # Run tests
+uv run ruff check src/              # Lint
+uv run ruff format src/             # Format
+uv build                            # Build wheel
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```python
+import pytest
+from unittest.mock import patch, Mock
+
+@pytest.fixture
+def spark():
+    from pyspark.sql import SparkSession
+    return SparkSession.builder.master("local[2]").getOrCreate()
+
+def test_data_source_name():
+    assert YourDataSource.name() == "your-format"
+
+def test_writer_sends_data(spark):
+    with patch('requests.post') as mock_post:
+        mock_post.return_value = Mock(status_code=200)
+
+        df = spark.createDataFrame([(1, "test")], ["id", "value"])
+        df.write.format("your-format").option("url", "http://api").save()
+
+        assert mock_post.called
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+Create a Spark data source for reading from MongoDB with sharding support
+Build a streaming connector for RabbitMQ with at-least-once delivery
+Implement a batch writer for Snowflake with staged uploads
+Write a data source for REST API with OAuth2 authentication and pagination
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+`DataSourceStreamReader``DataSourceStreamWriter`
+
+
+
+
+
+

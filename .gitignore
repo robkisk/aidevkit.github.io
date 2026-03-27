@@ -23,3 +23,6 @@ docs/superpowers/
 # macOS-specific files
 .DS_Store
 /.claude
+.mcp.json
+.claude/
+.cursor/mcp.json

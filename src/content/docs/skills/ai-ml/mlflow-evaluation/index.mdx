@@ -1,87 +1,152 @@
 ---
-title: MLflow Evaluation
-description: MLflow 3 GenAI agent evaluation — scorers, datasets, trace analysis, judge alignment with MemAlign, and automated prompt optimization with GEPA.
+title: Mlflow Evaluation
+description: "MLflow 3 GenAI agent evaluation. Use when writing mlflow.genai.evaluate() code, creating @scorer functions, using built-in scorers (Guidelines, Correctness, ..."
 sidebar:
-  label: MLflow Evaluation
-  order: 2
+  label: Mlflow Evaluation
+  order: 0
+  badge:
+    text: New
+    variant: tip
 ---
 
-**Skill:** `databricks-mlflow-evaluation`
 
-## Overview
 
-The MLflow Evaluation skill teaches Claude Code how to evaluate GenAI agents using MLflow 3's evaluation framework. It covers building evaluation datasets, creating custom scorers, running evaluations, analyzing traces for debugging, aligning LLM judges with domain expert feedback via MemAlign, and running automated prompt optimization with GEPA. Use it when measuring agent quality, comparing versions, or setting up production monitoring.
 
-## Capabilities
 
-- Run evaluations with `mlflow.genai.evaluate()` using built-in and custom scorers
-- Build evaluation datasets from traces, manual examples, or Unity Catalog tables
-- Create custom `@scorer` functions for project-specific metrics
-- Use built-in scorers: Guidelines, Correctness, Safety, RetrievalGroundedness
-- Analyze production traces for latency profiling, token usage, and error patterns
-- Optimize retrieval context for cost and relevance
-- Set up Unity Catalog trace ingestion and production monitoring
-- Align LLM judges to match domain expert preferences with MemAlign
-- Run automated prompt improvement with `optimize_prompts()` and GEPA
 
-## Related MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `execute_databricks_command` | Run evaluation code on clusters |
-| `run_python_file_on_databricks` | Execute evaluation scripts |
-| `get_table_details` | Inspect evaluation dataset tables |
 
-## Example Prompts
 
-```
-Set up MLflow GenAI evaluation for my customer support agent
-with correctness, safety, and custom tone scorers
-```
 
-```
-Build an evaluation dataset from the last 100 production traces
-tagged as interesting for quality review
-```
 
-```
-Profile my agent's latency by span type to find the bottleneck
-```
 
-```
-Align my evaluation judge using MemAlign with feedback from
-the domain expert labeling session
-```
 
-```
-Run GEPA prompt optimization on my agent's system prompt
-to improve the correctness score
-```
 
-## Key Concepts
 
-### Critical API Facts
 
-- Use `mlflow.genai.evaluate()` (NOT `mlflow.evaluate()`)
-- Data format: `{"inputs": {"query": "..."}}` (nested structure required)
-- `predict_fn` receives `**unpacked kwargs` (not a dict)
-- MemAlign is scorer-agnostic (works with float, bool, or categorical feedback)
-- `optimize_prompts` requires MLflow >= 3.5.0
+`user-journeys.md`
+`GOTCHAS.md``CRITICAL-interfaces.md`
+`patterns-datasets.md`
+`patterns-scorers.md``CRITICAL-interfaces.md`
+`patterns-evaluation.md`
 
-### Evaluation Workflows
 
-| Goal | Workflow |
-|------|---------|
-| First-time setup | Build dataset, choose scorers, run evaluation |
-| Production traces to dataset | Search traces, tag interesting ones, build dataset |
-| Performance optimization | Profile latency, analyze tokens, apply optimizations |
-| Regression detection | Establish baseline, run current version, compare metrics |
-| Custom metrics | Understand scorer interface, choose pattern, test |
-| Judge alignment | Design judge, collect SME labels, align with MemAlign |
-| Prompt optimization | Build dataset with expectations, run GEPA, promote |
 
-## References
 
-- [MLflow GenAI Evaluation](https://mlflow.org/docs/latest/llms/genai/)
-- [MLflow Scorers](https://mlflow.org/docs/latest/llms/genai/scorers.html)
-- [Databricks Agent Evaluation](https://docs.databricks.com/generative-ai/agent-framework/evaluate-agent.html)
+
+
+
+`patterns-trace-analysis.md`
+`patterns-trace-analysis.md`
+`patterns-datasets.md`
+`patterns-datasets.md`
+`patterns-datasets.md`
+
+
+
+
+
+
+
+`patterns-trace-analysis.md`
+`patterns-trace-analysis.md`
+`patterns-context-optimization.md`
+`patterns-context-optimization.md`
+`patterns-evaluation.md`
+
+
+
+
+
+
+
+`patterns-evaluation.md`
+`patterns-evaluation.md`
+`patterns-evaluation.md`
+`patterns-trace-analysis.md`
+`patterns-trace-analysis.md`
+
+
+
+
+
+
+
+`CRITICAL-interfaces.md`
+`patterns-scorers.md`
+`patterns-scorers.md`
+`patterns-evaluation.md`
+
+
+
+
+
+
+
+`patterns-trace-ingestion.md`
+`patterns-trace-ingestion.md`
+`patterns-trace-ingestion.md`
+`patterns-trace-ingestion.md`
+`patterns-trace-ingestion.md`
+`patterns-trace-ingestion.md`
+
+
+
+
+
+
+
+`make_judge``patterns-judge-alignment.md`
+`patterns-judge-alignment.md`
+`patterns-judge-alignment.md`
+`patterns-judge-alignment.md`
+`patterns-judge-alignment.md`
+`patterns-judge-alignment.md`
+
+
+
+`optimize_prompts()``user-journeys.md`
+
+
+
+`patterns-prompt-optimization.md`
+`patterns-prompt-optimization.md`
+`patterns-prompt-optimization.md`
+
+
+
+
+
+`GOTCHAS.md`
+`CRITICAL-interfaces.md`
+`patterns-evaluation.md`
+`patterns-scorers.md`
+`patterns-datasets.md`
+`patterns-trace-analysis.md`
+`patterns-context-optimization.md`
+`patterns-trace-ingestion.md`
+`patterns-judge-alignment.md`
+`patterns-prompt-optimization.md`
+`user-journeys.md`
+
+
+
+`mlflow.genai.evaluate()``mlflow.evaluate()`
+`{"inputs": {"query": "..."}}`
+`**unpacked kwargs`
+`feedback_value_type``embedding_model`
+`name``name``evaluate()``align()`
+
+`inputs``expectations`
+`get_scorer()`
+
+
+`GOTCHAS.md`
+
+
+
+
+
+
+
+

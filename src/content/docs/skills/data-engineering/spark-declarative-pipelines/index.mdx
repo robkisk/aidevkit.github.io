@@ -1,147 +1,581 @@
 ---
 title: Spark Declarative Pipelines
-description: Build streaming and batch data pipelines with SDP — streaming tables, materialized views, Auto Loader, CDC, and medallion architectures.
+description: Creates, configures, and updates Databricks Lakeflow Spark Declarative Pipelines (SDP/LDP) using serverless compute. Handles streaming tables, materialized v...
 sidebar:
   label: Spark Declarative Pipelines
   order: 0
+  badge:
+    text: New
+    variant: tip
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-## Overview
 
-The Spark Declarative Pipelines (SDP) skill teaches Claude Code how to create, configure, and manage Databricks Lakeflow pipelines using serverless compute. Use it when building medallion architectures, ingesting streaming data, implementing change data capture (CDC), or working with streaming tables and materialized views. It supports both SQL and Python pipeline definitions.
 
-## Capabilities
 
-- Create new pipeline projects using `databricks pipelines init` with Databricks Asset Bundles
-- Build streaming tables and materialized views in SQL or Python
-- Ingest data from cloud storage with Auto Loader (`read_files` / `cloudFiles`)
-- Implement Change Data Capture (CDC) with AUTO CDC for SCD Type 1 and Type 2
-- Design medallion architectures (bronze/silver/gold) with proper layering
-- Configure Liquid Clustering for optimized query performance
-- Set up multi-environment deployments (dev/staging/prod)
-- Handle schema evolution, expectations (data quality rules), and error handling
-- Write to external systems with Sinks and ForEachBatch Sinks (Python only)
-- Migrate legacy DLT pipelines to the modern SDP API
 
-## Related MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `create_or_update_pipeline` | Create or update a serverless SDP pipeline |
-| `start_update` | Trigger a pipeline run (full refresh or incremental) |
-| `get_pipeline` | Get pipeline status, configuration, and recent events |
-| `stop_pipeline` | Stop a running pipeline |
-| `get_pipeline_events` | Retrieve pipeline events and error details |
-| `find_pipeline_by_name` | Look up a pipeline by its display name |
-| `execute_sql` | Run SQL queries against pipeline output tables |
 
-## Example Prompts
+
+
+
+
+
 
 ```
-Create a Python streaming pipeline that ingests JSON files from
-/Volumes/my_catalog/raw/events/ into a bronze table, cleans
-nulls in silver, and writes a daily aggregate to gold
+- [ ] Language selected: Python or SQL
+- [ ] Compute type decided: serverless or classic compute
+- [ ] Decide on multiple catalogs or schemas vs. all in one default schema
+- [ ] Consider what should be parameterized at the pipeline level to make deployment easy.
+- [ ] Consider [Multi-Schema Patterns](#multi-schema-patterns) below, ask if unclear on best choices.
+- [ ] Consider [Modern Defaults](#modern-defaults) below, ask if unclear on best choices.
+
+
+## Quick Start: Initialize New Pipeline Project
+
+**RECOMMENDED**: Use `databricks pipelines init` to create production-ready Asset Bundle projects with multi-environment support.
+
+### When to Use Bundle Initialization
+
+Use bundle initialization for **New pipeline projects** for a professional structure from the start
+
+Use manual workflow for:
+- Quick prototyping without multi-environment needs
+- Existing manual projects you want to continue
+- Learning/experimentation
+
+### Step 1: Initialize Project
+
+I will automatically run this command when you request a new pipeline:
+
+```bash
+databricks pipelines init
 ```
 
-```
-Build a SQL medallion pipeline for order data with Auto Loader
-ingestion, data quality expectations on silver, and a
-customer revenue summary in gold
-```
+
+`customer_orders_pipeline`
+`main``prod_catalog`
+`yes``no`
+
+
 
 ```
-Set up AUTO CDC on my customers table to track SCD Type 2 history
-with valid_from and valid_to timestamps
-```
-
-```
-Migrate my existing DLT pipeline from the legacy dlt import
-to the modern pyspark.pipelines API
-```
-
-```
-Add data quality expectations to my silver table that drop rows
-where order_amount is negative and quarantine rows with
-missing customer_id
-```
-
-```
-Create an Asset Bundle project for a streaming pipeline with
-separate dev and prod targets using different catalogs
-```
-
-## Key Concepts
-
-### Streaming Tables vs Materialized Views
-
-**Streaming tables** process data incrementally -- each run picks up only new records from the source. Best for append-only ingestion from files, Kafka, or Kinesis.
-
-**Materialized views** recompute their full result set on each refresh. Best for aggregations, joins, and any transformation where the output depends on the entire input dataset.
-
-### Auto Loader
-
-Auto Loader (`read_files` in SQL, `cloudFiles` in Python) incrementally ingests new files from cloud storage. It tracks which files have been processed and only reads new arrivals, making it ideal for landing zones and raw data volumes.
-
-### Medallion Architecture
-
-A layered data design pattern:
-- **Bronze** -- Raw ingestion, minimal transformation, append-only
-- **Silver** -- Cleaned and validated, business logic applied, deduplication
-- **Gold** -- Aggregated and denormalized, optimized for BI and reporting
-
-### AUTO CDC and SCD Type 2
-
-AUTO CDC applies change data capture operations (inserts, updates, deletes) from a source to a target table. When configured for SCD Type 2, it maintains a full history of changes with `__START_AT` and `__END_AT` timestamp columns.
-
-### Liquid Clustering
-
-Replaces traditional `PARTITION BY` with dynamic `CLUSTER BY` that automatically optimizes data layout. Use it on columns frequently used in filters and joins.
-
-### Decision Tree
-
-```
-User request -> What kind of output?
-├── Intermediate logic (not persisted) -> Temporary View
-├── Persisted dataset
-│   ├── Source is streaming/incremental -> Streaming Table
-│   │   ├── File ingestion -> Auto Loader
-│   │   ├── CDC / upserts / SCD -> Auto CDC
-│   │   └── Multiple sources into one table -> Append Flows
-│   └── Source is batch/full scan -> Materialized View
-│       ├── Aggregation/join across full dataset
-│       └── Gold layer from streaming table (batch read)
-├── Output to external system (Python only) -> Sink
-└── Data quality constraints -> Expectations (any dataset)
-```
-
-## Pipeline Structure
-
-```
-my-pipeline-project/
-├── databricks.yml
+my_pipeline/
+├── databricks.yml              # Multi-environment config (dev/prod)
 ├── resources/
-│   ├── my_pipeline.pipeline.yml
-│   └── my_pipeline_job.job.yml
+│   └── *_etl.pipeline.yml      # Pipeline resource definition
 └── src/
-    ├── bronze.py (or .sql)
-    ├── silver.py (or .sql)
-    └── gold.py (or .sql)
+    └── *_etl/
+        ├── explorations/       # Exploratory code in .ipynb
+        └── transformations/    # Your .sql or .py files here
 ```
 
-## Import Reference
 
-| Current | Deprecated | Notes |
-|---------|-----------|-------|
-| `from pyspark import pipelines as dp` | `import dlt` | Both work. Prefer `dp`. |
-| `spark.read.table()` / `spark.readStream.table()` | `dp.read()` / `dp.read_stream()` | Prefer `spark.*` |
 
-## References
+`src/transformations/`
 
-- [Spark Declarative Pipelines Overview](https://docs.databricks.com/aws/en/ldp/)
-- [SQL Language Reference](https://docs.databricks.com/aws/en/ldp/developer/sql-dev)
-- [Python Language Reference](https://docs.databricks.com/aws/en/ldp/developer/python-ref)
-- [Loading Data with Auto Loader](https://docs.databricks.com/aws/en/ldp/load)
-- [Change Data Capture (CDC)](https://docs.databricks.com/aws/en/ldp/cdc)
-- [Medallion Architecture](https://docs.databricks.com/aws/en/lakehouse/medallion)
+
+```
+/Volumes/{catalog}/{schema}/{pipeline_name}_metadata/schemas
+```
+
+
+
+```bash
+# Deploy to workspace (dev by default)
+databricks bundle deploy
+
+# Run pipeline
+databricks bundle run my_pipeline_etl
+
+# Deploy to production
+databricks bundle deploy --target prod
+```
+
+
+
+
+
+
+
+`from pyspark import pipelines as dp`
+`@dp.table()``@dp.materialized_view()``@dp.temporary_view()`
+`@dp.temporary_view()`
+`import dlt`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`pyspark.pipelines``dlt`
+
+
+
+
+
+`databricks pipelines init`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`pyspark.pipelines`
+
+
+
+
+
+
+
+`_ingested_at``_source_file`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`bronze_*.sql``silver_*.sql``gold_*.sql`
+`bronze/orders.sql``silver/cleaned.sql``gold/summary.sql`
+
+`transformations/**`
+
+
+
+
+
+
+
+`.sql``.py`
+
+```
+my_pipeline/
+├── bronze/
+│   ├── ingest_orders.sql       # SQL (default for most cases)
+│   └── ingest_events.py        # Python (for complex logic)
+├── silver/
+│   └── clean_orders.sql
+└── gold/
+    └── daily_summary.sql
+```
+
+`bronze/ingest_orders.sql`
+```sql
+CREATE OR REFRESH STREAMING TABLE bronze_orders
+CLUSTER BY (order_date)
+AS
+SELECT
+  *,
+  current_timestamp() AS _ingested_at,
+  _metadata.file_path AS _source_file
+FROM read_files(
+  '/Volumes/catalog/schema/raw/orders/',
+  format => 'json',
+  schemaHints => 'order_id STRING, customer_id STRING, amount DECIMAL(10,2), order_date DATE'
+);
+```
+
+`bronze/ingest_events.py`
+```python
+from pyspark import pipelines as dp
+from pyspark.sql.functions import col, current_timestamp
+
+# Get schema location from pipeline configuration
+schema_location_base = spark.conf.get("schema_location_base")
+
+@dp.table(name="bronze_events", cluster_by=["event_date"])
+def bronze_events():
+    return (
+        spark.readStream.format("cloudFiles")
+        .option("cloudFiles.format", "json")
+        .option("cloudFiles.schemaLocation", f"{schema_location_base}/bronze_events")
+        .load("/Volumes/catalog/schema/raw/events/")
+        .withColumn("_ingested_at", current_timestamp())
+        .withColumn("_source_file", col("_metadata.file_path"))
+    )
+```
+
+`spark.readStream.format("cloudFiles")`
+
+
+```
+/Volumes/{catalog}/{schema}/{pipeline_name}_metadata/schemas
+```
+
+`/Volumes/my_catalog/pipeline_metadata/orders_pipeline_metadata/schemas`
+
+`spark.conf.get("schema_location_base")`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`create_or_update_pipeline`
+
+
+
+
+
+
+
+
+
+`databricks pipelines init`
+
+
+
+`bronze_*.sql``silver_*.sql``gold_*.sql``transformations/`
+`transformations/bronze/``transformations/silver/``transformations/gold/`
+`transformations/**`
+
+
+
+
+
+
+
+
+`.sql``.py`
+
+
+
+
+
+
+`catalog``schema`
+
+
+
+
+
+
+```python
+# All tables write to: catalog.schema.bronze_*, silver_*, gold_*
+@dp.table(name="bronze_orders")  # → catalog.schema.bronze_orders
+@dp.table(name="silver_orders")  # → catalog.schema.silver_orders
+@dp.table(name="gold_summary")   # → catalog.schema.gold_summary
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```python
+from pyspark import pipelines as dp
+from pyspark.sql.functions import col
+
+# Pull variables from pipeline configuration parameters
+silver_schema = spark.conf.get("silver_schema")  # e.g., "silver"
+gold_schema   = spark.conf.get("gold_schema")    # e.g., "gold"
+landing_schema = spark.conf.get("landing_schema")  # e.g., "landing"
+
+# Bronze → uses default catalog/schema (set to bronze in pipeline settings)
+@dp.table(name="orders_bronze")
+def orders_bronze():
+    # Read from another schema in the same default catalog
+    return spark.readStream.table(f"{landing_schema}.orders_raw")
+
+# Silver → same catalog, schema from parameter
+@dp.table(name=f"{silver_schema}.orders_clean")
+def orders_clean():
+    return (spark.read.table("orders_bronze")  # unqualified = default catalog/schema
+            .filter(col("order_id").isNotNull()))
+
+# Gold → same catalog, schema from parameter
+@dp.materialized_view(name=f"{gold_schema}.orders_by_date")
+def orders_by_date():
+    return (spark.read.table(f"{silver_schema}.orders_clean")
+            .groupBy("order_date")
+            .count().withColumnRenamed("count", "order_count"))
+```
+
+
+
+
+
+
+
+```python
+from pyspark import pipelines as dp
+from pyspark.sql.functions import col
+
+# Pull variables from pipeline configuration parameters
+silver_catalog = spark.conf.get("silver_catalog")  # e.g., "my_catalog"
+silver_schema  = spark.conf.get("silver_schema")   # e.g., "silver"
+gold_catalog   = spark.conf.get("gold_catalog")    # e.g., "my_catalog"
+gold_schema    = spark.conf.get("gold_schema")     # e.g., "gold"
+landing_catalog = spark.conf.get("landing_catalog")  # optional, if source is in another catalog
+landing_schema  = spark.conf.get("landing_schema")
+
+# Bronze → uses default catalog/schema (set to bronze)
+@dp.table(name="orders_bronze")
+def orders_bronze():
+    # If source is in a specified catalog/schema:
+    return spark.readStream.table(f"{landing_catalog}.{landing_schema}.orders_raw")
+
+# Silver → custom catalog + schema via parameters
+@dp.table(name=f"{silver_catalog}.{silver_schema}.orders_clean")
+def orders_clean():
+    # Read bronze by its unqualified name (defaults), or fully qualify if preferred
+    return (spark.read.table("orders_bronze")
+            .filter(col("order_id").isNotNull()))
+
+# Gold → custom catalog + schema via parameters
+@dp.materialized_view(name=f"{gold_catalog}.{gold_schema}.orders_by_date}")
+def orders_by_date():
+    return (spark.read.table(f"{silver_catalog}.{silver_schema}.orders_clean")
+            .groupBy("order_date")
+            .count().withColumnRenamed("count", "order_count"))
+```
+
+
+
+
+
+
+`@dp.table()``schema=``catalog=`
+
+
+
+
+`spark.read.table()`
+`spark.readStream.table()`
+`dp.read()``dp.read_stream()`
+`dlt.read()``dlt.read_stream()`
+
+
+
+
+
+
+
+
+
+`spark.read.table("my_table")`
+`spark.read.table("other_schema.my_table")`
+`spark.read.table("other_catalog.other_schema.my_table")`
+
+
+
+
+
+```python
+@dp.table(name="silver_clean")
+def silver_clean():
+    # Reads from pipeline's target catalog/schema (e.g., dev_catalog.dev_schema.bronze_raw)
+    return (
+        spark.read.table("bronze_raw")
+        .filter(F.col("valid") == True)
+    )
+
+@dp.table(name="silver_events")
+def silver_events():
+    # Streaming read from same pipeline's bronze_events table
+    return (
+        spark.readStream.table("bronze_events")
+        .withColumn("processed_at", F.current_timestamp())
+    )
+```
+
+
+
+`spark.conf.get()`
+
+```python
+from pyspark import pipelines as dp
+from pyspark.sql import functions as F
+
+# Get parameterized values at module level (evaluated once at pipeline start)
+source_catalog = spark.conf.get("source_catalog")
+source_schema = spark.conf.get("source_schema", "sales")  # with default
+
+@dp.table(name="transaction_summary")
+def transaction_summary():
+    return (
+        spark.read.table(f"{source_catalog}.{source_schema}.transactions")
+        .groupBy("account_id")
+        .agg(
+            F.count("txn_id").alias("txn_count"),
+            F.sum("txn_amount").alias("account_revenue")
+        )
+    )
+```
+
+
+`pipeline.yml``configuration:`
+`extra_settings.configuration`
+
+```yaml
+# In resources/my_pipeline.pipeline.yml
+configuration:
+  source_catalog: "shared_catalog"
+  source_schema: "sales"
+```
+
+
+
+
+
+```python
+@dp.table(name="enriched_orders")
+def enriched_orders():
+    # Pipeline-internal table (unqualified)
+    orders = spark.read.table("bronze_orders")
+
+    # External reference table (fully-qualified)
+    products = spark.read.table("shared_catalog.reference.products")
+
+    return orders.join(products, "product_id")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`get_table_details`
+
+`schemaHints`
+`STREAM``read_files``FROM STREAM read_files(...)``FROM stream(table)`
+`timeout``wait_for_completion=False``get_pipeline`
+
+`__START_AT``__END_AT``START_AT``END_AT``WHERE __END_AT IS NULL`
+`APPLY AS DELETE WHEN``SEQUENCE BY``COLUMNS * EXCEPT (...)``_rescued_data``TRACK HISTORY ON *`
+`FROM STREAM read_files(...)``read_files``FROM read_files(...)`
+
+`result["message"]``create_or_update_pipeline``get_pipeline(pipeline_id=...)`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

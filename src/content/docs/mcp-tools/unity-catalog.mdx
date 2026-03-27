@@ -1,210 +1,282 @@
 ---
-title: Unity Catalog & Governance
-description: MCP tools for managing catalogs, schemas, tables, grants, tags, and data sharing.
+title: Unity Catalog
+description: MCP tools for unity catalog operations.
 sidebar:
-  order: 3
+  label: Unity Catalog
 ---
 
-These tools interact with Unity Catalog — the unified governance layer for Databricks. They manage data objects, permissions, tags, monitors, sharing, and storage credentials.
+Browse and manage Unity Catalog objects, permissions, volumes, and governance policies.
 
-## manage_uc_objects
+### Example prompts
 
-**Description:** Multi-action tool for managing Unity Catalog objects — catalogs, schemas, tables, views, and functions. Supports creating, listing, getting, updating, and deleting catalog objects.
+> "List all tables in my_catalog.my_schema"
+
+> "Grant SELECT on this table to the data-analysts group"
+
+> "Upload this CSV to /Volumes/catalog/schema/landing/data.csv"
+
+---
+
+## create_volume_directory
+
+**Description:** Create a directory in a Unity Catalog volume.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `create`, `list`, `get`, `update`, or `delete` |
-| object_type | string | Yes | Type: `catalog`, `schema`, `table`, `view`, or `function` |
-| full_name | string | No | Three-level name (e.g., `catalog.schema.table`) for `get`, `update`, `delete` |
-| parent | string | No | Parent name (e.g., `catalog` or `catalog.schema`) for `list`, `create` |
-| properties | object | No | Object properties for `create` or `update` |
+| `volume_path` | `str` | Yes | Path for new directory (e.g., "/Volumes/catalog/schema/volume/new_folder") |
 
-**Example prompt:**
-```
-Create a schema called analytics in the production catalog
-with a comment describing it as the team's reporting layer
-```
+## delete_volume_directory
 
-**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
-
----
-
-## get_table_details
-
-**Description:** Retrieves detailed metadata for a specific table including column names, types, comments, partitioning, storage location, row count, and size.
+**Description:** Delete an empty directory from a Unity Catalog volume.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| full_name | string | Yes | Full three-level table name (e.g., `catalog.schema.table`) |
+| `volume_path` | `str` | Yes | Path to directory in volume |
 
-**Example prompt:**
-```
-Show me the schema and column details for production.sales.orders
-```
+## delete_volume_file
 
-**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/), [Data Profiling](/aidevkit.github.io/skills/governance-catalog/unity-catalog/data-profiling/)
-
----
-
-## manage_uc_grants
-
-**Description:** Multi-action tool for managing Unity Catalog permissions. Supports granting, revoking, and listing permissions on catalogs, schemas, tables, and other securable objects.
+**Description:** Delete a file from a Unity Catalog volume.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `grant`, `revoke`, or `get` |
-| securable_type | string | Yes | Object type: `catalog`, `schema`, `table`, `volume`, `function`, etc. |
-| full_name | string | Yes | Full name of the securable object |
-| principal | string | No | User, group, or service principal (required for `grant`/`revoke`) |
-| privileges | string[] | No | List of privileges (e.g., `SELECT`, `MODIFY`, `ALL_PRIVILEGES`) |
+| `volume_path` | `str` | Yes | Path to file in volume (e.g., "/Volumes/catalog/schema/volume/file.csv") |
 
-**Example prompt:**
-```
-Grant SELECT and MODIFY on production.analytics to the data-team group
-```
+## download_from_volume
 
-**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
-
----
-
-## manage_uc_tags
-
-**Description:** Multi-action tool for managing tags on Unity Catalog objects. Tags enable data classification, discovery, and governance policy enforcement.
+**Description:** Download a file from a Unity Catalog volume to local path.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `set`, `delete`, or `list` |
-| securable_type | string | Yes | Object type to tag |
-| full_name | string | Yes | Full name of the object |
-| tags | object | No | Key-value pairs to set as tags |
+| `volume_path` | `str` | Yes | Path in volume (e.g., "/Volumes/catalog/schema/volume/data.csv") |
+| `local_path` | `str` | Yes | Target local file path |
+| `overwrite` | `bool` | No | Whether to overwrite existing local file (default: True) |
 
-**Example prompt:**
-```
-Tag the customers table with pii=true and data_owner=analytics-team
-```
+## get_volume_file_info
 
-**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
-
----
-
-## manage_uc_monitors
-
-**Description:** Multi-action tool for managing Data Profiling monitors on Unity Catalog tables. Monitors track data quality, drift, and statistical properties over time.
+**Description:** Get metadata for a file in a Unity Catalog volume.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `create`, `get`, `update`, `delete`, `run`, or `list_refreshes` |
-| full_name | string | Yes | Full table name to monitor |
-| monitor_type | string | No | Type: `SNAPSHOT`, `TIME_SERIES`, or `INFERENCE` |
-| baseline_table | string | No | Reference table for drift detection |
-| slicing_exprs | string[] | No | Columns to slice metrics by |
+| `volume_path` | `str` | Yes | Path to file in volume |
 
-**Example prompt:**
-```
-Set up a time-series monitor on the sales.daily_revenue table
-to track data quality and alert on anomalies
-```
+## list_volume_files
 
-**Related skills:** [Data Profiling](/aidevkit.github.io/skills/governance-catalog/unity-catalog/data-profiling/)
-
----
-
-## manage_uc_sharing
-
-**Description:** Multi-action tool for managing Delta Sharing — the open protocol for secure data exchange. Supports creating shares, adding recipients, and managing shared objects.
+**Description:** List files and directories in a Unity Catalog volume path.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `create_share`, `list_shares`, `get_share`, `update_share`, `delete_share`, `create_recipient`, `list_recipients`, `get_recipient`, `delete_recipient` |
-| name | string | No | Share or recipient name |
-| objects | array | No | Tables and schemas to include in a share |
+| `volume_path` | `str` | Yes | Path in volume (e.g., "/Volumes/catalog/schema/volume/folder") |
+| `max_results` | `int` | No | Maximum number of results to return (default: 500, max: 1000) |
 
-**Example prompt:**
-```
-Create a share called partner_data containing the
-production.public.product_catalog table and add
-partner-corp as a recipient
-```
+## manage_metric_views
 
-**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
-
----
-
-## manage_uc_storage
-
-**Description:** Multi-action tool for managing Unity Catalog external storage credentials and locations. These define where data physically resides and how Databricks accesses cloud storage.
+**Description:** Manage Unity Catalog metric views: create, alter, describe, query, drop, and grant.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `create_credential`, `list_credentials`, `create_location`, `list_locations`, `get_location`, `delete_location` |
-| name | string | No | Credential or location name |
-| url | string | No | Cloud storage URL (e.g., `s3://bucket/path`) |
-| credential_name | string | No | Storage credential to associate with a location |
-
-**Example prompt:**
-```
-Create an external location called raw-data pointing to
-s3://my-bucket/raw/ using the aws-access credential
-```
-
-**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
-
----
+| `action` | `str` | Yes | "create", "alter", "describe", "query", "drop", or "grant" |
+| `full_name` | `str` | Yes | Three-level name (catalog.schema.metric_view_name) |
+| `source` | `str` | No | Source table/view (for create/alter, e.g., "catalog.schema.orders") |
+| `dimensions` | `List[Dict[str, str]]` | No | List of dimension dicts for create/alter. Each has: - name: Display name (e.g., "Order Month") - expr: SQL expression (e.g., "DATE_TRUNC('MONTH', order_date)") - comment: (optional) Description |
+| `measures` | `List[Dict[str, str]]` | No | List of measure dicts for create/alter. Each has: - name: Display name (e.g., "Total Revenue") - expr: Aggregate expression (e.g., "SUM(total_price)") - comment: (optional) Description |
+| `version` | `str` | No | YAML spec version (default: "1.1" for DBR 17.2+) |
+| `comment` | `str` | No | Description of the metric view (for create/alter) |
+| `filter_expr` | `str` | No | SQL boolean filter applied to all queries (for create/alter) |
+| `joins` | `List[Dict[str, Any]]` | No | Star/snowflake schema joins (for create/alter). Each dict: name, source, on (or using), joins (nested for snowflake) |
+| `materialization` | `Dict[str, Any]` | No | Materialization config (experimental, for create/alter). |
+| `or_replace` | `bool` | No | If True, uses CREATE OR REPLACE (for create, default: False) |
+| `query_measures` | `List[str]` | No | Measure names to query (for query action) |
+| `query_dimensions` | `List[str]` | No | Dimension names to group by (for query action) |
+| `where` | `str` | No | WHERE clause filter (for query action) |
+| `order_by` | `str` | No | ORDER BY clause, use "ALL" for ORDER BY ALL (for query action) |
+| `limit` | `int` | No | Row limit (for query action) |
+| `principal` | `str` | No | User/group to grant to (for grant action) |
+| `privileges` | `List[str]` | No | Privileges to grant, default ["SELECT"] (for grant action) |
+| `warehouse_id` | `str` | No | SQL warehouse ID (auto-selected if not provided) |
 
 ## manage_uc_connections
 
-**Description:** Multi-action tool for managing Unity Catalog connections to external data sources. Connections enable federated queries against systems like PostgreSQL, MySQL, Snowflake, and others.
+**Description:** Manage Lakehouse Federation foreign connections.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `create`, `list`, `get`, `update`, or `delete` |
-| name | string | No | Connection name |
-| connection_type | string | No | Type: `POSTGRESQL`, `MYSQL`, `SNOWFLAKE`, `REDSHIFT`, `SQLDW`, etc. |
-| options | object | No | Connection-specific options (host, port, credentials) |
+| `action` | `str` | Yes | "create", "get", "list", "update", "delete", "create_foreign_catalog" |
+| `name` | `str` | No | Connection name (for CRUD operations) |
+| `connection_type` | `str` | No | "SNOWFLAKE", "POSTGRESQL", "MYSQL", "SQLSERVER", "BIGQUERY" (for create) |
+| `options` | `Dict[str, str]` | No | Connection options dict with keys like "host", "port", "user", "password", "database" |
+| `comment` | `str` | No | Description |
+| `owner` | `str` | No | Owner |
+| `new_name` | `str` | No | New name for rename |
+| `connection_name` | `str` | No | Connection to use (for create_foreign_catalog) |
+| `catalog_name` | `str` | No | Name for the foreign catalog (for create_foreign_catalog) |
+| `catalog_options` | `Dict[str, str]` | No | Options for foreign catalog (e.g., \{"database": "mydb"\}) |
+| `warehouse_id` | `str` | No | SQL warehouse ID (for create_foreign_catalog) |
 
-**Example prompt:**
-```
-Create a connection called pg-analytics to our PostgreSQL
-database at analytics-db.example.com
-```
+## manage_uc_grants
 
-**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
+**Description:** Manage permissions on Unity Catalog securables.
 
----
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | Yes | "grant", "revoke", "get", or "get_effective" |
+| `securable_type` | `str` | Yes | Object type: "catalog", "schema", "table", "volume", "function", "storage_credential", "external_location", "connection", "share", "metastore" |
+| `full_name` | `str` | Yes | Full name of the securable object |
+| `principal` | `str` | No | User, group, or service principal (required for grant/revoke) |
+| `privileges` | `List[str]` | No | List of privileges (required for grant/revoke). Common values: "SELECT", "MODIFY", "CREATE_TABLE", "CREATE_SCHEMA", "USE_CATALOG", "USE_SCHEMA", "ALL_PRIVILEGES", "EXECUTE", "READ_VOLUME", "WRITE_VOLUME", "CREATE_VOLUME", "CREATE_FUNCTION" |
+
+## manage_uc_monitors
+
+**Description:** Manage Lakehouse quality monitors on tables.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | Yes | "create", "get", "run_refresh", "list_refreshes", "delete" |
+| `table_name` | `str` | Yes | Full table name being monitored (catalog.schema.table) |
+| `output_schema_name` | `str` | No | Schema for output tables (for create, e.g., "catalog.schema") |
+| `schedule_cron` | `str` | No | Quartz cron expression (for create, e.g., "0 0 12 * * ?") |
+| `schedule_timezone` | `str` | No | Timezone (default: "UTC") |
+| `assets_dir` | `str` | No | Workspace path for assets (for create) |
+
+## manage_uc_objects
+
+**Description:** Manage Unity Catalog namespace objects: catalogs, schemas, volumes, functions.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `object_type` | `str` | Yes | "catalog", "schema", "volume", or "function" |
+| `action` | `str` | Yes | "create", "get", "list", "update", or "delete" |
+| `name` | `str` | No | Object name (for create) |
+| `full_name` | `str` | No | Full qualified name (for get/update/delete). |
+| `catalog_name` | `str` | No | Parent catalog (for list schemas/volumes/functions, or create schema) |
+| `schema_name` | `str` | No | Parent schema (for list volumes/functions, or create volume) |
+| `comment` | `str` | No | Description (for create/update) |
+| `owner` | `str` | No | Owner (for create/update) |
+| `storage_root` | `str` | No | Managed storage location (for catalog/schema create) |
+| `volume_type` | `str` | No | "MANAGED" or "EXTERNAL" (for volume create, default: MANAGED) |
+| `storage_location` | `str` | No | Cloud storage URL (for external volumes) |
+| `new_name` | `str` | No | New name (for update/rename) |
+| `properties` | `Dict[str, str]` | No | Key-value properties (for catalog create) |
+| `isolation_mode` | `str` | No | "OPEN" or "ISOLATED" (for catalog update) |
+| `force` | `bool` | No | Force deletion (default: False) |
 
 ## manage_uc_security_policies
 
-**Description:** Multi-action tool for managing Unity Catalog security policies including row filters, column masks, and access control policies that protect sensitive data at query time.
+**Description:** Manage row-level security and column masking policies.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| action | string | Yes | The operation: `create`, `list`, `get`, `update`, or `delete` |
-| policy_type | string | No | Type: `row_filter` or `column_mask` |
-| table_name | string | No | Full table name to apply the policy to |
-| function_name | string | No | UDF that implements the filter or mask logic |
+| `action` | `str` | Yes | "set_row_filter", "drop_row_filter", "set_column_mask", "drop_column_mask", "create_security_function" |
+| `table_name` | `str` | No | Full table name (for row filter/column mask operations) |
+| `column_name` | `str` | No | Column name (for column mask operations) |
+| `filter_function` | `str` | No | Full function name for row filter |
+| `filter_columns` | `List[str]` | No | Columns passed to the filter function |
+| `mask_function` | `str` | No | Full function name for column mask |
+| `function_name` | `str` | No | Full function name to create (catalog.schema.function) |
+| `function_body` | `str` | No | SQL function body (e.g., "RETURN IF(IS_ACCOUNT_GROUP_MEMBER('admins'), val, '***')") |
+| `parameter_name` | `str` | No | Function input parameter name |
+| `parameter_type` | `str` | No | Function input parameter type (e.g., "STRING") |
+| `return_type` | `str` | No | Function return type ("BOOLEAN" for filters, data type for masks) |
+| `function_comment` | `str` | No | Function description |
+| `warehouse_id` | `str` | No | SQL warehouse ID (auto-selected if not provided) |
 
-**Example prompt:**
-```
-Apply a column mask on the customers.email field that redacts
-email addresses for users without the pii-viewer role
-```
+## manage_uc_sharing
 
-**Related skills:** [Unity Catalog](/aidevkit.github.io/skills/governance-catalog/unity-catalog/)
+**Description:** Manage Delta Sharing: shares, recipients, and providers.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `resource_type` | `str` | Yes | "share", "recipient", or "provider" |
+| `action` | `str` | Yes | Operation to perform (see combinations above) |
+| `name` | `str` | No | Resource name (share/recipient/provider name) |
+| `comment` | `str` | No | Description (for create) |
+| `table_name` | `str` | No | Full table name for add_table/remove_table |
+| `shared_as` | `str` | No | Alias for shared table (hides internal naming) |
+| `partition_spec` | `str` | No | Partition filter for shared table |
+| `authentication_type` | `str` | No | "TOKEN" or "DATABRICKS" (for recipient create) |
+| `sharing_id` | `str` | No | Sharing identifier for D2D sharing (for recipient create) |
+| `ip_access_list` | `List[str]` | No | Allowed IP addresses (for recipient create) |
+| `share_name` | `str` | No | Share name (for grant/revoke operations) |
+| `recipient_name` | `str` | No | Recipient name (for grant/revoke operations) |
+| `include_shared_data` | `bool` | No | Include shared objects in get (default: True) |
+
+## manage_uc_storage
+
+**Description:** Manage storage credentials and external locations.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `resource_type` | `str` | Yes | "credential" or "external_location" |
+| `action` | `str` | Yes | "create", "get", "list", "update", "delete", "validate" |
+| `name` | `str` | No | Resource name (for all actions except list) |
+| `aws_iam_role_arn` | `str` | No | AWS IAM Role ARN (for credential create/update on AWS) |
+| `azure_access_connector_id` | `str` | No | Azure Access Connector ID (for credential create/update on Azure) |
+| `url` | `str` | No | Cloud storage URL (for external_location create/update, or credential validate) |
+| `credential_name` | `str` | No | Storage credential name (for external_location create/update) |
+| `read_only` | `bool` | No | Whether resource is read-only (default: False) |
+| `comment` | `str` | No | Description |
+| `owner` | `str` | No | Owner |
+| `new_name` | `str` | No | New name for update/rename |
+| `force` | `bool` | No | Force deletion (default: False) |
+
+## manage_uc_tags
+
+**Description:** Manage tags and comments on Unity Catalog objects.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | Yes | "set_tags", "unset_tags", "set_comment", "query_table_tags", "query_column_tags" |
+| `object_type` | `str` | No | "catalog", "schema", "table", or "column" (for set/unset/comment) |
+| `full_name` | `str` | No | Full object name (for set/unset/comment) |
+| `column_name` | `str` | No | Column name when object_type is "column" |
+| `tags` | `Dict[str, str]` | No | Tag key-value pairs for set_tags (e.g., \{"pii": "true", "classification": "confidential"\}) |
+| `tag_names` | `List[str]` | No | Tag keys to remove for unset_tags |
+| `comment_text` | `str` | No | Comment text for set_comment |
+| `catalog_filter` | `str` | No | Filter by catalog name (for query actions) |
+| `tag_name_filter` | `str` | No | Filter by tag name (for query actions) |
+| `tag_value_filter` | `str` | No | Filter by tag value (for query actions) |
+| `table_name_filter` | `str` | No | Filter by table name (for query_column_tags) |
+| `limit` | `int` | No | Max rows for query (default: 100) |
+| `warehouse_id` | `str` | No | SQL warehouse ID (auto-selected if not provided) |
+
+## upload_to_volume
+
+**Description:** Upload a local file to a Unity Catalog volume.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `local_path` | `str` | Yes | Path to local file to upload |
+| `volume_path` | `str` | Yes | Target path in volume (e.g., "/Volumes/catalog/schema/volume/data.csv") |
+| `overwrite` | `bool` | No | Whether to overwrite existing file (default: True) |
+

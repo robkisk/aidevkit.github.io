@@ -1,63 +1,80 @@
 ---
 title: Iceberg Tables
-description: Apache Iceberg on Databricks -- managed Iceberg tables, UniForm, Compatibility Mode, Iceberg REST Catalog, and external engine interoperability.
+description: Apache Iceberg tables on Databricks — Managed Iceberg tables, External Iceberg Reads (fka Uniform), Compatibility Mode, Iceberg REST Catalog (IRC), Iceberg v...
 sidebar:
   label: Iceberg Tables
   order: 0
+  badge:
+    text: New
+    variant: tip
 ---
 
-**Skill:** `databricks-iceberg`
 
-## Overview
 
-The Iceberg Tables skill teaches Claude Code how to work with Apache Iceberg on Databricks. It covers creating native managed Iceberg tables, enabling UniForm (External Iceberg Reads) on Delta tables, using Compatibility Mode for streaming tables and materialized views, configuring the Iceberg REST Catalog (IRC) for external engine access, Snowflake interoperability, and connecting PyIceberg, OSS Spark, EMR, and Flink.
 
-## Capabilities
 
-- Create managed Iceberg tables with `USING ICEBERG` DDL
-- Enable UniForm on existing Delta tables for external Iceberg reads
-- Configure Compatibility Mode for streaming tables and materialized views in SDP pipelines
-- Set up the Iceberg REST Catalog endpoint for external engines
-- Integrate bidirectionally with Snowflake via catalog integration
-- Connect PyIceberg, OSS Spark, AWS EMR, Flink, and Kafka Connect
 
-## Example Prompts
 
-```
-Create a managed Iceberg table partitioned by event_date
-in Unity Catalog
-```
 
-```
-Enable UniForm on my existing Delta table so Snowflake can
-read it via the Iceberg REST Catalog
-```
 
-```
-Configure PyIceberg to connect to my Databricks workspace
-and read tables via IRC
-```
+`write.metadata.path``write.metadata.previous-versions-max`
 
-## Key Concepts
+`PARTITIONED BY``CLUSTER BY``PARTITIONED BY``CLUSTER BY``PARTITIONED BY``CLUSTER BY`
+`bucket()``years()``months()``days()``hours()``PARTITIONED BY`
+`CLUSTER BY``'delta.enableDeletionVectors' = false``'delta.enableRowTracking' = false``PARTITIONED BY`
 
-| Concept | Summary |
-|---------|---------|
-| **Managed Iceberg Table** | Native Iceberg table (`USING ICEBERG`) -- full read/write in Databricks and external engines |
-| **External Iceberg Reads (UniForm)** | Delta table with auto-generated Iceberg metadata -- read as Iceberg externally |
-| **Compatibility Mode** | UniForm for streaming tables and MVs in SDP pipelines |
-| **Iceberg REST Catalog (IRC)** | Unity Catalog's REST endpoint for external engine access |
-| **Iceberg v3** | Next-gen format (Beta, DBR 17.3+) with deletion vectors and VARIANT type |
 
-## Quick Start
+
+
+
+
+
+`USING ICEBERG`
+
+
+
+
+
+
+
+
+
+
 
 ```sql
--- Managed Iceberg table with partitioning
+-- No clustering
+CREATE TABLE my_catalog.my_schema.events
+USING ICEBERG
+AS SELECT * FROM raw_events;
+
+-- PARTITIONED BY (recommended for cross-platform): standard Iceberg syntax, works on EMR/OSS Spark/Trino/Flink
+-- auto-disables DVs and row tracking — no TBLPROPERTIES needed on v2 or v3
 CREATE TABLE my_catalog.my_schema.events
 USING ICEBERG
 PARTITIONED BY (event_date)
 AS SELECT * FROM raw_events;
 
--- Enable UniForm on existing Delta table
+-- CLUSTER BY on Iceberg v2 (DBR-only syntax): must manually disable DVs and row tracking
+CREATE TABLE my_catalog.my_schema.events
+USING ICEBERG
+TBLPROPERTIES (
+  'delta.enableDeletionVectors' = false,
+  'delta.enableRowTracking' = false
+)
+CLUSTER BY (event_date)
+AS SELECT * FROM raw_events;
+
+-- CLUSTER BY on Iceberg v3 (DBR-only syntax): no TBLPROPERTIES needed
+CREATE TABLE my_catalog.my_schema.events
+USING ICEBERG
+TBLPROPERTIES ('format-version' = '3')
+CLUSTER BY (event_date)
+AS SELECT * FROM raw_events;
+```
+
+
+
+```sql
 ALTER TABLE my_catalog.my_schema.customers
 SET TBLPROPERTIES (
   'delta.columnMapping.mode' = 'name',
@@ -66,35 +83,70 @@ SET TBLPROPERTIES (
 );
 ```
 
-## Read/Write Matrix
 
-| Table Type | Databricks R/W | External IRC Read | External IRC Write |
-|------------|:-:|:-:|:-:|
-| Managed Iceberg | Yes/Yes | Yes | Yes |
-| Delta + UniForm | Yes/Yes | Yes | No |
-| Delta + Compatibility Mode | Yes/Yes | Yes | No |
 
-## Critical Rules
 
-- All Iceberg features require Unity Catalog-enabled workspaces
-- Do not install an Iceberg library into DBR (built-in support)
-- Do not set `write.metadata.path` or `write.metadata.previous-versions-max`
-- Expression transforms (`bucket()`, `years()`) are not supported with `PARTITIONED BY`
-- Disable deletion vectors when using `CLUSTER BY` on v2: `'delta.enableDeletionVectors' = false`
 
-## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| No Change Data Feed (CDF) | Not supported on managed Iceberg; use Delta + UniForm |
-| UniForm async delay | Iceberg metadata is async; brief delay before external reads |
-| Compression codec | Managed Iceberg uses `zstd` by default; verify reader compatibility |
-| No shallow clone | Use `DEEP CLONE` or `CREATE TABLE AS SELECT` |
 
-## References
+`USING ICEBERG`
 
-- [Iceberg Overview](https://docs.databricks.com/aws/en/iceberg/)
-- [UniForm](https://docs.databricks.com/aws/en/delta/uniform.html)
-- [Iceberg REST Catalog](https://docs.databricks.com/aws/en/external-access/iceberg)
-- [Compatibility Mode](https://docs.databricks.com/aws/en/external-access/compatibility-mode)
-- [Iceberg v3](https://docs.databricks.com/aws/en/iceberg/iceberg-v3)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`DESCRIBE EXTENDED table_name`
+`zstd``snappy``write.parquet.compression-codec``snappy`
+
+`delta.enableDeletionVectors = false`
+`SHALLOW CLONE``DEEP CLONE``CREATE TABLE ... AS SELECT`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
