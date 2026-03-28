@@ -1189,6 +1189,34 @@ def sync_landing(*, dry_run: bool) -> list[str]:
     return log
 
 
+def clear_new_badges(*, dry_run: bool) -> list[str]:
+    """Remove 'New' sidebar badges from all skill pages.
+
+    Called at the start of each sync so only genuinely new pages
+    (created in this run) keep the badge.
+    """
+    log: list[str] = []
+    skills_dir = CONTENT_DIR / "skills"
+    if not skills_dir.exists():
+        return log
+
+    badge_re = re.compile(
+        r"\n  badge:\n    text: New\n    variant: tip\n",
+    )
+    count = 0
+    for f in sorted(skills_dir.rglob("*.mdx")):
+        text = f.read_text()
+        updated = badge_re.sub("\n", text)
+        if updated != text:
+            count += 1
+            if not dry_run:
+                f.write_text(updated)
+
+    action = "would clear" if dry_run else "cleared"
+    log.append(f"  {action} 'New' badge from {count} pages")
+    return log
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1254,6 +1282,13 @@ def main() -> None:
             print(line)
         print()
         return
+
+    # Clear old "New" badges before syncing — only pages created in this
+    # run will get the badge.  Runs on every full sync, skipped with --only.
+    if not args.only:
+        print("\n-- badges --")
+        for line in clear_new_badges(dry_run=dry_run):
+            print(line)
 
     sections = [args.only] if args.only else ["skills", "mcp-tools", "reference", "landing"]
 
