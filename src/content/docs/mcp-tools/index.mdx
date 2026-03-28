@@ -1,13 +1,13 @@
 ---
 title: MCP Tools
-description: Direct API access to your Databricks workspace through 79 MCP tools.
+description: Direct API access to your Databricks workspace through MCP tools.
 sidebar:
   order: 0
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-The AI Dev Kit MCP server exposes **79 tools** that give Claude Code direct, real-time access to your Databricks workspace. While [skills](/aidevkit.github.io/skills/) teach Claude *how* to build things, MCP tools let it *do* things — run queries, create pipelines, deploy apps, manage governance, and more.
+The AI Dev Kit MCP server gives Claude Code direct, real-time access to your Databricks workspace. While [skills](/aidevkit.github.io/skills/) teach Claude *how* to build things, MCP tools let it *do* things — run queries, create pipelines, deploy apps, manage governance, and more.
 
 ## How It Works
 
@@ -42,35 +42,35 @@ See [Configuration](/aidevkit.github.io/getting-started/configuration/) for alte
 
 <CardGrid>
   <Card title="SQL & Execution" icon="rocket">
-    **7 tools** — Run SQL queries, execute Python, and manage compute resources.
+    Run SQL queries, execute Python, and manage compute resources.
     [Browse tools →](./sql-execution/)
   </Card>
   <Card title="Pipelines & Jobs" icon="list-format">
-    **12 tools** — Create and manage Spark Declarative Pipelines and orchestration jobs.
+    Create and manage Spark Declarative Pipelines and orchestration jobs.
     [Browse tools →](./pipelines-jobs/)
   </Card>
   <Card title="Unity Catalog & Governance" icon="document">
-    **9 tools** — Manage catalogs, schemas, tables, grants, tags, and data sharing.
+    Manage catalogs, schemas, tables, grants, tags, and data sharing.
     [Browse tools →](./unity-catalog/)
   </Card>
   <Card title="Dashboards & Genie" icon="sun">
-    **10 tools** — Build AI/BI dashboards, manage Genie spaces, and define metric views.
+    Build AI/BI dashboards, manage Genie spaces, and define metric views.
     [Browse tools →](./dashboards-genie/)
   </Card>
   <Card title="Vector Search" icon="magnifier">
-    **8 tools** — Create endpoints and indexes, query vectors, and manage embeddings.
+    Create endpoints and indexes, query vectors, and manage embeddings.
     [Browse tools →](./vector-search/)
   </Card>
   <Card title="Apps & Lakebase" icon="laptop">
-    **11 tools** — Deploy Databricks Apps and manage Lakebase databases, branches, and syncs.
+    Deploy Databricks Apps and manage Lakebase databases, branches, and syncs.
     [Browse tools →](./apps-lakebase/)
   </Card>
   <Card title="Serving & Models" icon="star">
-    **5 tools** — Monitor model serving endpoints and manage AI agents.
+    Monitor model serving endpoints and manage AI agents.
     [Browse tools →](./serving-models/)
   </Card>
   <Card title="Compute & Workspace" icon="setting">
-    **17 tools** — Manage clusters, volumes, file uploads, and workspace resources.
+    Manage clusters, volumes, file uploads, and workspace resources.
     [Browse tools →](./compute-workspace/)
   </Card>
 </CardGrid>
@@ -86,15 +86,15 @@ See [Configuration](/aidevkit.github.io/getting-started/configuration/) for alte
 
 In practice, skills and MCP tools work together. When you ask Claude to "build a streaming pipeline," the SDP skill guides the design while `create_or_update_pipeline`, `execute_sql`, and other MCP tools handle the execution.
 
-## All 79 Tools at a Glance
+## All Tools at a Glance
 
-| Category | Count | Tools |
-|----------|-------|-------|
-| [SQL & Execution](./sql-execution/) | 7 | `execute_sql`, `execute_sql_multi`, `execute_databricks_command`, `run_python_file_on_databricks`, `get_best_warehouse`, `list_warehouses`, `get_best_cluster` |
-| [Pipelines & Jobs](./pipelines-jobs/) | 12 | `create_or_update_pipeline`, `create_pipeline`, `get_pipeline`, `find_pipeline_by_name`, `start_update`, `get_update`, `stop_pipeline`, `update_pipeline`, `get_pipeline_events`, `delete_pipeline`, `manage_jobs`, `manage_job_runs` |
-| [Unity Catalog](./unity-catalog/) | 9 | `manage_uc_objects`, `get_table_details`, `manage_uc_grants`, `manage_uc_tags`, `manage_uc_monitors`, `manage_uc_sharing`, `manage_uc_storage`, `manage_uc_connections`, `manage_uc_security_policies` |
-| [Dashboards & Genie](./dashboards-genie/) | 10 | `create_or_update_dashboard`, `get_dashboard`, `delete_dashboard`, `publish_dashboard`, `create_or_update_genie`, `get_genie`, `delete_genie`, `ask_genie`, `migrate_genie`, `manage_metric_views` |
-| [Vector Search](./vector-search/) | 8 | `create_or_update_vs_endpoint`, `get_vs_endpoint`, `delete_vs_endpoint`, `create_or_update_vs_index`, `get_vs_index`, `delete_vs_index`, `query_vs_index`, `manage_vs_data` |
-| [Apps & Lakebase](./apps-lakebase/) | 11 | `create_or_update_app`, `get_app`, `delete_app`, `create_or_update_lakebase_database`, `get_lakebase_database`, `delete_lakebase_database`, `generate_lakebase_credential`, `create_or_update_lakebase_branch`, `delete_lakebase_branch`, `create_or_update_lakebase_sync`, `delete_lakebase_sync` |
-| [Serving & Models](./serving-models/) | 5 | `list_serving_endpoints`, `get_serving_endpoint_status`, `query_serving_endpoint`, `manage_ka`, `manage_mas` |
-| [Compute & Workspace](./compute-workspace/) | 17 | `list_clusters`, `get_cluster_status`, `start_cluster`, `get_best_cluster`, `get_current_user`, `manage_workspace`, `upload_file`, `upload_folder`, `upload_to_volume`, `download_from_volume`, `list_volume_files`, `get_volume_file_info`, `create_volume_directory`, `delete_volume_file`, `delete_volume_directory`, `delete_tracked_resource`, `list_tracked_resources` |
+| Category | Tools |
+|----------|-------|
+| [SQL & Execution](./sql-execution/) | `execute_sql`, `execute_sql_multi`, `execute_databricks_command`, `run_python_file_on_databricks`, `get_best_warehouse`, `list_warehouses`, `get_best_cluster` |
+| [Pipelines & Jobs](./pipelines-jobs/) | `create_or_update_pipeline`, `create_pipeline`, `get_pipeline`, `find_pipeline_by_name`, `start_update`, `get_update`, `stop_pipeline`, `update_pipeline`, `get_pipeline_events`, `delete_pipeline`, `manage_jobs`, `manage_job_runs` |
+| [Unity Catalog](./unity-catalog/) | `manage_uc_objects`, `get_table_details`, `manage_uc_grants`, `manage_uc_tags`, `manage_uc_monitors`, `manage_uc_sharing`, `manage_uc_storage`, `manage_uc_connections`, `manage_uc_security_policies` |
+| [Dashboards & Genie](./dashboards-genie/) | `create_or_update_dashboard`, `get_dashboard`, `delete_dashboard`, `publish_dashboard`, `create_or_update_genie`, `get_genie`, `delete_genie`, `ask_genie`, `migrate_genie`, `manage_metric_views` |
+| [Vector Search](./vector-search/) | `create_or_update_vs_endpoint`, `get_vs_endpoint`, `delete_vs_endpoint`, `create_or_update_vs_index`, `get_vs_index`, `delete_vs_index`, `query_vs_index`, `manage_vs_data` |
+| [Apps & Lakebase](./apps-lakebase/) | `create_or_update_app`, `get_app`, `delete_app`, `create_or_update_lakebase_database`, `get_lakebase_database`, `delete_lakebase_database`, `generate_lakebase_credential`, `create_or_update_lakebase_branch`, `delete_lakebase_branch`, `create_or_update_lakebase_sync`, `delete_lakebase_sync` |
+| [Serving & Models](./serving-models/) | `list_serving_endpoints`, `get_serving_endpoint_status`, `query_serving_endpoint`, `manage_ka`, `manage_mas` |
+| [Compute & Workspace](./compute-workspace/) | `list_clusters`, `get_cluster_status`, `start_cluster`, `get_best_cluster`, `get_current_user`, `manage_workspace`, `upload_file`, `upload_folder`, `upload_to_volume`, `download_from_volume`, `list_volume_files`, `get_volume_file_info`, `create_volume_directory`, `delete_volume_file`, `delete_volume_directory`, `delete_tracked_resource`, `list_tracked_resources` |
