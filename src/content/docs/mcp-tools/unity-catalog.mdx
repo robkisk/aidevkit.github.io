@@ -27,25 +27,17 @@ Browse and manage Unity Catalog objects, permissions, volumes, and governance po
 |---|---|---|---|
 | `volume_path` | `str` | Yes | Path for new directory (e.g., "/Volumes/catalog/schema/volume/new_folder") |
 
-## delete_volume_directory
+## delete_from_volume
 
-**Description:** Delete an empty directory from a Unity Catalog volume.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `volume_path` | `str` | Yes | Path to directory in volume |
-
-## delete_volume_file
-
-**Description:** Delete a file from a Unity Catalog volume.
+**Description:** Delete a file or directory from a Unity Catalog volume.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `volume_path` | `str` | Yes | Path to file in volume (e.g., "/Volumes/catalog/schema/volume/file.csv") |
+| `volume_path` | `str` | Yes | Path to file or directory (e.g., "/Volumes/catalog/schema/volume/folder") |
+| `recursive` | `bool` | No | Delete directory contents (required for non-empty dirs) |
+| `max_workers` | `int` | No | Parallel delete threads (default: 4) |
 
 ## download_from_volume
 
@@ -270,13 +262,14 @@ Browse and manage Unity Catalog objects, permissions, volumes, and governance po
 
 ## upload_to_volume
 
-**Description:** Upload a local file to a Unity Catalog volume.
+**Description:** Upload local file(s) or folder(s) to a Unity Catalog volume.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `local_path` | `str` | Yes | Path to local file to upload |
-| `volume_path` | `str` | Yes | Target path in volume (e.g., "/Volumes/catalog/schema/volume/data.csv") |
-| `overwrite` | `bool` | No | Whether to overwrite existing file (default: True) |
+| `local_path` | `str` | Yes | Local path - file, folder, or glob (e.g., "*.csv", "/path/*") |
+| `volume_path` | `str` | Yes | Target volume path (e.g., "/Volumes/catalog/schema/volume/data") |
+| `max_workers` | `int` | No | Parallel upload threads (default: 4) |
+| `overwrite` | `bool` | No | Overwrite existing files (default: True) |
 

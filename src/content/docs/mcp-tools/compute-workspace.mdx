@@ -17,6 +17,17 @@ Execute code on Databricks compute, manage clusters and warehouses, and upload f
 
 ---
 
+## delete_from_workspace
+
+**Description:** Delete a file or folder from Databricks workspace.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `workspace_path` | `str` | Yes | Path to delete in Databricks workspace |
+| `recursive` | `bool` | No | If True, delete folder and all contents (default: False) |
+
 ## execute_code
 
 **Description:** Execute code on Databricks — serverless or cluster compute.
@@ -98,28 +109,16 @@ Execute code on Databricks compute, manage clusters and warehouses, and upload f
 | `profile` | `Optional[str]` | No | Profile name from ~/.databrickscfg (for switch). |
 | `host` | `Optional[str]` | No | Workspace URL, e.g. https://adb-123.azuredatabricks.net (for switch or login). |
 
-## upload_file
+## upload_to_workspace
 
-**Description:** Upload a single file to Databricks workspace.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `local_path` | `str` | Yes | Path to local file |
-| `workspace_path` | `str` | Yes | Target path in Databricks workspace |
-| `overwrite` | `bool` | No | Whether to overwrite existing file (default: True) |
-
-## upload_folder
-
-**Description:** Upload an entire local folder to Databricks workspace.
+**Description:** Upload files or folders to Databricks workspace.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `local_folder` | `str` | Yes | Path to local folder to upload. Add trailing slash to copy contents only, omit to preserve folder name. |
-| `workspace_folder` | `str` | Yes | Target path in Databricks workspace (e.g., "/Workspace/Users/user@example.com/my-project") |
+| `local_path` | `str` | Yes | Path to local file, folder, or glob pattern. - Single file: "/path/to/file.py" - Folder: "/path/to/folder" (preserves folder name) - Folder contents: "/path/to/folder/" or "/path/to/folder/*" - Glob pattern: "/path/to/*.py" - Tilde expansion: "~/projects/file.py" |
+| `workspace_path` | `str` | Yes | Target path in Databricks workspace (e.g., "/Workspace/Users/user@example.com/my-project") |
 | `max_workers` | `int` | No | Maximum parallel upload threads (default: 10) |
 | `overwrite` | `bool` | No | Whether to overwrite existing files (default: True) |
 

@@ -17,36 +17,16 @@ Generate synthetic PDF documents and upload them to Unity Catalog volumes for RA
 
 ## generate_and_upload_pdf
 
-**Description:** Generate a single PDF document and upload to a Unity Catalog volume.
+**Description:** Convert HTML to PDF and upload to a Unity Catalog volume.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `title` | `str` | Yes | Document title (e.g., "API Authentication Guide") |
-| `description` | `str` | Yes | What this document should contain. Be detailed about the content, sections, topics, and domain context to cover. |
-| `question` | `str` | Yes | A question that can be answered by reading this document. Used for RAG evaluation. |
-| `guideline` | `str` | Yes | How to evaluate if an answer to the question is correct. Should describe what a good answer includes without giving the exact answer. |
+| `html_content` | `str` | Yes | Complete HTML document including &lt;!DOCTYPE html&gt;, &lt;html&gt;, &lt;head&gt;, &lt;style&gt;, and &lt;body&gt; tags. Use modern CSS3 for styling. |
+| `filename` | `str` | Yes | Name for the PDF file (e.g., "report.pdf" or "report" - .pdf added if missing) |
 | `catalog` | `str` | Yes | Unity Catalog name |
 | `schema` | `str` | Yes | Schema name |
 | `volume` | `str` | No | Volume name (must already exist). Default: "raw_data" |
-| `folder` | `str` | No | Folder within volume. Default: "pdf_documents" |
-| `doc_size` | `Literal['SMALL', 'MEDIUM', 'LARGE']` | No | Size of document to generate. Default: "MEDIUM" - "SMALL": ~1 page, concise content - "MEDIUM": ~4-6 pages, comprehensive coverage - "LARGE": ~10+ pages, exhaustive documentation |
-
-## generate_and_upload_pdfs
-
-**Description:** Generate synthetic PDF documents and upload to a Unity Catalog volume.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `catalog` | `str` | Yes | Unity Catalog name |
-| `schema` | `str` | Yes | Schema name |
-| `description` | `str` | Yes | Detailed description of what PDFs should contain. Be specific about the domain, document types, and content. |
-| `count` | `int` | Yes | — |
-| `volume` | `str` | No | — |
-| `folder` | `str` | No | — |
-| `doc_size` | `Literal['SMALL', 'MEDIUM', 'LARGE']` | No | — |
-| `overwrite_folder` | `bool` | No | — |
+| `folder` | `Optional[str]` | No | Optional folder within volume (e.g., "documents") |
 

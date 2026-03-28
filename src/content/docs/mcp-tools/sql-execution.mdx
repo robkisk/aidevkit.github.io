@@ -54,9 +54,9 @@ Run SQL queries, inspect table schemas, and manage warehouse connections.
 
 **Description:** Get the ID of the best available SQL warehouse.
 
-## get_table_details
+## get_table_stats_and_schema
 
-**Description:** Get table schema and statistics for one or more tables.
+**Description:** Get schema and statistics for tables in a Unity Catalog schema.
 
 **Parameters:**
 
@@ -65,7 +65,7 @@ Run SQL queries, inspect table schemas, and manage warehouse connections.
 | `catalog` | `str` | Yes | Unity Catalog name |
 | `schema` | `str` | Yes | Schema name |
 | `table_names` | `List[str]` | No | List of table names or GLOB patterns (e.g., ["bronze_*", "silver_orders"]). If None, returns all tables in the schema. |
-| `table_stat_level` | `str` | No | Level of statistics to collect: - "NONE": Schema only, no statistics - "SIMPLE": Row count and basic info (default) - "DETAILED": Column-level statistics including histograms |
+| `table_stat_level` | `str` | No | Level of statistics to collect: - "NONE": Schema only (column names, types) - fast, no stats - "SIMPLE": Schema + row count, basic column info (default) - "DETAILED": Full column stats including cardinality, min/max, null counts, histograms, and percentiles |
 | `warehouse_id` | `str` | No | Optional warehouse ID. If not provided, auto-selects one. |
 
 ## get_volume_folder_details

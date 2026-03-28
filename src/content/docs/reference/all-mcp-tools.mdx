@@ -20,13 +20,13 @@ description: Complete reference of all MCP tools available in the AI Dev Kit.
 | [get_lakebase_database](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Get details of a Lakebase database, or list all databases. |
 | [manage_ka](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Create or update a Knowledge Assistant (KA) with document knowledge sources. |
 | [manage_mas](/aidevkit.github.io/mcp-tools/apps-lakebase/) | Apps & Lakebase | Create or update a Supervisor Agent (formerly Multi-Agent Supervisor, MAS). |
+| [delete_from_workspace](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Delete a file or folder from Databricks workspace. |
 | [execute_code](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Execute code on Databricks — serverless or cluster compute. |
 | [list_compute](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | List and inspect compute resources: clusters, node types, or spark versions. |
 | [manage_cluster](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Create, modify, start, terminate, or delete a Databricks cluster. |
 | [manage_sql_warehouse](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Create, modify, or delete a Databricks SQL warehouse. |
 | [manage_workspace](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Manage the active Databricks workspace connection. |
-| [upload_file](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Upload a single file to Databricks workspace. |
-| [upload_folder](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Upload an entire local folder to Databricks workspace. |
+| [upload_to_workspace](/aidevkit.github.io/mcp-tools/compute-workspace/) | Compute & Workspace | Upload files or folders to Databricks workspace. |
 | [ask_genie](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Ask a natural language question to a Genie Space and get the answer. |
 | [create_or_update_dashboard](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Create or update an AI/BI dashboard from JSON content. |
 | [create_or_update_genie](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Create or update a Genie Space for SQL-based data exploration. |
@@ -36,8 +36,7 @@ description: Complete reference of all MCP tools available in the AI Dev Kit.
 | [get_genie](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Get details of a Genie Space, or list all spaces. |
 | [migrate_genie](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Export or import a Genie Space for cloning and cross-workspace migration. |
 | [publish_dashboard](/aidevkit.github.io/mcp-tools/dashboards-genie/) | Dashboards & Genie | Publish or unpublish an AI/BI dashboard. |
-| [generate_and_upload_pdf](/aidevkit.github.io/mcp-tools/pdf-generation/) | PDF Generation | Generate a single PDF document and upload to a Unity Catalog volume. |
-| [generate_and_upload_pdfs](/aidevkit.github.io/mcp-tools/pdf-generation/) | PDF Generation | Generate synthetic PDF documents and upload to a Unity Catalog volume. |
+| [generate_and_upload_pdf](/aidevkit.github.io/mcp-tools/pdf-generation/) | PDF Generation | Convert HTML to PDF and upload to a Unity Catalog volume. |
 | [create_or_update_pipeline](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Create or update a pipeline by name, optionally run it. Uses Unity Catalog + serverless. |
 | [create_pipeline](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Create a new Spark Declarative Pipeline (SDP). Unity Catalog, serverless by default. |
 | [delete_pipeline](/aidevkit.github.io/mcp-tools/pipelines-jobs/) | Pipelines & Jobs | Delete a pipeline. |
@@ -56,12 +55,11 @@ description: Complete reference of all MCP tools available in the AI Dev Kit.
 | [execute_sql](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Execute a SQL query on a Databricks SQL Warehouse. |
 | [execute_sql_multi](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Execute multiple SQL statements with dependency-aware parallelism. |
 | [get_best_warehouse](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Get the ID of the best available SQL warehouse. |
-| [get_table_details](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Get table schema and statistics for one or more tables. |
+| [get_table_stats_and_schema](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Get schema and statistics for tables in a Unity Catalog schema. |
 | [get_volume_folder_details](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | Get schema and statistics for data files in a Databricks Volume folder. |
 | [list_warehouses](/aidevkit.github.io/mcp-tools/sql-execution/) | SQL Execution | List all SQL warehouses in the workspace. |
 | [create_volume_directory](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Create a directory in a Unity Catalog volume. |
-| [delete_volume_directory](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Delete an empty directory from a Unity Catalog volume. |
-| [delete_volume_file](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Delete a file from a Unity Catalog volume. |
+| [delete_from_volume](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Delete a file or directory from a Unity Catalog volume. |
 | [download_from_volume](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Download a file from a Unity Catalog volume to local path. |
 | [get_volume_file_info](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Get metadata for a file in a Unity Catalog volume. |
 | [list_volume_files](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | List files and directories in a Unity Catalog volume path. |
@@ -74,7 +72,7 @@ description: Complete reference of all MCP tools available in the AI Dev Kit.
 | [manage_uc_sharing](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage Delta Sharing: shares, recipients, and providers. |
 | [manage_uc_storage](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage storage credentials and external locations. |
 | [manage_uc_tags](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Manage tags and comments on Unity Catalog objects. |
-| [upload_to_volume](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Upload a local file to a Unity Catalog volume. |
+| [upload_to_volume](/aidevkit.github.io/mcp-tools/unity-catalog/) | Unity Catalog | Upload local file(s) or folder(s) to a Unity Catalog volume. |
 | [create_or_update_vs_endpoint](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Idempotent create for Vector Search endpoints. Returns existing if one with the same name already exists (endpoints are  |
 | [create_or_update_vs_index](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Idempotent create for Vector Search indexes. Returns existing if one with the same name already exists. Triggers an init |
 | [delete_vs_endpoint](/aidevkit.github.io/mcp-tools/vector-search/) | Vector Search | Delete a Vector Search endpoint. |

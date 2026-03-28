@@ -1,0 +1,169 @@
+---
+title: SQL Data Ingestion
+description: Data ingestion patterns for cloud storage and streaming sources.
+sidebar:
+  order: 2
+  badge:
+    text: New
+    variant: tip
+---
+
+
+
+
+
+
+
+
+
+
+
+`STREAM read_files()`
+
+
+
+```sql
+CREATE OR REFRESH STREAMING TABLE bronze_orders AS
+SELECT
+  *,
+  current_timestamp() AS _ingested_at,
+  _metadata.file_path AS _source_file
+FROM STREAM read_files(
+  '/Volumes/my_catalog/my_schema/raw/orders/',
+  format => 'json',
+  schemaHints => 'order_id STRING, amount DECIMAL(10,2)'
+);
+```
+
+
+`FROM STREAM read_files(...)``FROM read_files(...)`
+`format``json``csv``parquet``avro``text``binaryFile`
+`schemaHints`
+`_metadata`
+
+
+
+```sql
+-- Explicit hints (recommended for production)
+FROM STREAM read_files(
+  '/Volumes/catalog/schema/raw/',
+  format => 'json',
+  schemaHints => 'id STRING, amount DECIMAL(10,2), date DATE'
+)
+
+-- Schema evolution with rescue data
+FROM STREAM read_files(
+  '/Volumes/catalog/schema/raw/',
+  format => 'json',
+  schemaHints => 'id STRING',
+  mode => 'PERMISSIVE'
+)
+```
+
+
+
+
+
+```sql
+-- Flag records with parsing errors
+CREATE OR REFRESH STREAMING TABLE bronze_events AS
+SELECT
+  *,
+  current_timestamp() AS _ingested_at,
+  CASE WHEN _rescued_data IS NOT NULL THEN TRUE ELSE FALSE END AS _has_errors
+FROM STREAM read_files('/Volumes/catalog/schema/raw/events/', format => 'json');
+
+-- Quarantine bad records
+CREATE OR REFRESH STREAMING TABLE bronze_quarantine AS
+SELECT * FROM STREAM bronze_events WHERE _rescued_data IS NOT NULL;
+
+-- Clean records for downstream
+CREATE OR REFRESH STREAMING TABLE silver_clean AS
+SELECT * FROM STREAM bronze_events WHERE _rescued_data IS NULL;
+```
+
+
+
+
+
+
+
+```sql
+CREATE OR REFRESH STREAMING TABLE bronze_kafka_events AS
+SELECT
+  CAST(key AS STRING) AS event_key,
+  CAST(value AS STRING) AS event_value,
+  topic, partition, offset,
+  timestamp AS kafka_timestamp,
+  current_timestamp() AS _ingested_at
+FROM read_kafka(
+  bootstrapServers => '${kafka_brokers}',
+  subscribe => 'events-topic',
+  startingOffsets => 'latest'
+);
+```
+
+
+
+
+
+```sql
+CREATE OR REFRESH STREAMING TABLE silver_events AS
+SELECT
+  from_json(event_value, 'event_id STRING, event_type STRING, timestamp TIMESTAMP') AS data,
+  kafka_timestamp, _ingested_at
+FROM STREAM bronze_kafka_events;
+```
+
+
+
+
+
+
+
+```sql
+-- Kafka
+`kafka.sasl.jaas.config` => '...username="{{secrets/kafka/username}}" password="{{secrets/kafka/password}}";'
+
+-- Event Hub
+`eventhubs.connectionString` => '{{secrets/eventhub/connection-string}}'
+```
+
+
+
+```sql
+-- Reference in SQL
+FROM STREAM read_files('${input_path}/orders/', format => 'json')
+```
+
+
+```yaml
+configuration:
+  input_path: /Volumes/my_catalog/my_schema/raw
+```
+
+
+
+
+
+
+```sql
+SELECT *, current_timestamp() AS _ingested_at, _metadata.file_path AS _source_file
+```
+
+
+
+
+
+`FROM STREAM read_files(...)`
+
+
+
+
+
+
+
+
+`FROM STREAM read_files(...)``FROM read_files(...)`
+`mode => 'PERMISSIVE'``_rescued_data`
+

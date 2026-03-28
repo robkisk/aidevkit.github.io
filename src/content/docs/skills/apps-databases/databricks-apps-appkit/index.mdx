@@ -1,6 +1,7 @@
 ---
+curated: true
 title: Databricks Apps (AppKit)
-description: Build TypeScript/React Databricks applications using AppKit with type-safe SQL queries, built-in components, tRPC endpoints, and Lakebase integration.
+description: Build full-stack TypeScript/React applications on Databricks with type-safe SQL, tRPC endpoints, and Lakebase integration.
 sidebar:
   label: Databricks Apps (AppKit)
   order: 1
@@ -8,89 +9,126 @@ sidebar:
 
 **Skill:** `databricks-app-appkit`
 
-## Overview
+## What You Can Build
 
-The Databricks Apps AppKit skill teaches Claude Code how to build full-stack TypeScript/React applications on the Databricks Apps platform using the AppKit framework. It covers scaffolding with `databricks apps init`, type-safe SQL queries via `config/queries/`, visualization components (ECharts-based), tRPC for mutations and API calls, Lakebase OLTP integration, platform permissions, testing with Playwright, and deployment.
+You can build full-stack TypeScript/React applications on the Databricks Apps platform using AppKit — a framework that gives you type-safe SQL queries, ECharts-based visualization components, tRPC for server-side logic, and Lakebase PostgreSQL for persistent storage. Ask your AI coding assistant to scaffold a project and it will generate the init config, SQL query files, typed React components, and deployment config in one pass.
 
-## Capabilities
+## In Action
 
-- Scaffold AppKit projects with `databricks apps manifest` and `databricks apps init`
-- Write SQL query files with parameterization and type generation
-- Use built-in chart and table components (BarChart, LineChart, DataTable, etc.)
-- Add tRPC endpoints for mutations, Databricks API calls, and Lakebase CRUD
-- Integrate Lakebase (PostgreSQL) for persistent read/write storage
-- Configure platform permissions, service principal auth, and OBO tokens
-- Write smoke tests with Playwright and validate before deployment
-- Deploy via CLI or Asset Bundles with multi-environment targets
+> "Scaffold an AppKit analytics app that connects to my SQL warehouse and shows a bar chart of monthly revenue from catalog.schema.orders"
 
-## Related MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `create_or_update_app` | Create or deploy a Databricks App |
-| `get_app` | Get app details, status, and logs |
-| `delete_app` | Delete an app |
-
-## Example Prompts
-
-```
-Scaffold an AppKit analytics app connected to my SQL warehouse
-that shows trip statistics in a bar chart
+```bash
+# Initialize the project with analytics features
+databricks apps init my-dashboard \
+  --features analytics \
+  --set analytics.sql-warehouse.id=abc123def456
 ```
 
-```
-Add a Lakebase feature to my AppKit app for storing user
-preferences with CRUD endpoints
-```
-
-```
-Create SQL query files for monthly revenue trends with
-date range parameters and display in a line chart
-```
-
-## Key Concepts
-
-### Data Patterns
-
-| Pattern | When to Use | Init Command |
-|---------|-------------|-------------|
-| **Analytics** (read-only) | Dashboards, charts, KPIs | `--features analytics --set analytics.sql-warehouse.id=<ID>` |
-| **Lakebase** (read/write) | CRUD forms, persistent state | `--features lakebase --set lakebase.postgres.branch=<BRANCH>` |
-| **Both** | Dashboard + user data | `--features analytics,lakebase` with all `--set` flags |
-
-### Project Structure
-
-```
-my-app/
-├── server/server.ts          # Backend entry point (tRPC)
-├── client/src/App.tsx         # Main React component
-├── config/queries/*.sql       # SQL query files (queryKey = filename)
-├── client/src/appKitTypes.d.ts # Auto-generated types
-├── tests/smoke.spec.ts        # Smoke test (must update selectors)
-├── app.yaml                   # Deployment config
-└── package.json
+```sql
+-- config/queries/monthly_revenue.sql
+SELECT
+  DATE_TRUNC('month', order_date) AS month,
+  SUM(total_amount) AS revenue,
+  COUNT(*) AS order_count
+FROM catalog.schema.orders
+WHERE order_date >= :start_date
+GROUP BY DATE_TRUNC('month', order_date)
+ORDER BY month
 ```
 
-### Development Workflow
+```typescript
+// client/src/App.tsx
+import { BarChart, PageLayout } from "@databricks/appkit-ui";
 
-1. Create SQL files in `config/queries/`
-2. Run `npm run typegen` -- verify all queries show a checkmark
-3. Read `client/src/appKitTypes.d.ts` to see generated types
-4. Write `App.tsx` using the generated types
-5. Update `tests/smoke.spec.ts` selectors
-6. Run `databricks apps validate --profile <PROFILE>`
+export default function App() {
+  return (
+    <PageLayout title="Revenue Dashboard">
+      <BarChart
+        queryKey="monthly_revenue"
+        params=\{{ start_date: "2024-01-01" }}
+        xKey="month"
+        yKey="revenue"
+        colors={["#FF3621"]}
+      />
+    </PageLayout>
+  );
+}
+```
 
-**Do not** write UI code before running typegen -- types will not exist.
+**Key decisions:**
+- **SQL files in `config/queries/`** — AppKit auto-generates TypeScript types from your SQL. Reference queries by filename (`queryKey="monthly_revenue"`), never write manual fetch logic.
+- **`npm run typegen` before UI code** — types don't exist until you run typegen. Write SQL first, generate types, then build the React components.
+- **ECharts components via props** — `BarChart`, `LineChart`, `DataTable` are configured through props (`xKey`, `yKey`, `colors`), not children. These are not Recharts.
+- **Colon-prefix parameters** — `:start_date` in SQL becomes a typed prop in the component. AppKit binds them at execution time.
 
-### Critical Rules
+## More Patterns
 
-- SQL for data retrieval: Use `config/queries/` + visualization components. Never tRPC for SELECT.
-- Numeric types: SQL numbers may return as strings. Always convert: `Number(row.amount)`
-- Type imports: Use `import type { ... }` (verbatimModuleSyntax enabled)
-- Charts are ECharts: No Recharts children -- use props (`xKey`, `yKey`, `colors`)
-- Never use `useAnalyticsQuery` for Lakebase data -- it queries the SQL warehouse only
+### Add Lakebase for read/write storage
+> "Add a Lakebase feature to my AppKit app so users can save and load dashboard preferences"
 
-## References
+```bash
+databricks apps init my-app \
+  --features analytics,lakebase \
+  --set analytics.sql-warehouse.id=abc123 \
+  --set lakebase.postgres.branch=main
+```
 
-- [AppKit Docs](https://apps-cookbook.dev/) -- official examples and recipes
-- [Databricks Apps Overview](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/)
+```typescript
+// server/server.ts — tRPC mutation for Lakebase writes
+import { initTRPC } from "@trpc/server";
+import { getExecutionContext } from "@databricks/appkit";
+import { z } from "zod";
+
+const t = initTRPC.create();
+
+export const appRouter = t.router({
+  savePreference: t.procedure
+    .input(z.object({ key: z.string(), value: z.string() }))
+    .mutation(async ({ input }) => {
+      const { lakebasePool } = getExecutionContext();
+      await lakebasePool.query(
+        "INSERT INTO preferences (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
+        [input.key, input.value]
+      );
+      return { success: true };
+    }),
+});
+```
+
+Use SQL query files for warehouse reads (analytics) and tRPC + Lakebase for writes (mutations). Never use tRPC for SELECT queries against the SQL warehouse — `useAnalyticsQuery` handles that with caching and type safety.
+
+### Call a model serving endpoint
+> "Add a tRPC endpoint that sends a prompt to my model serving endpoint and returns the response"
+
+```typescript
+queryModel: t.procedure
+  .input(z.object({ prompt: z.string() }))
+  .query(async ({ input: { prompt } }) => {
+    const { serviceDatabricksClient: client } = getExecutionContext();
+    return await client.servingEndpoints.query({
+      name: "my-agent-endpoint",
+      messages: [{ role: "user", content: prompt }],
+    });
+  }),
+```
+
+`getExecutionContext()` provides a pre-authenticated Databricks client — no manual token management. Use it for any Databricks API call: serving endpoints, jobs, MLflow, Unity Catalog.
+
+### Deploy with validation
+> "Validate and deploy my AppKit app"
+
+```bash
+# Validate app.yaml and config
+databricks apps validate --profile my-workspace
+
+# Deploy
+databricks apps deploy my-dashboard --profile my-workspace
+```
+
+Always validate before deploying. The validator catches missing permissions, invalid SQL warehouse references, and malformed app.yaml before you hit runtime errors.
+
+## Watch Out For
+- **Writing UI before typegen** — types in `appKitTypes.d.ts` don't exist until you run `npm run typegen`. Write SQL files first, generate types, then build React components. Skipping this gives you `any` types and no autocomplete.
+- **Using tRPC for SQL SELECTs** — `useAnalyticsQuery` connects SQL files to components with caching and pagination built in. tRPC is for mutations, API calls, and server-side logic only.
+- **SQL numbers arriving as strings** — Databricks SQL may return numeric columns as strings in the TypeScript layer. Always convert with `Number(row.amount)` before math or chart rendering.
+- **Recharts patterns on ECharts components** — AppKit charts are ECharts-based and use props (`xKey`, `yKey`, `colors`), not JSX children. Passing `<Bar dataKey="value" />` children does nothing.
