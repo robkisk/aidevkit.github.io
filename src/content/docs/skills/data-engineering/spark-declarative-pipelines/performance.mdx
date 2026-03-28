@@ -1,98 +1,67 @@
 ---
-title: SQL Performance Tuning
-description: Performance optimization strategies including Liquid Clustering, materialized view refresh, state management, and compute configuration.
+curated: true
+title: Tune Pipeline Performance from Storage to Compute
+description: Optimize SDP pipelines with Liquid Clustering, materialized view refresh strategies, streaming state management, and compute sizing.
 sidebar:
-  order: 99
+  order: 4
   badge:
     text: New
     variant: tip
 ---
 
+**Skill:** `databricks-spark-declarative-pipelines`
 
+## What You Can Build
 
+A well-tuned pipeline reads less data, keeps less state, and refreshes only what changed. Your AI coding assistant applies Liquid Clustering by layer, sets materialized view refresh intervals to match your SLA, restructures streaming aggregations to bound state growth, and picks the right compute mode — so your pipeline runs faster without you reverse-engineering optimizer internals.
 
+## In Action
 
-
-
-`PARTITION BY``Z-ORDER`
-
-
-
-
-
-
-
-
-
-
-```sql
-CREATE OR REFRESH STREAMING TABLE bronze_events
-CLUSTER BY (event_type, event_date)
-AS
-SELECT
-  *,
-  current_timestamp() AS _ingested_at,
-  CAST(current_date() AS DATE) AS event_date
-FROM STREAM read_files('/Volumes/my_catalog/my_schema/raw/events/', format => 'json');
-```
-
-
-
-```sql
--- Let Databricks choose based on query patterns
-CREATE OR REFRESH STREAMING TABLE bronze_events
-CLUSTER BY (AUTO)
-AS SELECT ...;
-```
-
-
-
-
-
-
-
-
-
-
-
+> "I have a bronze events table that gets queried by event_type and date. Replace the legacy PARTITION BY with Liquid Clustering and enable auto-optimize for the high-volume ingestion."
 
 ```sql
 CREATE OR REFRESH STREAMING TABLE bronze_events
 CLUSTER BY (event_type, ingestion_date)
-TBLPROPERTIES ('delta.autoOptimize.optimizeWrite' = 'true')
+TBLPROPERTIES (
+  'delta.autoOptimize.optimizeWrite' = 'true',
+  'delta.autoOptimize.autoCompact' = 'true'
+)
 AS
 SELECT
   *,
   current_timestamp() AS _ingested_at,
   CAST(current_date() AS DATE) AS ingestion_date
-FROM STREAM read_files('/Volumes/my_catalog/my_schema/raw/events/', format => 'json');
+FROM STREAM read_files(
+  '/Volumes/my_catalog/my_schema/raw/events/',
+  format => 'json'
+);
 ```
 
+**Key decisions:**
+- **`CLUSTER BY` over `PARTITION BY`** — Liquid Clustering adapts to data distribution changes, eliminates the small-file problem, and delivers 20-50% query speedup over static partitioning
+- **Most selective key first** (`event_type`) — the optimizer prunes files based on key order; put the column with highest filter selectivity first
+- **`optimizeWrite` + `autoCompact`** together — optimizeWrite coalesces shuffle output; autoCompact rewrites small files after ingestion without a separate OPTIMIZE job
+- **Computed `ingestion_date`** as a clustering key — clustering on a derived date column avoids high-cardinality timestamp skew while still enabling date-range pruning
 
+## More Patterns
 
+### Cluster key selection by medallion layer
 
-
-
+> "Set up Liquid Clustering for my silver orders table (lookups by customer_id and date range) and a gold monthly summary (filtered by product category and month)."
 
 ```sql
+-- Silver: primary key + business dimension
 CREATE OR REFRESH STREAMING TABLE silver_orders
 CLUSTER BY (customer_id, order_date)
 AS
 SELECT
   order_id, customer_id, product_id,
-  CAST(amount AS DECIMAL(10,2)) AS amount,  -- DECIMAL for monetary values
+  CAST(amount AS DECIMAL(10,2)) AS amount,
   CAST(order_timestamp AS DATE) AS order_date,
   order_timestamp
 FROM STREAM bronze_orders;
-```
 
-
-
-
-
-
-
-```sql
+-- Gold: aggregation dimensions matching dashboard filters
 CREATE OR REFRESH MATERIALIZED VIEW gold_sales_summary
 CLUSTER BY (product_category, year_month)
 AS
@@ -106,102 +75,14 @@ FROM silver_orders
 GROUP BY product_category, DATE_FORMAT(order_date, 'yyyy-MM');
 ```
 
+Bronze clusters by event type and ingest date. Silver clusters by entity ID and business date. Gold clusters by whatever the dashboard filters on. If you do not know the access pattern yet, use `CLUSTER BY (AUTO)` and let the optimizer learn from query history.
 
+### Materialized view refresh intervals
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "I need a near-real-time metrics view that refreshes every 5 minutes and a daily sales summary that refreshes once a day."
 
 ```sql
-CREATE OR REFRESH STREAMING TABLE events
-PARTITIONED BY (date DATE)
-TBLPROPERTIES ('pipelines.autoOptimize.zOrderCols' = 'user_id,event_type')
-AS SELECT ...;
-```
-
-
-
-
-
-```sql
-CREATE OR REFRESH STREAMING TABLE events
-CLUSTER BY (date, user_id, event_type)
-AS SELECT ...;
-```
-
-
-
-
-
-
-
-`DROP`
-
-
-
-
-
-
-
-
-
-```sql
-CREATE OR REFRESH STREAMING TABLE bronze_events
-TBLPROPERTIES (
-  'delta.autoOptimize.optimizeWrite' = 'true',
-  'delta.autoOptimize.autoCompact' = 'true'
-)
-AS SELECT * FROM STREAM read_files(...);
-```
-
-
-
-```sql
-CREATE OR REFRESH STREAMING TABLE silver_customers
-TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')
-AS SELECT * FROM STREAM bronze_customers;
-```
-
-
-
-
-
-```sql
-CREATE OR REFRESH STREAMING TABLE bronze_high_volume
-TBLPROPERTIES (
-  'delta.logRetentionDuration' = '7 days',
-  'delta.deletedFileRetentionDuration' = '7 days'
-)
-AS SELECT * FROM STREAM read_files(...);
-```
-
-
-
-
-
-
-
-
-
-```sql
--- Near-real-time
+-- Near-real-time: tight SLA
 CREATE OR REFRESH MATERIALIZED VIEW gold_live_metrics
 REFRESH EVERY 5 MINUTES
 AS
@@ -212,103 +93,35 @@ SELECT
 FROM silver_metrics
 GROUP BY metric_name;
 
--- Daily reports
+-- Daily: relaxed SLA, cheaper compute
 CREATE OR REFRESH MATERIALIZED VIEW gold_daily_summary
 REFRESH EVERY 1 DAY
 AS
-SELECT report_date, SUM(amount) AS total_amount
+SELECT
+  report_date,
+  SUM(amount) AS total_amount
 FROM silver_sales
 GROUP BY report_date;
 ```
 
+Materialized views auto-detect incremental refresh eligibility when the source has Delta row tracking and uses supported aggregations. If incremental refresh kicks in, only changed partitions recompute — a 5-minute interval on a large table becomes cheap.
 
+### Bound streaming state with time windows and intermediate materialization
 
-
-
-```sql
-CREATE OR REFRESH MATERIALIZED VIEW gold_aggregates AS
-SELECT
-  product_id,
-  SUM(quantity) AS total_quantity,
-  SUM(amount) AS total_amount
-FROM silver_sales
-GROUP BY product_id;
-```
-
-
-
-
+> "My streaming aggregation groups by user_id, product_id, and session_id — state is exploding. Restructure it to keep state manageable."
 
 ```sql
--- Create pre-aggregated MV for fast queries
-CREATE OR REFRESH MATERIALIZED VIEW orders_monthly AS
-SELECT
-  customer_id,
-  YEAR(order_date) AS year,
-  MONTH(order_date) AS month,
-  SUM(amount) AS total
-FROM large_orders_table
-GROUP BY customer_id, YEAR(order_date), MONTH(order_date);
-
--- Query the MV (fast)
-SELECT * FROM orders_monthly WHERE year = 2024;
-```
-
-
-
-
-
-
-
-```sql
--- High state: Every unique combination creates state
-SELECT
-  user_id,       -- 1M users
-  product_id,    -- 10K products
-  session_id,    -- 100M sessions
-  COUNT(*) AS events
-FROM STREAM bronze_events
-GROUP BY user_id, product_id, session_id;  -- Massive state!
-```
-
-
-
-
-
-```sql
-SELECT
-  user_id,
-  product_category,  -- 100 categories (not 10K products)
-  DATE(event_time) AS event_date,
-  COUNT(*) AS events
-FROM STREAM bronze_events
-GROUP BY user_id, product_category, DATE(event_time);
-```
-
-
-
-```sql
-SELECT
-  user_id,
-  window(event_time, '1 hour') AS time_window,
-  COUNT(*) AS events
-FROM STREAM bronze_events
-GROUP BY user_id, window(event_time, '1 hour');
-```
-
-
-
-```sql
--- Streaming aggregation (maintains state)
+-- Step 1: Streaming aggregation with bounded cardinality
 CREATE OR REFRESH STREAMING TABLE user_daily_stats AS
 SELECT
   user_id,
+  product_category,  -- 100 categories, not 10K product IDs
   DATE(event_time) AS event_date,
   COUNT(*) AS event_count
 FROM STREAM bronze_events
-GROUP BY user_id, DATE(event_time);
+GROUP BY user_id, product_category, DATE(event_time);
 
--- Batch aggregation (no streaming state)
+-- Step 2: Batch rollup — no streaming state at all
 CREATE OR REFRESH MATERIALIZED VIEW user_monthly_stats AS
 SELECT
   user_id,
@@ -318,28 +131,13 @@ FROM user_daily_stats
 GROUP BY user_id, DATE_TRUNC('month', event_date);
 ```
 
+Three levers to shrink state: reduce GROUP BY cardinality (categories instead of IDs), add time windows (`window(event_time, '1 hour')`), and materialize intermediate aggregations so the batch rollup carries zero streaming state. A streaming-then-batch split like this is the single most effective pattern for high-volume pipelines.
 
+### Stream-to-stream joins with time bounds
 
-
-
-
-
-```sql
--- Small static dimension, large streaming fact
-CREATE OR REFRESH STREAMING TABLE sales_enriched AS
-SELECT
-  s.sale_id, s.product_id, s.amount,
-  p.product_name, p.category
-FROM STREAM bronze_sales s
-LEFT JOIN dim_products p ON s.product_id = p.product_id;
-```
-
-
-
-
+> "Join orders with payments, but payments can arrive up to an hour after the order. Keep state from growing unbounded."
 
 ```sql
--- Time bounds limit state retention
 CREATE OR REFRESH STREAMING TABLE orders_with_payments AS
 SELECT
   o.order_id, o.amount AS order_amount,
@@ -347,88 +145,15 @@ SELECT
 FROM STREAM bronze_orders o
 INNER JOIN STREAM bronze_payments p
   ON o.order_id = p.order_id
-  AND p.payment_time BETWEEN o.order_time AND o.order_time + INTERVAL 1 HOUR;
+  AND p.payment_time BETWEEN o.order_time
+      AND o.order_time + INTERVAL 1 HOUR;
 ```
 
+The `BETWEEN` clause gives the engine a time bound to expire old state. Without it, every order sits in memory forever waiting for a matching payment. For stream-to-static joins (fact to dimension), use a regular `LEFT JOIN` against a non-streaming table — the dimension broadcasts and carries no state.
 
+## Watch Out For
 
-
-
-
-
-```sql
--- Filter at source
-CREATE OR REFRESH STREAMING TABLE silver_recent AS
-SELECT *
-FROM STREAM bronze_events
-WHERE event_date >= CURRENT_DATE() - INTERVAL 7 DAYS;
-
--- Avoid filtering late
--- CREATE OR REFRESH STREAMING TABLE silver_all AS SELECT * FROM STREAM bronze_events;
--- CREATE OR REFRESH MATERIALIZED VIEW gold_recent AS SELECT * FROM silver_all WHERE ...;
-```
-
-
-
-```sql
--- Only needed columns
-SELECT customer_id, order_date, amount FROM large_table;
-
--- Avoid SELECT *
--- SELECT * FROM large_table;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```yaml
-execution_mode: continuous  # or triggered
-serverless: true
-```
-
-
-
-
-
-```sql
--- Data freshness
-SELECT
-  table_name,
-  MAX(event_timestamp) AS latest_event,
-  CURRENT_TIMESTAMP() AS now,
-  TIMESTAMPDIFF(MINUTE, MAX(event_timestamp), CURRENT_TIMESTAMP()) AS lag_minutes
-FROM pipeline_monitoring.table_metrics
-GROUP BY table_name;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- **More than 4 clustering keys** — returns diminish fast beyond 4 columns, and the optimizer spends more time on file pruning than it saves on I/O. Start with 2, add a third only if query profiles show full scans on a common filter.
+- **`PARTITION BY` on new tables** — legacy syntax still works but creates fixed file boundaries that cannot adapt. The only valid reasons to keep it are regulatory physical separation and partition-level `DROP` for retention policies.
+- **Unbounded streaming GROUP BY** — every unique key combination creates persistent state. A GROUP BY on `(user_id, product_id, session_id)` with 1M users and 100M sessions will eventually OOM. Reduce cardinality or window the aggregation.
+- **`SELECT *` through the pipeline** — wide rows inflate shuffle, state, and storage at every layer. Project only the columns each layer needs; the earlier you drop unused columns, the less work every downstream table does.

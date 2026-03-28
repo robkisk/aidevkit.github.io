@@ -1,104 +1,26 @@
 ---
-title: "SQL CDC Patterns (AUTO CDC & SCD)"
-description: Change Data Capture patterns using AUTO CDC for SCD Type 1 and Type 2, plus querying SCD history tables.
+curated: true
+title: Track and Replay Every Change with AUTO CDC
+description: Build SCD Type 1 and Type 2 dimensions using AUTO CDC flows, then query historical state with point-in-time joins.
 sidebar:
-  order: 99
+  order: 3
   badge:
     text: New
     variant: tip
 ---
 
+**Skill:** `databricks-spark-declarative-pipelines`
 
+## What You Can Build
 
+AUTO CDC turns a raw change feed into a fully versioned dimension table in two SQL statements. Your AI coding assistant generates the streaming target, the CDC flow with correct clause ordering, and downstream materialized views that query historical state — so you get point-in-time lookups and temporal joins without hand-rolling merge logic.
 
+## In Action
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`STORED AS SCD TYPE 1`
-
-
-
-`__START_AT``__END_AT`
-
-`STORED AS SCD TYPE 2`
-
-
-
-
-
-
+> "Create an SCD Type 2 customer dimension from a bronze CDC stream. The source has customer_id, customer_name, email, phone, address, an updated_at timestamp, and an operation column. Filter out nulls, track full history, and handle deletes."
 
 ```sql
--- Step 1: Create target table
-CREATE OR REFRESH STREAMING TABLE dim_customers;
-
--- Step 2: Create AUTO CDC flow
-CREATE FLOW customers_scd2_flow AS
-AUTO CDC INTO dim_customers
-FROM stream(customers_cdc_clean)
-KEYS (customer_id)
-APPLY AS DELETE WHEN operation = "DELETE"
-SEQUENCE BY event_timestamp
-COLUMNS * EXCEPT (operation, _ingested_at, _source_file)
-STORED AS SCD TYPE 2;
-```
-
-`APPLY AS DELETE WHEN``SEQUENCE BY``COLUMNS * EXCEPT (...)`
-
-
-
-```sql
--- Step 1: Create target table
-CREATE OR REFRESH STREAMING TABLE orders_current;
-
--- Step 2: Create AUTO CDC flow
-CREATE FLOW orders_scd1_flow AS
-AUTO CDC INTO orders_current
-FROM stream(orders_clean)
-KEYS (order_id)
-SEQUENCE BY updated_timestamp
-COLUMNS * EXCEPT (_ingested_at)
-STORED AS SCD TYPE 1;
-```
-
-
-
-
-
-```sql
-CREATE FLOW products_scd2_flow AS
-AUTO CDC INTO products_history
-FROM stream(products_clean)
-KEYS (product_id)
-SEQUENCE BY modified_at
-COLUMNS * EXCEPT (operation)
-STORED AS SCD TYPE 2
-TRACK HISTORY ON price, cost;
-```
-
-`price``cost`
-
-
-
-
-
-
-
-```sql
+-- Clean and validate the CDC source
 CREATE OR REFRESH STREAMING TABLE customers_cdc_clean AS
 SELECT
   customer_id,
@@ -111,13 +33,11 @@ SELECT
 FROM STREAM bronze_customers_cdc
 WHERE customer_id IS NOT NULL
   AND email IS NOT NULL;
-```
 
-
-
-```sql
+-- Empty target — AUTO CDC manages the schema
 CREATE OR REFRESH STREAMING TABLE dim_customers;
 
+-- Wire up the CDC flow
 CREATE FLOW customers_scd2_flow AS
 AUTO CDC INTO dim_customers
 FROM stream(customers_cdc_clean)
@@ -128,38 +48,54 @@ COLUMNS * EXCEPT (operation)
 STORED AS SCD TYPE 2;
 ```
 
+**Key decisions:**
+- **Separate cleaning table** before AUTO CDC — type casting, null filtering, and column renaming belong upstream so the CDC flow stays declarative
+- **`APPLY AS DELETE WHEN` before `SEQUENCE BY`** — clause order matters; reversing these causes a parse error
+- **`COLUMNS * EXCEPT (operation)`** — the operation column drives CDC logic but should not land in the target dimension
+- **Empty target table** with no schema — AUTO CDC infers columns from the flow; defining them twice creates drift risk
 
+## More Patterns
 
+### SCD Type 1 for current-state-only tables
 
-
-
-`__START_AT`
-`__END_AT`
-
-
+> "Build a deduplicated orders table that always reflects the latest state — no history needed."
 
 ```sql
--- All current records
-CREATE OR REFRESH MATERIALIZED VIEW dim_customers_current AS
-SELECT
-  customer_id, customer_name, email, phone, address,
-  __START_AT AS valid_from
-FROM dim_customers
-WHERE __END_AT IS NULL;
+CREATE OR REFRESH STREAMING TABLE orders_current;
 
--- Specific customer
-SELECT *
-FROM dim_customers
-WHERE customer_id = '12345'
-  AND __END_AT IS NULL;
+CREATE FLOW orders_scd1_flow AS
+AUTO CDC INTO orders_current
+FROM stream(orders_clean)
+KEYS (order_id)
+SEQUENCE BY updated_timestamp
+COLUMNS * EXCEPT (_ingested_at)
+STORED AS SCD TYPE 1;
 ```
 
+Type 1 overwrites in place. Use it for error corrections, reference data, or any table where downstream consumers only query the latest row per key. No `__START_AT` / `__END_AT` columns are generated.
 
+### Track history only on columns that matter
 
-
+> "I have a products table where name changes all the time, but I only care about price and cost history."
 
 ```sql
--- Products as of January 1, 2024
+CREATE FLOW products_scd2_flow AS
+AUTO CDC INTO products_history
+FROM stream(products_clean)
+KEYS (product_id)
+SEQUENCE BY modified_at
+COLUMNS * EXCEPT (operation)
+STORED AS SCD TYPE 2
+TRACK HISTORY ON price, cost;
+```
+
+`TRACK HISTORY ON` creates a new version row only when price or cost changes. Other column updates modify the current row in place. This keeps the history table lean in high-churn scenarios.
+
+### Point-in-time queries on SCD Type 2
+
+> "Show me what our product catalog looked like on January 1, 2024."
+
+```sql
 CREATE OR REFRESH MATERIALIZED VIEW products_as_of_2024_01_01 AS
 SELECT
   product_id, product_name, price, category,
@@ -169,55 +105,18 @@ WHERE __START_AT <= '2024-01-01'
   AND (__END_AT > '2024-01-01' OR __END_AT IS NULL);
 ```
 
+The pattern is always inclusive-lower, exclusive-upper: `__START_AT &lt;= target` AND `(__END_AT &gt; target OR __END_AT IS NULL)`. The `IS NULL` clause catches the still-current version.
 
+### Temporal join: fact to historical dimension
 
-
-
-```sql
-SELECT
-  customer_id, customer_name, email, phone,
-  __START_AT, __END_AT,
-  COALESCE(
-    DATEDIFF(DAY, __START_AT, __END_AT),
-    DATEDIFF(DAY, __START_AT, CURRENT_TIMESTAMP())
-  ) AS days_active
-FROM dim_customers
-WHERE customer_id = '12345'
-ORDER BY __START_AT DESC;
-```
-
-
+> "Join sales against the product price that was active at the time of each sale."
 
 ```sql
--- Customers who changed during Q1 2024
-SELECT
-  customer_id, customer_name,
-  __START_AT AS change_timestamp,
-  'UPDATE' AS change_type
-FROM dim_customers
-WHERE __START_AT BETWEEN '2024-01-01' AND '2024-03-31'
-  AND __START_AT != (
-    SELECT MIN(__START_AT)
-    FROM dim_customers ch2
-    WHERE ch2.customer_id = dim_customers.customer_id
-  )
-ORDER BY __START_AT;
-```
-
-
-
-
-
-
-
-```sql
--- Join sales with product prices at time of sale
 CREATE OR REFRESH MATERIALIZED VIEW sales_with_historical_prices AS
 SELECT
   s.sale_id, s.product_id, s.sale_date, s.quantity,
-  p.product_name, p.price AS unit_price_at_sale_time,
-  s.quantity * p.price AS calculated_amount,
-  p.category
+  p.product_name, p.price AS unit_price_at_sale,
+  s.quantity * p.price AS calculated_amount
 FROM sales_fact s
 INNER JOIN products_history p
   ON s.product_id = p.product_id
@@ -225,107 +124,11 @@ INNER JOIN products_history p
   AND (s.sale_date < p.__END_AT OR p.__END_AT IS NULL);
 ```
 
+This temporal join gives you the exact price each customer paid, not today's price. For dashboards that only need current dimension values, join with `WHERE p.__END_AT IS NULL` instead — it is faster and avoids fan-out.
 
+## Watch Out For
 
-```sql
-CREATE OR REFRESH MATERIALIZED VIEW sales_with_current_prices AS
-SELECT
-  s.sale_id, s.product_id, s.sale_date, s.quantity,
-  s.amount AS amount_at_sale,
-  p.product_name AS current_product_name,
-  p.price AS current_price
-FROM sales_fact s
-INNER JOIN products_history p
-  ON s.product_id = p.product_id
-  AND p.__END_AT IS NULL;
-```
-
-
-
-
-
-
-
-```sql
--- Current state view (most common pattern)
-CREATE OR REFRESH MATERIALIZED VIEW dim_products_current AS
-SELECT * FROM products_history WHERE __END_AT IS NULL;
-
--- Recent changes only
-CREATE OR REFRESH MATERIALIZED VIEW dim_recent_changes AS
-SELECT * FROM products_history
-WHERE __START_AT >= CURRENT_DATE() - INTERVAL 90 DAYS;
-
--- Change frequency stats
-CREATE OR REFRESH MATERIALIZED VIEW product_change_stats AS
-SELECT
-  product_id,
-  COUNT(*) AS version_count,
-  MIN(__START_AT) AS first_seen,
-  MAX(__START_AT) AS last_updated
-FROM products_history
-GROUP BY product_id;
-```
-
-
-
-
-
-
-
-```sql
--- Efficient
-WHERE __END_AT IS NULL
-
--- Less efficient
-WHERE __START_AT = (SELECT MAX(__START_AT) FROM table WHERE ...)
-```
-
-
-
-```sql
-WHERE __START_AT <= '2024-01-01'
-  AND (__END_AT > '2024-01-01' OR __END_AT IS NULL)
-```
-
-
-
-
-
-```sql
--- Clean source
-CREATE OR REFRESH STREAMING TABLE users_clean AS
-SELECT
-  user_id,
-  TRIM(email) AS email,
-  CAST(updated_at AS TIMESTAMP) AS updated_timestamp
-FROM STREAM bronze_users
-WHERE user_id IS NOT NULL AND email IS NOT NULL;
-
--- Then apply AUTO CDC
-CREATE FLOW users_scd2_flow AS
-AUTO CDC INTO dim_users
-FROM stream(users_clean)
-KEYS (user_id)
-SEQUENCE BY updated_timestamp
-STORED AS SCD TYPE 2;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-`__END_AT IS NULL`
-`__START_AT <= date AND (__END_AT > date OR __END_AT IS NULL)`
-
-
-`APPLY AS DELETE WHEN``SEQUENCE BY`
-`COLUMNS * EXCEPT (...)`
-`SCD TYPE 1``SCD TYPE 2`
+- **Clause ordering in AUTO CDC** — `APPLY AS DELETE WHEN` must appear before `SEQUENCE BY`. The parser is strict about this and the error message does not make the fix obvious.
+- **Querying current state without `__END_AT IS NULL`** — a bare `SELECT * FROM dim_customers` returns every historical version. Always filter on `__END_AT IS NULL` for current records, or create a materialized view that does it for you.
+- **Subquery anti-pattern for current rows** — `WHERE __START_AT = (SELECT MAX(__START_AT) ...)` works but is far slower than `WHERE __END_AT IS NULL`, which hits a simple null check instead of a correlated subquery.
+- **Listing nonexistent columns in `COLUMNS * EXCEPT`** — every column name must exist in the source stream. A typo silently passes validation but fails at runtime with a confusing schema mismatch error.

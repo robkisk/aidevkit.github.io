@@ -1,26 +1,27 @@
 ---
-title: SQL Syntax Basics
-description: Core SQL syntax for Spark Declarative Pipelines (SDP).
+curated: true
+title: Define Tables, Views, and Quality Rules in SQL
+description: Build streaming tables, materialized views, and data quality constraints with SDP SQL syntax.
 sidebar:
-  order: 99
+  order: 1
   badge:
     text: New
     variant: tip
 ---
 
+**Skill:** `databricks-spark-declarative-pipelines`
 
+## What You Can Build
 
+Spark Declarative Pipelines give you four object types in SQL -- streaming tables for incremental ingestion, materialized views for batch aggregations, persisted views for lightweight access layers, and temporary views for pipeline-scoped intermediates. Pair those with EXPECT constraints and Liquid Clustering, and your AI coding assistant can scaffold a full medallion pipeline from a single prompt.
 
+## In Action
 
-
-
-
-
-
+> "Build a SQL streaming table called bronze_events that ingests JSON from /Volumes/retail/prod/raw/events/. Cluster by event_type and event_date. Add ingestion metadata columns and auto-optimize properties."
 
 ```sql
 CREATE OR REFRESH STREAMING TABLE bronze_events
-COMMENT 'Raw event data'
+COMMENT 'Raw event stream from retail platform'
 CLUSTER BY (event_type, event_date)
 TBLPROPERTIES (
   'delta.autoOptimize.optimizeWrite' = 'true',
@@ -31,221 +32,79 @@ SELECT
   *,
   current_timestamp() AS _ingested_at,
   _metadata.file_path AS _source_file
-FROM STREAM read_files('/Volumes/my_catalog/my_schema/raw/events/', format => 'json');
+FROM STREAM read_files(
+  '/Volumes/retail/prod/raw/events/',
+  format => 'json'
+);
 ```
 
+**Key decisions:**
+- **STREAMING TABLE** over MATERIALIZED VIEW -- the source is a continuously growing file directory, so incremental processing avoids recomputing the entire dataset on every refresh
+- **CLUSTER BY** over legacy PARTITION BY -- Liquid Clustering handles file layout automatically and supports up to 4 keys without manual partition pruning
+- **autoOptimize properties** -- write-time compaction keeps file sizes reasonable without scheduling separate OPTIMIZE jobs
+- **\_metadata.file\_path** for lineage -- stamps every row with its source file so you can trace data quality issues back to a specific landing file
 
-`STREAM`
-`CLUSTER BY`
+## More Patterns
 
+### Materialized view for daily rollups
 
-
-
-
+> "Create a gold-layer materialized view that aggregates orders by report_date with total amount and transaction count. Refresh it daily."
 
 ```sql
-CREATE OR REFRESH MATERIALIZED VIEW gold_daily_summary
-COMMENT 'Daily aggregated metrics'
+CREATE OR REFRESH MATERIALIZED VIEW gold_daily_orders
+COMMENT 'Daily order aggregates for BI consumption'
 CLUSTER BY (report_date)
+REFRESH EVERY 1 DAY
 AS
 SELECT
   report_date,
   SUM(amount) AS total_amount,
-  COUNT(*) AS transaction_count
+  COUNT(*) AS transaction_count,
+  AVG(amount) AS avg_order_value
 FROM silver_orders
 GROUP BY report_date;
 ```
 
+No `STREAM` keyword here -- materialized views read in batch mode and SDP handles incremental refresh automatically when the upstream table changes. `REFRESH EVERY 1 DAY` caps how often the view recomputes, which matters when upstream tables update frequently but downstream consumers only need daily granularity.
 
-`STREAM`
+### Data quality constraints on a silver table
 
-
-
-
-
-
-
-```sql
-CREATE VIEW taxi_raw AS
-SELECT * FROM read_files("/Volumes/catalog/schema/raw/taxi/");
-
-CREATE VIEW active_customers AS
-SELECT customer_id, name, email
-FROM dim_customers
-WHERE status = 'active';
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-```sql
-CREATE TEMPORARY VIEW orders_with_calculations AS
-SELECT
-  *,
-  quantity * price AS total,
-  quantity * price * discount_rate AS discount_amount
-FROM STREAM bronze_orders
-WHERE quantity > 0;
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+> "Create a silver streaming table from bronze_orders that drops rows with null order_id or non-positive amounts, and fails the pipeline if customer_id is ever null."
 
 ```sql
 CREATE OR REFRESH STREAMING TABLE silver_orders (
-  CONSTRAINT valid_amount EXPECT (amount > 0) ON VIOLATION DROP ROW,
-  CONSTRAINT valid_customer EXPECT (customer_id IS NOT NULL) ON VIOLATION DROP ROW,
-  CONSTRAINT critical_field EXPECT (order_id IS NOT NULL) ON VIOLATION FAIL UPDATE
+  CONSTRAINT valid_amount
+    EXPECT (amount > 0) ON VIOLATION DROP ROW,
+  CONSTRAINT has_order_id
+    EXPECT (order_id IS NOT NULL) ON VIOLATION DROP ROW,
+  CONSTRAINT critical_customer
+    EXPECT (customer_id IS NOT NULL) ON VIOLATION FAIL UPDATE
 )
 AS
 SELECT * FROM STREAM bronze_orders;
 ```
 
+Three enforcement levels: omit the ON VIOLATION clause to log and keep all rows, use `DROP ROW` to silently filter bad data, or use `FAIL UPDATE` to halt the pipeline when a hard invariant breaks. Mix them on the same table -- soft rules for data you can recover from, hard rules for fields that would corrupt downstream joins.
 
+### Temporary view for intermediate logic
 
-`ON VIOLATION DROP ROW`
-`ON VIOLATION FAIL UPDATE`
-
-
-
-
-
+> "I need a pipeline-scoped view that calculates line totals and discount amounts from bronze_orders before feeding the silver layer."
 
 ```sql
-CREATE OR REFRESH STREAMING TABLE silver_orders AS
-SELECT * FROM STREAM bronze_orders
-WHERE amount > 0 AND customer_id IS NOT NULL;
+CREATE TEMPORARY VIEW orders_enriched AS
+SELECT
+  *,
+  quantity * unit_price AS line_total,
+  quantity * unit_price * discount_rate AS discount_amount
+FROM STREAM bronze_orders
+WHERE quantity > 0;
 ```
 
+Temporary views exist only during pipeline execution -- no storage cost, no catalog visibility. They are the right choice for intermediate transformations you do not want external consumers to depend on, especially before CDC flows.
 
+## Watch Out For
 
-
-
-`CLUSTER BY``PARTITION BY`
-
-```sql
-CREATE OR REFRESH STREAMING TABLE bronze_events
-CLUSTER BY (event_type, event_date)
-AS SELECT ...;
-```
-
-
-
-
-
-```sql
-CREATE OR REFRESH STREAMING TABLE bronze_events
-TBLPROPERTIES (
-  'delta.autoOptimize.optimizeWrite' = 'true',    -- Optimize file sizes on write
-  'delta.autoOptimize.autoCompact' = 'true',      -- Automatic compaction
-  'delta.enableChangeDataFeed' = 'true',          -- Enable CDF for downstream
-  'delta.logRetentionDuration' = '7 days',        -- Log retention
-  'delta.deletedFileRetentionDuration' = '7 days' -- Deleted file retention
-)
-AS SELECT ...;
-```
-
-
-
-
-
-```sql
--- Near-real-time
-CREATE OR REFRESH MATERIALIZED VIEW gold_live_metrics
-REFRESH EVERY 5 MINUTES
-AS SELECT ...;
-
--- Daily
-CREATE OR REFRESH MATERIALIZED VIEW gold_daily_summary
-REFRESH EVERY 1 DAY
-AS SELECT ...;
-```
-
-
-
-
-
-
-
-`FROM bronze_orders`
-`FROM other_schema.orders`
-`FROM other_catalog.schema.orders`
-
-
-
-
-
-
-
-```sql
--- bronze_orders.sql → writes to bronze schema
-CREATE OR REFRESH STREAMING TABLE my_catalog.bronze.raw_orders
-AS SELECT *, current_timestamp() AS _ingested_at
-FROM STREAM read_files('/Volumes/my_catalog/raw/orders/', format => 'json');
-
--- silver_orders.sql → writes to silver schema, reads from bronze
-CREATE OR REFRESH STREAMING TABLE my_catalog.silver.clean_orders
-AS SELECT * FROM STREAM my_catalog.bronze.raw_orders
-WHERE order_id IS NOT NULL;
-```
-
-
-
-
-
-
-
-```sql
--- In SQL, use ${variable_name} syntax
-CREATE OR REFRESH STREAMING TABLE bronze_orders AS
-SELECT * FROM STREAM read_files(
-  '${input_path}/orders/',
-  format => 'json'
-);
-```
-
-
-```yaml
-configuration:
-  input_path: /Volumes/my_catalog/my_schema/raw
-```
-
-
-
-
-
-
-
-`STREAM``FROM STREAM table_name`
-`CONSTRAINT name EXPECT (condition)`
-
-`${var}`
-`LIVE``CREATE OR REFRESH STREAMING TABLE``MATERIALIZED VIEW``CREATE LIVE TABLE``STREAMING LIVE TABLE`
-`input_file_name()``_metadata.file_path`
+- **Missing the STREAM keyword** -- writing `FROM bronze_orders` instead of `FROM STREAM bronze_orders` silently treats the source as a batch read, which reprocesses everything on each refresh instead of reading incrementally. If your pipeline is slow for no obvious reason, check this first.
+- **Using legacy LIVE syntax** -- `CREATE LIVE TABLE` and `STREAMING LIVE TABLE` still parse but are deprecated. Always use `CREATE OR REFRESH STREAMING TABLE` or `CREATE OR REFRESH MATERIALIZED VIEW`.
+- **CLUSTER BY on high-cardinality columns** -- clustering on a UUID or raw timestamp produces too many distinct values for effective file skipping. Cluster on filtered or grouped columns (event\_type, region, date) instead.
+- **Referencing \`input\_file\_name()\`** -- this function is deprecated in SDP. Use `_metadata.file_path` for source file tracking.
