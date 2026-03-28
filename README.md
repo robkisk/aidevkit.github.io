@@ -4,13 +4,6 @@ Documentation site for [AI Dev Kit](https://github.com/databricks-solutions/ai-d
 
 **Live site:** https://robkisk.github.io/aidevkit.github.io
 
-## What's in the Docs
-
-- **28 Skills** — Pre-built knowledge covering data engineering, SQL analytics, AI/ML, app development, governance, and DevOps on Databricks
-- **99 MCP Tools** — Direct workspace interaction (run SQL, manage pipelines, deploy apps, query vector indexes)
-- **Prompt Library** — Tested prompt templates for common tasks
-- **Guides** — End-to-end walkthroughs (RAG applications, medallion pipelines, multi-agent systems)
-
 ## Development
 
 ```bash
@@ -19,44 +12,54 @@ npm run dev        # Local dev server at localhost:4321
 npm run build      # Production build to ./dist/
 ```
 
-## Content Structure
+## Content Refresh
 
-All documentation lives in `src/content/docs/` as `.mdx` files. The directory structure maps directly to the site URL structure.
+Sync new content from the ai-dev-kit source repo, curate new pages, and deploy:
+
+```bash
+# 1. Sync — dry run first, then write
+uv run scripts/sync_content.py
+uv run scripts/sync_content.py --write --force
+
+# 2. Find uncurated pages
+grep -rL "curated: true" src/content/docs/skills/*/*/index.mdx
+
+# 3. Build and deploy
+npm run build
+git add <files> && git commit && git push
+```
+
+The sync script auto-clears stale "New" badges, protects curated pages from overwrites, and updates landing page stats. See `CLAUDE.md` for the full workflow and config details.
+
+## Content Structure
 
 ```
 src/content/docs/
 ├── getting-started/       # Quick start, installation, configuration
-├── skills/
+├── skills/                # 6 categories → skill groups → child pages
 │   ├── data-engineering/  # SDP, Structured Streaming, Custom Sources, Zerobus
-│   ├── sql-analytics/     # AI Functions, DBSQL, Genie Spaces, Metric Views
-│   ├── ai-ml/             # Vector Search, Agent Bricks, MLflow, Model Serving
-│   ├── apps-databases/    # Databricks Apps, Lakebase
+│   ├── sql-analytics/     # AI Functions, DBSQL, Genie Spaces, Metric Views, Dashboards
+│   ├── ai-ml/             # Vector Search, Agent Bricks, MLflow, Model Serving, Synthetic Data
+│   ├── apps-databases/    # Databricks Apps (Python & AppKit), Lakebase
 │   ├── governance-catalog/ # Iceberg Tables, Unity Catalog
-│   └── devops-config/     # Asset Bundles, Jobs, Workspace Config
-├── mcp-tools/             # MCP tool reference pages
-├── guides/                # End-to-end tutorials
+│   └── devops-config/     # Asset Bundles, Jobs, Workspace Config, Execution & Compute
+├── mcp-tools/             # Auto-generated MCP tool reference pages
+├── guides/                # End-to-end walkthroughs
 ├── prompt-library/        # Copy-paste prompt templates
 └── reference/             # All skills list, all tools list, changelog
 ```
 
-## Content Template
+## Guided Journey Format
 
-Child pages follow the "Guided Journey" template:
+All skill pages follow the "Guided Journey" editorial template:
 
-1. **What You Can Build** — Outcome-focused framing (2-3 sentences)
+1. **What You Can Build** — Outcome-focused framing
 2. **In Action** — Realistic prompt + generated code + key decisions
-3. **More Patterns** — Additional prompt/code pairs (2-4 scenarios)
-4. **Watch Out For** — Gotchas with mistake, cause, and fix
-
-See `docs/superpowers/specs/2026-03-19-child-page-content-rewrite-design.md` for the full content spec.
-
-## Content Sourcing
-
-Docs pages are manually maintained. Skill source files in [`ai-dev-kit/databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit) provide the authoritative patterns — when sources disagree, skill files take precedence.
+3. **More Patterns** — Additional prompt/code pairs
+4. **Watch Out For** — Gotchas with root cause and fix
 
 ## Tech Stack
 
 - [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) — static site framework
-- [Catppuccin Mocha/Latte](https://catppuccin.com) — syntax highlighting theme
 - DM Sans + JetBrains Mono — typography
-- GitHub Pages — hosting
+- GitHub Pages — hosting via GitHub Actions
