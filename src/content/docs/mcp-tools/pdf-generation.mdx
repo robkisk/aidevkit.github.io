@@ -17,16 +17,16 @@ Generate synthetic PDF documents and upload them to Unity Catalog volumes for RA
 
 ## generate_and_upload_pdf
 
-**Description:** Convert HTML to PDF and upload to a Unity Catalog volume.
+**Description:** Convert complete HTML (with styles) to PDF and upload to Unity Catalog volume.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `html_content` | `str` | Yes | Complete HTML document including &lt;!DOCTYPE html&gt;, &lt;html&gt;, &lt;head&gt;, &lt;style&gt;, and &lt;body&gt; tags. Use modern CSS3 for styling. |
-| `filename` | `str` | Yes | Name for the PDF file (e.g., "report.pdf" or "report" - .pdf added if missing) |
-| `catalog` | `str` | Yes | Unity Catalog name |
-| `schema` | `str` | Yes | Schema name |
-| `volume` | `str` | No | Volume name (must already exist). Default: "raw_data" |
-| `folder` | `Optional[str]` | No | Optional folder within volume (e.g., "documents") |
+| `html_content` | `str` | Yes | — |
+| `filename` | `str` | Yes | — |
+| `catalog` | `str` | Yes | — |
+| `schema` | `str` | Yes | — |
+| `volume` | `str` | No | — |
+| `folder` | `Optional[str]` | No | — |
 

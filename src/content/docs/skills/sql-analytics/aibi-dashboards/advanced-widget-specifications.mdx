@@ -1,0 +1,204 @@
+---
+curated: true
+title: Advanced Visualizations -- Area, Scatter, Combo & Maps
+description: Build area charts, scatter plots, combo bar+line charts, and choropleth maps for specialized dashboard needs.
+sidebar:
+  order: 2
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-aibi-dashboards`
+
+## What You Can Build
+
+Beyond the core bar/line/pie, AI/BI dashboards support area charts for cumulative volume, scatter plots for correlation analysis, combo charts that overlay bars and lines on dual axes, and choropleth maps for geographic data. These cover the cases where a single chart type is not enough -- revenue trend with growth rate overlay, returns clustering by date, or revenue heat by state.
+
+## In Action
+
+> "Create a combo chart showing daily revenue as bars on the primary axis and growth rate as a line on the secondary axis."
+
+```json
+{
+  "widget": {
+    "name": "revenue-and-growth",
+    "queries": [{
+      "name": "main_query",
+      "query": {
+        "datasetName": "metrics_ds",
+        "fields": [
+          {"name": "daily(date)", "expression": "DATE_TRUNC(\"DAY\", `date`)"},
+          {"name": "sum(revenue)", "expression": "SUM(`revenue`)"},
+          {"name": "avg(growth_rate)", "expression": "AVG(`growth_rate`)"}
+        ],
+        "disaggregated": false
+      }
+    }],
+    "spec": {
+      "version": 1,
+      "widgetType": "combo",
+      "encodings": {
+        "x": {"fieldName": "daily(date)", "scale": {"type": "temporal"}},
+        "y": {
+          "scale": {"type": "quantitative"},
+          "primary": {
+            "fields": [{"fieldName": "sum(revenue)", "displayName": "Revenue ($)"}]
+          },
+          "secondary": {
+            "fields": [{"fieldName": "avg(growth_rate)", "displayName": "Growth Rate"}]
+          }
+        },
+        "label": {"show": false}
+      },
+      "frame": {"title": "Revenue & Growth Rate", "showTitle": true}
+    }
+  },
+  "position": {"x": 0, "y": 0, "width": 6, "height": 5}
+}
+```
+
+**Key decisions:**
+- **`version: 1`** for combo charts -- not version 3 like other charts. Combo has its own spec version.
+- **`y.primary` and `y.secondary`** split the dual axes -- primary renders as bars, secondary as a line. Each gets its own scale, so revenue in millions and growth rate as a decimal coexist without distortion.
+- **`label: show: false`** -- label overlays on combo charts create visual noise. Turn them off unless the chart has very few data points.
+- **Full-width at height 5** -- combo charts need room for two legends and axis labels. Width 6 is the minimum for readability.
+
+## More Patterns
+
+### Area chart for volume trends
+
+> "Show revenue and returns as stacked area charts over time."
+
+```json
+{
+  "widget": {
+    "name": "revenue-returns-area",
+    "queries": [{
+      "name": "main_query",
+      "query": {
+        "datasetName": "weekly_metrics",
+        "fields": [
+          {"name": "week_start", "expression": "`week_start`"},
+          {"name": "sum(revenue_usd)", "expression": "SUM(`revenue_usd`)"},
+          {"name": "sum(returns_usd)", "expression": "SUM(`returns_usd`)"}
+        ],
+        "disaggregated": false
+      }
+    }],
+    "spec": {
+      "version": 3,
+      "widgetType": "area",
+      "encodings": {
+        "x": {"fieldName": "week_start", "scale": {"type": "temporal"}, "displayName": "Week"},
+        "y": {
+          "scale": {"type": "quantitative"},
+          "fields": [
+            {"fieldName": "sum(revenue_usd)", "displayName": "Revenue"},
+            {"fieldName": "sum(returns_usd)", "displayName": "Returns"}
+          ]
+        }
+      },
+      "frame": {"title": "Revenue vs Returns", "showTitle": true}
+    }
+  },
+  "position": {"x": 0, "y": 0, "width": 6, "height": 5}
+}
+```
+
+Area charts share the same `version: 3` and encoding structure as line charts. Use them when the filled area helps communicate cumulative magnitude -- revenue vs cost, inflow vs outflow. For simple trend lines, stick with `widgetType: "line"`.
+
+### Scatter plot with bubble sizing
+
+> "Create a scatter plot showing daily return amounts over time, sized by return count and colored by product category."
+
+```json
+{
+  "widget": {
+    "name": "returns-scatter",
+    "queries": [{
+      "name": "main_query",
+      "query": {
+        "datasetName": "returns_ds",
+        "fields": [
+          {"name": "return_date", "expression": "`return_date`"},
+          {"name": "daily_returns", "expression": "`daily_returns`"},
+          {"name": "count(*)", "expression": "COUNT(`return_id`)"},
+          {"name": "category", "expression": "`category`"}
+        ],
+        "disaggregated": false
+      }
+    }],
+    "spec": {
+      "version": 3,
+      "widgetType": "scatter",
+      "encodings": {
+        "x": {"fieldName": "return_date", "scale": {"type": "temporal"}, "displayName": "Date"},
+        "y": {"fieldName": "daily_returns", "scale": {"type": "quantitative"}, "displayName": "Return Amount"},
+        "size": {"fieldName": "count(*)", "scale": {"type": "quantitative"}, "displayName": "Count"},
+        "color": {"fieldName": "category", "scale": {"type": "categorical"}, "displayName": "Category"}
+      },
+      "frame": {"title": "Returns Analysis", "showTitle": true}
+    }
+  },
+  "position": {"x": 0, "y": 0, "width": 6, "height": 6}
+}
+```
+
+The `size` encoding is optional -- without it you get a standard scatter. Both `x` and `y` can be temporal or quantitative. Keep color categories under 8 for readability.
+
+### Choropleth map
+
+> "Show total revenue by US state on a map."
+
+```json
+{
+  "widget": {
+    "name": "revenue-by-state",
+    "queries": [{
+      "name": "main_query",
+      "query": {
+        "datasetName": "state_revenue",
+        "fields": [
+          {"name": "state_name", "expression": "`state_name`"},
+          {"name": "sum(revenue)", "expression": "SUM(`revenue`)"}
+        ],
+        "disaggregated": false
+      }
+    }],
+    "spec": {
+      "version": 1,
+      "widgetType": "choropleth-map",
+      "encodings": {
+        "region": {
+          "regionType": "mapbox-v4-admin",
+          "admin0": {
+            "type": "value",
+            "value": "United States",
+            "geographicRole": "admin0-name"
+          },
+          "admin1": {
+            "fieldName": "state_name",
+            "type": "field",
+            "geographicRole": "admin1-name"
+          }
+        },
+        "color": {
+          "fieldName": "sum(revenue)",
+          "scale": {"type": "quantitative"}
+        }
+      },
+      "frame": {"title": "Revenue by State", "showTitle": true}
+    }
+  },
+  "position": {"x": 0, "y": 0, "width": 6, "height": 6}
+}
+```
+
+Choropleth maps use `version: 1`. The `admin0` level fixes the country (use `"type": "value"`), and `admin1` maps your data column to states/provinces (use `"type": "field"`). Geographic roles can be `admin0-name`, `admin1-name`, `admin1-iso`, etc. Unlike other chart types, choropleth-map supports `scheme`, `colorRamp`, and `mappings` in the color scale.
+
+## Watch Out For
+- **Combo chart version** -- combo uses `version: 1`, not `version: 3`. Using version 3 produces an invalid widget.
+- **Choropleth color scale properties** -- `scheme`, `colorRamp`, and `mappings` work only on `choropleth-map`. Adding them to bar, line, or pie charts causes silent failures.
+- **Scatter plot overplotting** -- scatter plots with thousands of points become unreadable. Pre-aggregate in the dataset SQL to reduce points, or add a `size` encoding to communicate density.
+- **Region name matching** -- choropleth maps match region names literally. "California" works, "CA" does not (unless you use `admin1-iso` for the geographic role). Verify your data column matches the expected format.

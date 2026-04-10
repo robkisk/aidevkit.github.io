@@ -19,21 +19,58 @@ Task-specific AI functions let you enrich entire tables with sentiment scores, e
 ```sql
 SELECT
   ticket_id,
-  ai_classify(description, ARRAY('urgent', 'not urgent', 'spam')) AS priority,
-  ai_extract(description, ARRAY('product', 'error_code')) AS entities,
+  ai_classify(description, '["urgent", "not urgent", "spam"]') AS priority,
+  ai_extract(description, '["product", "error_code"]') AS entities,
   ai_analyze_sentiment(description) AS sentiment
 FROM catalog.schema.support_tickets
 LIMIT 100;
 ```
 
 **Key decisions:**
-- `ai_classify` accepts 2-20 mutually exclusive labels and returns a single match
-- `ai_extract` returns a STRUCT with one field per label -- use `ai_query` instead when you need nested arrays
+- `ai_classify` accepts a JSON string of 2-500 labels and returns VARIANT. Pass a simple array (`'["a","b"]'`) or a map with descriptions (`'\{"billing_error": "Payment issues"\}'`) for better accuracy.
+- `ai_extract` accepts a JSON schema string and returns VARIANT `\{"response": \{...\}, "error_message": null\}`. Supports advanced schemas with types (`string`, `integer`, `number`, `boolean`, `enum`) and up to 128 fields with 7 nesting levels.
+- Both `ai_classify` and `ai_extract` accept an optional `options` MAP -- pass `MAP('instructions', 'context text')` for better results on domain-specific data.
 - `ai_analyze_sentiment` returns one of `positive`, `negative`, `neutral`, `mixed`, or `NULL`
 - `LIMIT 100` during development controls Foundation Model API costs
 - No endpoint selection required -- each function routes to an optimized model automatically
 
 ## More Patterns
+
+### Classify with label descriptions and multilabel mode
+
+> "Write a SQL query that classifies support tickets using descriptive labels, and allow tickets to match multiple categories."
+
+```sql
+SELECT ticket_text,
+  ai_classify(
+    ticket_text,
+    '{"billing_error": "Payment, invoice, or refund issues",
+      "product_defect": "Any malfunction, bug, or breakage",
+      "account_issue": "Login failures, password resets"}',
+    MAP('instructions', 'Customer support tickets for a SaaS product',
+        'multilabel', 'true')
+  ) AS categories
+FROM catalog.schema.support_tickets;
+```
+
+Label descriptions (up to 1000 chars each) significantly improve accuracy on ambiguous categories. Set `multilabel` to `"true"` in the options MAP to return all matching labels instead of just the top one. The response is VARIANT: `\{"response": ["billing_error", "product_defect"], "error_message": null\}`.
+
+### Extract with typed schemas
+
+> "Write a SQL query that extracts invoice fields with explicit types so the output is structured for downstream processing."
+
+```sql
+SELECT ai_extract(
+  invoice_text,
+  '{"invoice_id": {"type": "string"},
+    "total_amount": {"type": "number"},
+    "currency": {"type": "enum", "labels": ["USD", "EUR", "GBP"]}}',
+  MAP('instructions', 'These are vendor invoices from US and European suppliers')
+) AS extracted
+FROM catalog.schema.raw_invoices;
+```
+
+Advanced schemas support `string`, `integer`, `number`, `boolean`, and `enum` types with up to 128 fields and 7 nesting levels. The `enum` type constrains extraction to a fixed set of values (up to 500). Instructions in the options MAP give the model domain context for better extraction quality.
 
 ### Redact PII before sharing data
 
@@ -98,8 +135,8 @@ WHERE ai_similarity(a.name, b.name) > 0.85;
 from pyspark.sql.functions import expr
 
 df = (spark.table("catalog.schema.support_tickets")
-    .withColumn("priority", expr("ai_classify(ticket_text, array('urgent', 'not urgent', 'spam'))"))
-    .withColumn("entities", expr("ai_extract(ticket_text, array('product', 'error_code'))"))
+    .withColumn("priority", expr("ai_classify(ticket_text, '[\"urgent\", \"not urgent\", \"spam\"]')"))
+    .withColumn("entities", expr("ai_extract(ticket_text, '[\"product\", \"error_code\"]')"))
     .withColumn("sentiment", expr("ai_analyze_sentiment(ticket_text)"))
 )
 ```
@@ -108,7 +145,8 @@ All task-specific functions work through `expr()` in PySpark. This is the standa
 
 ## Watch Out For
 
-- **Calling `ai_extract` with nested output schemas** -- it returns flat STRUCTs only. When your extraction target has arrays (like line items on an invoice), switch to `ai_query` with `responseFormat`.
+- **Using `ARRAY()` syntax instead of JSON strings** -- `ai_classify` and `ai_extract` now accept JSON string arguments, not SQL `ARRAY()`. Use `'["a", "b"]'` for simple labels and `'\{"key": "description"\}'` for labeled maps.
+- **Ignoring the `options` MAP** -- both `ai_classify` and `ai_extract` accept `MAP('instructions', '...')` for domain context. On ambiguous data, adding instructions significantly improves accuracy for zero extra cost.
 - **Running AI functions without LIMIT during development** -- each row incurs Foundation Model API token costs. Start with `LIMIT 10`, validate the output shape, then remove the limit for production runs.
 - **Using `ai_translate` for unsupported languages** -- the function silently falls back to English or returns poor results. Check the supported list (`en`, `de`, `fr`, `it`, `pt`, `hi`, `es`, `th`) and use `ai_query` with a custom prompt for anything else.
 - **Assuming `ai_similarity` scores are absolute** -- a score of 0.85 means different things across different text domains. Always calibrate your threshold against a labeled sample before using it for deduplication decisions.

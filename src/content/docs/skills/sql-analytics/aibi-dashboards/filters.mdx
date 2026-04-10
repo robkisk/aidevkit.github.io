@@ -1,0 +1,189 @@
+---
+curated: true
+title: Filters -- Global, Page-Level & Date Ranges
+description: Add interactive filters to dashboards with multi-select, single-select, and date range pickers that scope across pages or datasets.
+sidebar:
+  order: 3
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-aibi-dashboards`
+
+## What You Can Build
+
+Filters make dashboards interactive -- users slice data by region, date range, department, or any dimension without editing SQL. You can scope filters globally (affecting every page) or to a single page. Your AI coding assistant wires up the filter bindings to the right datasets, handles the query name matching, and places the filter page in the correct position in the dashboard JSON.
+
+## In Action
+
+> "Add a global region filter to my sales dashboard that filters both the daily_sales and products datasets."
+
+```json
+{
+  "name": "global_filters",
+  "displayName": "Filters",
+  "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+  "layout": [
+    {
+      "widget": {
+        "name": "filter_region",
+        "queries": [
+          {
+            "name": "ds_sales_region",
+            "query": {
+              "datasetName": "ds_daily_sales",
+              "fields": [{"name": "region", "expression": "`region`"}],
+              "disaggregated": false
+            }
+          },
+          {
+            "name": "ds_products_region",
+            "query": {
+              "datasetName": "ds_products",
+              "fields": [{"name": "region", "expression": "`region`"}],
+              "disaggregated": false
+            }
+          }
+        ],
+        "spec": {
+          "version": 2,
+          "widgetType": "filter-multi-select",
+          "encodings": {
+            "fields": [
+              {"fieldName": "region", "displayName": "Region", "queryName": "ds_sales_region"},
+              {"fieldName": "region", "displayName": "Region", "queryName": "ds_products_region"}
+            ]
+          },
+          "frame": {"showTitle": true, "title": "Region"}
+        }
+      },
+      "position": {"x": 0, "y": 0, "width": 2, "height": 2}
+    }
+  ]
+}
+```
+
+**Key decisions:**
+- **`PAGE_TYPE_GLOBAL_FILTERS`** -- this is a dedicated filter page, not a canvas page with filter widgets. Global filters affect every dataset that contains the filter field, across all pages.
+- **One query per dataset** -- each `queries` entry binds the filter to a specific dataset. The `queryName` in `encodings.fields` must match the query `name` exactly. Datasets not listed are not filtered.
+- **`disaggregated: false`** always -- filter queries aggregate to get distinct values. Using `true` would show every raw row in the dropdown.
+- **`version: 2`** for all filter types -- not version 3. The widget types are `filter-multi-select`, `filter-single-select`, and `filter-date-range-picker`. Using `widgetType: "filter"` alone causes an error.
+- **`frame` with `showTitle: true`** -- always include the frame. Without it, users cannot tell what the filter controls.
+
+## More Patterns
+
+### Page-level filter
+
+> "Add a platform filter that only affects the breakdown page, not the overview."
+
+```json
+{
+  "name": "platform_breakdown",
+  "displayName": "Platform Breakdown",
+  "pageType": "PAGE_TYPE_CANVAS",
+  "layout": [
+    {
+      "widget": {
+        "name": "filter_platform",
+        "queries": [{
+          "name": "ds_platform",
+          "query": {
+            "datasetName": "platform_data",
+            "fields": [{"name": "platform", "expression": "`platform`"}],
+            "disaggregated": false
+          }
+        }],
+        "spec": {
+          "version": 2,
+          "widgetType": "filter-multi-select",
+          "encodings": {
+            "fields": [{"fieldName": "platform", "displayName": "Platform", "queryName": "ds_platform"}]
+          },
+          "frame": {"showTitle": true, "title": "Platform"}
+        }
+      },
+      "position": {"x": 4, "y": 0, "width": 2, "height": 2}
+    }
+  ]
+}
+```
+
+Page-level filters go on a `PAGE_TYPE_CANVAS` page alongside your widgets. They only affect datasets referenced on that same page. Position them in the header area (top-right) so they do not compete with the data widgets.
+
+### Date range filter with parameter binding
+
+> "Add a date range filter that controls both a time series dataset (field-based) and an aggregated category dataset (parameter-based)."
+
+```json
+{
+  "widget": {
+    "name": "date_range_filter",
+    "queries": [
+      {
+        "name": "q_trend",
+        "query": {
+          "datasetName": "weekly_trend",
+          "fields": [{"name": "week_start", "expression": "`week_start`"}],
+          "disaggregated": false
+        }
+      },
+      {
+        "name": "q_category",
+        "query": {
+          "datasetName": "revenue_by_category",
+          "parameters": [{"name": "date_range", "keyword": "date_range"}],
+          "disaggregated": false
+        }
+      }
+    ],
+    "spec": {
+      "version": 2,
+      "widgetType": "filter-date-range-picker",
+      "encodings": {
+        "fields": [
+          {"fieldName": "week_start", "queryName": "q_trend"},
+          {"parameterName": "date_range", "queryName": "q_category"}
+        ]
+      },
+      "frame": {"showTitle": true, "title": "Date Range"}
+    }
+  },
+  "position": {"x": 0, "y": 0, "width": 2, "height": 2}
+}
+```
+
+Date range filters support two binding modes in the same widget. **Field-based** binding (using `fieldName`) auto-applies `IN_RANGE()` on the date column. **Parameter-based** binding (using `parameterName`) injects `:param.min` and `:param.max` into the dataset SQL WHERE clause. Use parameter binding when the dataset pre-aggregates with a date filter in SQL.
+
+The dataset with parameter binding needs a matching `parameters` definition:
+
+```json
+{
+  "name": "revenue_by_category",
+  "queryLines": [
+    "SELECT category, SUM(revenue) as revenue FROM catalog.schema.orders ",
+    "WHERE order_date BETWEEN :date_range.min AND :date_range.max ",
+    "GROUP BY category"
+  ],
+  "parameters": [{
+    "keyword": "date_range",
+    "dataType": "DATE",
+    "complexType": "RANGE",
+    "defaultSelection": {
+      "range": {"dataType": "DATE", "min": {"value": "now-12M/M"}, "max": {"value": "now/M"}}
+    }
+  }]
+}
+```
+
+### Controlling filter scope by dataset design
+
+> "I want the date filter to affect the trends page but not the all-time summary KPIs."
+
+A filter only applies to datasets that contain the filter field. To exclude a dataset from filtering, omit the date column from its SELECT. For all-time KPIs, write a separate dataset with no date column -- the date range filter will not touch it.
+
+## Watch Out For
+- **`widgetType: "filter"`** does not exist -- use `filter-multi-select`, `filter-single-select`, or `filter-date-range-picker`. The bare `"filter"` type causes "Invalid widget definition."
+- **`associative_filter_predicate_group`** -- do not use this internal expression in filter queries. It produces `UNRESOLVED_COLUMN` SQL errors at runtime. Use a simple field expression: `\{"name": "field", "expression": "\`field\`"\}`.
+- **`queryName` mismatch** -- each `queryName` in `encodings.fields` must exactly match a `name` in the `queries` array. A typo means the filter silently does nothing for that dataset.
+- **Filters on high-cardinality columns** -- a multi-select dropdown with 10,000 values is unusable. Aggregate to a higher level (region instead of store ID) or use `filter-single-select` with a search box for large lists.

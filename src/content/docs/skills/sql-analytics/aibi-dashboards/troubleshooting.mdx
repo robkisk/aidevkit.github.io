@@ -1,0 +1,130 @@
+---
+curated: true
+title: Troubleshooting Dashboard Errors
+description: Diagnose and fix the most common AI/BI dashboard errors -- field mismatches, version bugs, filter failures, and layout gaps.
+sidebar:
+  order: 6
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-aibi-dashboards`
+
+## What You Can Build
+
+When a dashboard deploys but widgets show errors, the cause is almost always one of a handful of JSON structure issues. This page covers every common error message, its root cause, and the exact fix. Your AI coding assistant avoids most of these, but when you inherit a broken dashboard or need to debug manually, this is the reference.
+
+## In Action
+
+> "My counter widget shows 'no selected fields to visualize' -- what's wrong?"
+
+```json
+// BROKEN -- field name mismatch
+"fields": [{"name": "spend", "expression": "SUM(`spend`)"}]
+"encodings": {"value": {"fieldName": "sum(spend)"}}
+// "spend" != "sum(spend)" -- widget cannot find the field
+```
+
+```json
+// FIXED -- names match exactly
+"fields": [{"name": "sum(spend)", "expression": "SUM(`spend`)"}]
+"encodings": {"value": {"fieldName": "sum(spend)"}}
+```
+
+**Key decisions:**
+- **The `name` in `query.fields` must exactly match the `fieldName` in `encodings`** -- this is the most common bug. When using aggregations, the convention is `"sum(spend)"` for both, not `"spend"` for one and `"sum(spend)"` for the other.
+- **The `expression` is what runs** -- it defines the actual SQL aggregation (`SUM(\`spend\`)`). The `name` is just the identifier that links the field to the encoding. They serve different purposes.
+
+## More Patterns
+
+### "Invalid widget definition"
+
+> "My widget shows 'Invalid widget definition' after deployment."
+
+Check the version number first. This is the second most common error:
+
+| Widget Type | Correct Version |
+|-------------|-----------------|
+| counter | 2 |
+| table | 2 |
+| filter-multi-select, filter-single-select, filter-date-range-picker | 2 |
+| bar, line, pie, area, scatter | 3 |
+| combo, choropleth-map | 1 |
+
+Other causes:
+- **Text widget with a `spec` block** -- text widgets use `multilineTextboxSpec` directly, no `spec`, no `widgetType`. Adding `"widgetType": "text"` causes this error.
+- **Table with extra column properties** -- table column objects only need `fieldName` and `displayName`. Adding `type`, `numberFormat`, or other properties triggers the error.
+- **Counter with wrong `disaggregated` setting** -- if the dataset returns multiple rows, use `disaggregated: false` with an aggregation expression. Using `disaggregated: true` on multi-row data fails.
+
+### "Failed to parse serialized dashboard"
+
+> "The dashboard fails to deploy entirely -- I get a parse error."
+
+This means the JSON structure itself is wrong. Check these in order:
+
+1. **`queryLines` is an array** -- `"queryLines": "SELECT ..."` (string) fails. Use `"queryLines": ["SELECT ..."]` (array).
+2. **Widgets are inline in `layout`** -- each entry is `\{"widget": \{...\}, "position": \{...\}\}`. A separate top-level `"widgets"` array is not supported.
+3. **`pageType` on every page** -- `"PAGE_TYPE_CANVAS"` or `"PAGE_TYPE_GLOBAL_FILTERS"`. Missing `pageType` causes a parse failure.
+4. **Valid JSON** -- trailing commas, unescaped quotes in strings, or comments (JSON does not support comments) break parsing.
+
+### Empty widgets with no error
+
+> "The widget renders but shows no data."
+
+```python
+# Step 1: Test the dataset SQL directly
+execute_sql("SELECT sale_date, SUM(total_revenue) as revenue FROM catalog.schema.sales GROUP BY sale_date")
+```
+
+If the query returns data, check:
+- **Column aliases match widget fields** -- if the SQL aliases a column as `revenue`, the widget field must reference `revenue`, not `total_revenue`.
+- **`disaggregated` flag** -- use `true` for pre-aggregated single-row data, `false` when the widget performs aggregation. Mixing these up produces empty results without an error.
+- **Date range excludes all data** -- if a date filter is active and the data falls outside the range, widgets appear empty. Check the default date range in the filter configuration.
+
+### Filter-specific errors
+
+> "My filter shows 'Invalid widget definition' or does nothing."
+
+**Invalid widget definition for filters:**
+- Use `filter-multi-select`, `filter-single-select`, or `filter-date-range-picker` as `widgetType`. Bare `"filter"` is not a valid type.
+- Use `version: 2` for all filter types.
+- Include `frame` with `showTitle: true`.
+- Ensure `disaggregated: false` in filter queries.
+
+**Filter not affecting expected widgets:**
+- Global filters (`PAGE_TYPE_GLOBAL_FILTERS` page) affect all datasets that include the filter field.
+- Page-level filters (`PAGE_TYPE_CANVAS` page) only affect widgets on that same page.
+- Check that `queryName` in `encodings.fields` matches the query `name` exactly.
+
+**`UNRESOLVED_COLUMN` error on filter:**
+- Do not use `associative_filter_predicate_group` in filter queries. Use a simple field expression: `\{"name": "region", "expression": "\`region\`"\}`.
+
+### Text layout issues
+
+> "My title and subtitle are smashed together on one line."
+
+Multiple items in the text widget `lines` array are concatenated, not stacked vertically. Use separate text widgets at different `y` positions:
+
+```json
+{"widget": {"name": "title", "multilineTextboxSpec": {"lines": ["## Dashboard Title"]}},
+ "position": {"x": 0, "y": 0, "width": 6, "height": 1}},
+{"widget": {"name": "subtitle", "multilineTextboxSpec": {"lines": ["Description goes here"]}},
+ "position": {"x": 0, "y": 1, "width": 6, "height": 1}}
+```
+
+### Layout gaps
+
+> "My dashboard has visual gaps between widgets."
+
+Every row in the 6-column grid must be fully filled. Common gap causes:
+- Two KPIs at width 2 (total 4) instead of three (total 6)
+- A chart at width 4 with nothing beside it
+- Y positions that skip values, leaving empty rows
+
+Fix by adding widgets to fill the row, or resize existing widgets to span the full width.
+
+## Watch Out For
+- **Deploying without testing queries** -- `manage_dashboard(action="create_or_update")` succeeds even if the SQL is broken. The dashboard saves, but widgets fail at render time. Always run `execute_sql` for every dataset query before building the JSON.
+- **Spark SQL gotchas** -- use `date_sub(current_date(), N)` for date math. `INTERVAL` syntax causes silent failures. Use `DATE_TRUNC('MONTH', col)` for truncation.
+- **Unreadable charts from high cardinality** -- if a color/grouping dimension has more than 8 distinct values, the chart becomes a wall of colors. Use `get_table_stats_and_schema` to check cardinality, and aggregate to a higher level or use TOP-N in the dataset SQL.

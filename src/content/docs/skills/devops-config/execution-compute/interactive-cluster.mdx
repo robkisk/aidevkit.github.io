@@ -1,0 +1,128 @@
+---
+curated: true
+title: Keep State Alive on Interactive Clusters
+description: Run multi-step workflows with persistent variables across commands using Databricks interactive clusters
+sidebar:
+  order: 3
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-execution-compute`
+
+## What You Can Build
+
+Interactive clusters give you a persistent execution context -- variables survive between commands, so you can build up state across multiple steps. Your AI coding assistant manages the cluster selection, context reuse, and library installation so you can run exploratory workflows, Scala/R code, and multi-step pipelines without losing your work between calls.
+
+## In Action
+
+> "Load the transactions table on my dev cluster, filter it, train a model, and show me the results -- step by step so I can check each stage."
+
+First, find a running cluster:
+
+```python
+best_cluster = list_compute(resource="clusters", auto_select=True)
+```
+
+Then build up state across multiple calls:
+
+```python
+# Step 1: Load data -- context_id is created automatically
+result = execute_code(
+    code="""
+import pandas as pd
+df = spark.table('main.sales.transactions').toPandas()
+print(f"Loaded {len(df)} rows, columns: {list(df.columns)}")
+""",
+    compute_type="cluster",
+    cluster_id=best_cluster["cluster_id"]
+)
+```
+
+```python
+# Step 2: Reuse context -- df still exists from step 1
+execute_code(
+    code="""
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
+X = df.drop('is_fraud', axis=1).select_dtypes('number')
+y = df['is_fraud']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+model = RandomForestClassifier(n_estimators=100)
+model.fit(X_train, y_train)
+print(f"Accuracy: {model.score(X_test, y_test):.4f}")
+""",
+    context_id=result["context_id"],
+    cluster_id=result["cluster_id"]
+)
+```
+
+**Key decisions:**
+- **`auto_select=True`** on `list_compute` -- picks the best running cluster automatically instead of making you hunt for cluster IDs
+- **`context_id` reuse** across calls -- the `df` and `model` variables persist because both commands share the same execution context
+- **No `compute_type` on follow-up calls** -- once you have a `context_id`, the cluster binding is already set; you just pass the context and cluster IDs
+- **Multi-step over monolith** -- splitting into separate calls lets you inspect intermediate results and course-correct before the next step
+
+## More Patterns
+
+### Run Scala or R code
+
+> "Run a quick Scala Spark job on my cluster to benchmark a join."
+
+```python
+execute_code(
+    code="""
+val left = spark.range(1000000).toDF("id")
+val right = spark.range(1000000).toDF("id").withColumnRenamed("id", "rid")
+val joined = left.join(right, left("id") === right("rid"))
+println(s"Join produced ${joined.count()} rows")
+""",
+    compute_type="cluster",
+    cluster_id="1234-567890-abcdef",
+    language="scala"
+)
+```
+
+Interactive clusters are the only execution mode that supports Scala, R, and SQL alongside Python. Pass the `language` parameter to switch -- `"scala"`, `"r"`, or `"sql"`. Note that `context_id` reuse only works within the same language.
+
+### Install a library mid-session
+
+> "I need the `faker` package on this cluster for data generation."
+
+```python
+execute_code(
+    code="""%pip install faker
+dbutils.library.restartPython()""",
+    compute_type="cluster",
+    cluster_id="1234-567890-abcdef",
+    context_id="existing-context-id"
+)
+```
+
+After `restartPython()`, the Python process restarts but the context persists. Your previously defined variables are gone, but the newly installed library is available for all subsequent calls. Plan your workflow so library installs happen before you build up state.
+
+### Clean up the execution context when done
+
+> "I'm finished with this workflow. Tear down the context to free resources."
+
+```python
+execute_code(
+    code="print('Workflow complete.')",
+    compute_type="cluster",
+    cluster_id="1234-567890-abcdef",
+    context_id="existing-context-id",
+    destroy_context_on_completion=True
+)
+```
+
+Contexts persist until the cluster terminates by default. If you are running many independent workflows on the same cluster, explicitly destroying contexts prevents memory accumulation. The cluster itself keeps running -- only the Python process is torn down.
+
+## Watch Out For
+
+- **Never start a cluster without asking** -- `manage_cluster(action="start")` takes 3-8 minutes and costs money. Always check `list_compute` first. If nothing is running, offer the user a choice: start a cluster and wait, or switch to serverless for instant execution.
+- **`restartPython()` wipes variables** -- installing a library mid-session with `%pip install` requires a Python restart. Any DataFrames or models you built are gone. Install dependencies at the beginning of your workflow, not in the middle.
+- **Context expiration** -- contexts expire when the cluster auto-terminates or is manually stopped. A "context not found" error means you need to create a fresh one. There is no way to resume a dead context.
+- **Cluster cost while idle** -- interactive clusters keep billing while running, even if no code is executing. Set auto-termination (e.g., 30 minutes of inactivity) or explicitly terminate with `manage_cluster(action="terminate")` when you are done.

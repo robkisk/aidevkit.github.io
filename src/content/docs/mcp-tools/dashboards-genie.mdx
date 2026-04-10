@@ -19,115 +19,51 @@ Build AI/BI dashboards, manage Genie spaces, and publish analytics.
 
 ## ask_genie
 
-**Description:** Ask a natural language question to a Genie Space and get the answer.
+**Description:** Ask natural language question to Genie Space. Pass conversation_id for follow-ups.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `space_id` | `str` | Yes | The Genie Space ID to query |
-| `question` | `str` | Yes | The natural language question to ask |
-| `conversation_id` | `Optional[str]` | No | Optional ID from a previous ask_genie response. If provided, continues that conversation (follow-up question). If omitted, starts a new conversation. |
-| `timeout_seconds` | `int` | No | Maximum time to wait for response (default 120) |
+| `space_id` | `str` | Yes | — |
+| `question` | `str` | Yes | — |
+| `conversation_id` | `Optional[str]` | No | — |
+| `timeout_seconds` | `int` | No | — |
 
-## create_or_update_dashboard
+## manage_dashboard
 
-**Description:** Create or update an AI/BI dashboard from JSON content.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `display_name` | `str` | Yes | Dashboard display name |
-| `parent_path` | `str` | Yes | Workspace folder path (e.g., "/Workspace/Users/me/dashboards") |
-| `serialized_dashboard` | `Union[str, dict]` | Yes | Dashboard JSON content as string (MUST be tested first!) |
-| `warehouse_id` | `str` | Yes | SQL warehouse ID for query execution |
-| `publish` | `bool` | No | Whether to publish after creation (default: True) |
-
-## create_or_update_genie
-
-**Description:** Create or update a Genie Space for SQL-based data exploration.
+**Description:** Manage AI/BI dashboards: create, update, get, list, delete, publish.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `display_name` | `str` | Yes | Display name for the Genie space |
-| `table_identifiers` | `List[str]` | Yes | List of tables to include (e.g., ["catalog.schema.customers", "catalog.schema.orders"]) |
-| `warehouse_id` | `Optional[str]` | No | SQL warehouse ID. If not provided, auto-detects the best available warehouse (prefers running, smaller warehouses) |
-| `description` | `Optional[str]` | No | Optional description of what the Genie space does |
-| `sample_questions` | `Optional[List[str]]` | No | Optional list of sample questions to help users |
-| `space_id` | `Optional[str]` | No | Optional existing space_id to update instead of create |
-| `serialized_space` | `Optional[str]` | No | Optional full serialized space config JSON string (from export_genie). When provided, tables/instructions/SQL examples from the serialized config are used and the public genie/spaces API is called instead of data-rooms. |
+| `action` | `str` | Yes | — |
+| `display_name` | `Optional[str]` | No | — |
+| `parent_path` | `Optional[str]` | No | — |
+| `serialized_dashboard` | `Optional[Union[str, dict]]` | No | — |
+| `warehouse_id` | `Optional[str]` | No | — |
+| `publish` | `bool` | No | — |
+| `dashboard_id` | `Optional[str]` | No | — |
+| `embed_credentials` | `bool` | No | — |
 
-## delete_dashboard
+## manage_genie
 
-**Description:** Soft-delete an AI/BI dashboard by moving it to trash.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `dashboard_id` | `str` | Yes | Dashboard ID to delete |
-
-## delete_genie
-
-**Description:** Delete a Genie Space.
+**Description:** Manage Genie Spaces: create, update, get, list, delete, export, import.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `space_id` | `str` | Yes | The Genie space ID to delete |
-
-## get_dashboard
-
-**Description:** Get AI/BI dashboard details by ID, or list all dashboards.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `dashboard_id` | `str` | No | The dashboard ID. If omitted, lists all dashboards. |
-| `page_size` | `int` | No | Number of dashboards to return when listing (default: 25) |
-
-## get_genie
-
-**Description:** Get details of a Genie Space, or list all spaces.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `space_id` | `Optional[str]` | No | The Genie space ID. If omitted, lists all spaces. |
-| `include_serialized_space` | `bool` | No | If True, include the full serialized space configuration in the response (requires at least CAN EDIT permission). Useful when you want to inspect or export the space config. Default: False. |
-
-## migrate_genie
-
-**Description:** Export or import a Genie Space for cloning and cross-workspace migration.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `type` | `str` | Yes | Operation to perform — "export" or "import" |
-| `space_id` | `Optional[str]` | No | (export) The Genie space ID to export |
-| `warehouse_id` | `Optional[str]` | No | (import) SQL warehouse ID for the new space. Use list_warehouses() or get_best_warehouse() to find one. |
-| `serialized_space` | `Optional[str]` | No | (import) JSON string from a prior export containing the full space configuration. Can also be constructed manually: '\{"version":2,"data_sources":\{"tables":[\{"identifier":"cat.schema.table"\}]\}\}' |
-| `title` | `Optional[str]` | No | (import) Optional title override |
-| `description` | `Optional[str]` | No | (import) Optional description override |
-| `parent_path` | `Optional[str]` | No | (import) Optional workspace folder path for the new space (e.g., "/Workspace/Users/you@company.com/Genie Spaces") |
-
-## publish_dashboard
-
-**Description:** Publish or unpublish an AI/BI dashboard.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `dashboard_id` | `str` | Yes | Dashboard ID |
-| `warehouse_id` | `str` | No | SQL warehouse ID for query execution (required for publish) |
-| `publish` | `bool` | No | True to publish (default), False to unpublish |
-| `embed_credentials` | `bool` | No | Whether to embed credentials (default: True) |
+| `action` | `str` | Yes | — |
+| `display_name` | `Optional[str]` | No | — |
+| `table_identifiers` | `Optional[List[str]]` | No | — |
+| `warehouse_id` | `Optional[str]` | No | — |
+| `description` | `Optional[str]` | No | — |
+| `sample_questions` | `Optional[List[str]]` | No | — |
+| `serialized_space` | `Optional[str]` | No | — |
+| `space_id` | `Optional[str]` | No | — |
+| `include_serialized_space` | `bool` | No | — |
+| `title` | `Optional[str]` | No | — |
+| `parent_path` | `Optional[str]` | No | — |
 

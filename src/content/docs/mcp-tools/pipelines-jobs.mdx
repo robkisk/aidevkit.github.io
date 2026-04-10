@@ -17,196 +17,106 @@ Create and manage Spark Declarative Pipelines and orchestration jobs.
 
 ---
 
-## create_or_update_pipeline
-
-**Description:** Create or update a pipeline by name, optionally run it. Uses Unity Catalog + serverless.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | Pipeline name (used for lookup and creation) |
-| `root_path` | `str` | Yes | Root folder for source code (added to sys.path) |
-| `catalog` | `str` | Yes | Unity Catalog name |
-| `schema` | `str` | Yes | Schema name for output tables |
-| `workspace_file_paths` | `List[str]` | Yes | List of workspace .sql or .py file paths |
-| `start_run` | `bool` | No | Start pipeline update after create/update |
-| `wait_for_completion` | `bool` | No | Wait for run to complete |
-| `full_refresh` | `bool` | No | Full refresh when starting (default: True) |
-| `timeout` | `int` | No | Max wait time in seconds (default: 1800) |
-| `extra_settings` | `Dict[str, Any]` | No | Additional pipeline settings dict |
-
-## create_pipeline
-
-**Description:** Create a new Spark Declarative Pipeline (SDP). Unity Catalog, serverless by default.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | Pipeline name |
-| `root_path` | `str` | Yes | Root folder for source code (added to sys.path) |
-| `catalog` | `str` | Yes | Unity Catalog name |
-| `schema` | `str` | Yes | Schema name for output tables |
-| `workspace_file_paths` | `List[str]` | Yes | List of workspace .sql or .py file paths |
-| `extra_settings` | `Dict[str, Any]` | No | Additional pipeline settings dict |
-
-## delete_pipeline
-
-**Description:** Delete a pipeline.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `pipeline_id` | `str` | Yes | Pipeline ID |
-
-## find_pipeline_by_name
-
-**Description:** Find a pipeline by name and return its ID.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | Pipeline name to search for |
-
-## get_pipeline
-
-**Description:** Get pipeline details and configuration.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `pipeline_id` | `str` | Yes | Pipeline ID |
-
-## get_pipeline_events
-
-**Description:** Get pipeline events for debugging. Returns ERROR/WARN by default.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `pipeline_id` | `str` | Yes | Pipeline ID |
-| `max_results` | `int` | No | Max events to return (default: 5) |
-| `event_log_level` | `str` | No | ERROR, WARN (includes ERROR), or INFO (all events) |
-| `update_id` | `str` | No | Filter to specific update |
-
-## get_update
-
-**Description:** Get pipeline update status. Auto-fetches errors if failed.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `pipeline_id` | `str` | Yes | Pipeline ID |
-| `update_id` | `str` | Yes | Update ID from start_update |
-| `include_config` | `bool` | No | Include full pipeline config (default: False) |
-| `full_error_details` | `bool` | No | Include full stack traces (default: False) |
-
 ## manage_job_runs
 
-**Description:** Manage Databricks job runs: trigger, monitor, and control.
+**Description:** Manage job runs: run_now, get, get_output, cancel, list, wait.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "run_now", "get", "get_output", "cancel", "list", or "wait" |
-| `job_id` | `int` | No | Job ID (for run_now, or list filter) |
-| `run_id` | `int` | No | Run ID (for get, get_output, cancel, wait) |
-| `idempotency_token` | `str` | No | Token to ensure idempotent job runs (for run_now) |
-| `jar_params` | `List[str]` | No | Parameters for JAR tasks (for run_now) |
-| `notebook_params` | `Dict[str, str]` | No | Parameters for notebook tasks (for run_now) |
-| `python_params` | `List[str]` | No | Parameters for Python tasks (for run_now) |
-| `spark_submit_params` | `List[str]` | No | Parameters for spark-submit tasks (for run_now) |
-| `python_named_params` | `Dict[str, str]` | No | Named parameters for Python tasks (for run_now) |
-| `pipeline_params` | `Dict[str, Any]` | No | Parameters for pipeline tasks (for run_now) |
-| `sql_params` | `Dict[str, str]` | No | Parameters for SQL tasks (for run_now) |
-| `dbt_commands` | `List[str]` | No | Commands for dbt tasks (for run_now) |
-| `queue` | `Dict[str, Any]` | No | Queue settings for this run (for run_now) |
-| `active_only` | `bool` | No | If True, only return active runs (for list) |
-| `completed_only` | `bool` | No | If True, only return completed runs (for list) |
-| `limit` | `int` | No | Maximum number of runs to return (for list, default: 25) |
-| `offset` | `int` | No | Offset for pagination (for list) |
-| `start_time_from` | `int` | No | Filter by start time in epoch milliseconds (for list) |
-| `start_time_to` | `int` | No | Filter by start time in epoch milliseconds (for list) |
-| `timeout` | `int` | No | Maximum wait time in seconds (for wait, default: 3600) |
-| `poll_interval` | `int` | No | Time between status checks in seconds (for wait, default: 10) |
+| `action` | `str` | Yes | — |
+| `job_id` | `int` | No | — |
+| `run_id` | `int` | No | — |
+| `idempotency_token` | `str` | No | — |
+| `jar_params` | `List[str]` | No | — |
+| `notebook_params` | `Dict[str, str]` | No | — |
+| `python_params` | `List[str]` | No | — |
+| `spark_submit_params` | `List[str]` | No | — |
+| `python_named_params` | `Dict[str, str]` | No | — |
+| `pipeline_params` | `Dict[str, Any]` | No | — |
+| `sql_params` | `Dict[str, str]` | No | — |
+| `dbt_commands` | `List[str]` | No | — |
+| `queue` | `Dict[str, Any]` | No | — |
+| `active_only` | `bool` | No | — |
+| `completed_only` | `bool` | No | — |
+| `limit` | `int` | No | — |
+| `offset` | `int` | No | — |
+| `start_time_from` | `int` | No | — |
+| `start_time_to` | `int` | No | — |
+| `timeout` | `int` | No | — |
+| `poll_interval` | `int` | No | — |
 
 ## manage_jobs
 
-**Description:** Manage Databricks jobs: create, get, list, find by name, update, and delete.
+**Description:** Manage Databricks jobs: create, get, list, find_by_name, update, delete.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "create", "get", "list", "find_by_name", "update", or "delete" |
-| `job_id` | `int` | No | Job ID (for get, update, delete) |
-| `name` | `str` | No | Job name (for create, find_by_name, or list filter) |
-| `tasks` | `List[Dict[str, Any]]` | No | List of task definitions (for create/update). Each task should have: - task_key: Unique identifier - description: Optional task description - depends_on: Optional list of task dependencies - [task_type]: One of spark_python_task, notebook_task, python_wheel_task, spark_jar_task, spark_submit_task, pipeline_task, sql_task, dbt_task, run_job_task - [compute]: One of new_cluster, existing_cluster_id, job_cluster_key, compute_key |
-| `job_clusters` | `List[Dict[str, Any]]` | No | Job cluster definitions (for create/update, non-serverless tasks) |
-| `environments` | `List[Dict[str, Any]]` | No | Environment definitions for serverless tasks with custom dependencies (for create/update). Each dict: environment_key, spec (with client and dependencies list) |
-| `tags` | `Dict[str, str]` | No | Tags dict for organization (for create/update) |
-| `timeout_seconds` | `int` | No | Job-level timeout in seconds (for create/update) |
-| `max_concurrent_runs` | `int` | No | Maximum concurrent runs (for create/update) |
-| `email_notifications` | `Dict[str, Any]` | No | Email notification settings (for create/update) |
-| `webhook_notifications` | `Dict[str, Any]` | No | Webhook notification settings (for create/update) |
-| `notification_settings` | `Dict[str, Any]` | No | Notification settings for run lifecycle events (for create/update) |
-| `schedule` | `Dict[str, Any]` | No | Schedule configuration (for create/update) |
-| `queue` | `Dict[str, Any]` | No | Queue settings (for create/update) |
-| `run_as` | `Dict[str, Any]` | No | Run-as user/service principal (for create/update) |
-| `git_source` | `Dict[str, Any]` | No | Git source configuration (for create/update) |
-| `parameters` | `List[Dict[str, Any]]` | No | Job parameters (for create/update) |
-| `health` | `Dict[str, Any]` | No | Health monitoring rules (for create/update) |
-| `deployment` | `Dict[str, Any]` | No | Deployment configuration (for create/update) |
-| `limit` | `int` | No | Maximum number of jobs to return for list (default: 25) |
-| `expand_tasks` | `bool` | No | If True, include full task definitions in list results (default: False) |
+| `action` | `str` | Yes | — |
+| `job_id` | `int` | No | — |
+| `name` | `str` | No | — |
+| `tasks` | `List[Dict[str, Any]]` | No | — |
+| `job_clusters` | `List[Dict[str, Any]]` | No | — |
+| `environments` | `List[Dict[str, Any]]` | No | — |
+| `tags` | `Dict[str, str]` | No | — |
+| `timeout_seconds` | `int` | No | — |
+| `max_concurrent_runs` | `int` | No | — |
+| `email_notifications` | `Dict[str, Any]` | No | — |
+| `webhook_notifications` | `Dict[str, Any]` | No | — |
+| `notification_settings` | `Dict[str, Any]` | No | — |
+| `schedule` | `Dict[str, Any]` | No | — |
+| `queue` | `Dict[str, Any]` | No | — |
+| `run_as` | `Dict[str, Any]` | No | — |
+| `git_source` | `Dict[str, Any]` | No | — |
+| `parameters` | `List[Dict[str, Any]]` | No | — |
+| `health` | `Dict[str, Any]` | No | — |
+| `deployment` | `Dict[str, Any]` | No | — |
+| `limit` | `int` | No | — |
+| `expand_tasks` | `bool` | No | — |
 
-## start_update
+## manage_pipeline
 
-**Description:** Start a pipeline update. Waits for completion by default.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `pipeline_id` | `str` | Yes | Pipeline ID |
-| `refresh_selection` | `List[str]` | No | Table names to refresh |
-| `full_refresh` | `bool` | No | Full refresh all tables |
-| `full_refresh_selection` | `List[str]` | No | Table names for full refresh |
-| `validate_only` | `bool` | No | Dry run without updating data |
-| `wait` | `bool` | No | Wait for completion (default: True) |
-| `timeout` | `int` | No | Max wait time in seconds (default: 300) |
-| `full_error_details` | `bool` | No | Include full stack traces (default: False) |
-
-## stop_pipeline
-
-**Description:** Stop a running pipeline.
+**Description:** Manage Spark Declarative Pipelines: create, update, get, delete, find.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `pipeline_id` | `str` | Yes | Pipeline ID |
+| `action` | `str` | Yes | — |
+| `name` | `Optional[str]` | No | — |
+| `root_path` | `Optional[str]` | No | — |
+| `catalog` | `Optional[str]` | No | — |
+| `schema` | `Optional[str]` | No | — |
+| `workspace_file_paths` | `Optional[List[str]]` | No | — |
+| `extra_settings` | `Optional[Dict[str, Any]]` | No | — |
+| `start_run` | `bool` | No | — |
+| `wait_for_completion` | `bool` | No | — |
+| `full_refresh` | `bool` | No | — |
+| `timeout` | `int` | No | — |
+| `pipeline_id` | `Optional[str]` | No | — |
 
-## update_pipeline
+## manage_pipeline_run
 
-**Description:** Update pipeline configuration.
+**Description:** Manage pipeline runs: start, monitor, stop, get events.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `pipeline_id` | `str` | Yes | Pipeline ID |
-| `name` | `str` | No | New pipeline name |
-| `root_path` | `str` | No | New root folder for source code |
-| `catalog` | `str` | No | New catalog name |
-| `schema` | `str` | No | New schema name |
-| `workspace_file_paths` | `List[str]` | No | New list of .sql or .py file paths |
-| `extra_settings` | `Dict[str, Any]` | No | Additional pipeline settings dict |
+| `action` | `str` | Yes | — |
+| `pipeline_id` | `str` | Yes | — |
+| `refresh_selection` | `Optional[List[str]]` | No | — |
+| `full_refresh` | `bool` | No | — |
+| `full_refresh_selection` | `Optional[List[str]]` | No | — |
+| `validate_only` | `bool` | No | — |
+| `wait` | `bool` | No | — |
+| `timeout` | `int` | No | — |
+| `update_id` | `Optional[str]` | No | — |
+| `include_config` | `bool` | No | — |
+| `full_error_details` | `bool` | No | — |
+| `max_results` | `int` | No | — |
+| `event_log_level` | `str` | No | — |
 

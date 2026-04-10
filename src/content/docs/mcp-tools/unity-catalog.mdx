@@ -17,88 +17,33 @@ Browse and manage Unity Catalog objects, permissions, volumes, and governance po
 
 ---
 
-## create_volume_directory
-
-**Description:** Create a directory in a Unity Catalog volume.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `volume_path` | `str` | Yes | Path for new directory (e.g., "/Volumes/catalog/schema/volume/new_folder") |
-
-## delete_from_volume
-
-**Description:** Delete a file or directory from a Unity Catalog volume.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `volume_path` | `str` | Yes | Path to file or directory (e.g., "/Volumes/catalog/schema/volume/folder") |
-| `recursive` | `bool` | No | Delete directory contents (required for non-empty dirs) |
-| `max_workers` | `int` | No | Parallel delete threads (default: 4) |
-
-## download_from_volume
-
-**Description:** Download a file from a Unity Catalog volume to local path.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `volume_path` | `str` | Yes | Path in volume (e.g., "/Volumes/catalog/schema/volume/data.csv") |
-| `local_path` | `str` | Yes | Target local file path |
-| `overwrite` | `bool` | No | Whether to overwrite existing local file (default: True) |
-
-## get_volume_file_info
-
-**Description:** Get metadata for a file in a Unity Catalog volume.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `volume_path` | `str` | Yes | Path to file in volume |
-
-## list_volume_files
-
-**Description:** List files and directories in a Unity Catalog volume path.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `volume_path` | `str` | Yes | Path in volume (e.g., "/Volumes/catalog/schema/volume/folder") |
-| `max_results` | `int` | No | Maximum number of results to return (default: 500, max: 1000) |
-
 ## manage_metric_views
 
-**Description:** Manage Unity Catalog metric views: create, alter, describe, query, drop, and grant.
+**Description:** Manage UC metric views (reusable business metrics). Requires DBR 17.2+.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "create", "alter", "describe", "query", "drop", or "grant" |
-| `full_name` | `str` | Yes | Three-level name (catalog.schema.metric_view_name) |
-| `source` | `str` | No | Source table/view (for create/alter, e.g., "catalog.schema.orders") |
-| `dimensions` | `List[Dict[str, str]]` | No | List of dimension dicts for create/alter. Each has: - name: Display name (e.g., "Order Month") - expr: SQL expression (e.g., "DATE_TRUNC('MONTH', order_date)") - comment: (optional) Description |
-| `measures` | `List[Dict[str, str]]` | No | List of measure dicts for create/alter. Each has: - name: Display name (e.g., "Total Revenue") - expr: Aggregate expression (e.g., "SUM(total_price)") - comment: (optional) Description |
-| `version` | `str` | No | YAML spec version (default: "1.1" for DBR 17.2+) |
-| `comment` | `str` | No | Description of the metric view (for create/alter) |
-| `filter_expr` | `str` | No | SQL boolean filter applied to all queries (for create/alter) |
-| `joins` | `List[Dict[str, Any]]` | No | Star/snowflake schema joins (for create/alter). Each dict: name, source, on (or using), joins (nested for snowflake) |
-| `materialization` | `Dict[str, Any]` | No | Materialization config (experimental, for create/alter). |
-| `or_replace` | `bool` | No | If True, uses CREATE OR REPLACE (for create, default: False) |
-| `query_measures` | `List[str]` | No | Measure names to query (for query action) |
-| `query_dimensions` | `List[str]` | No | Dimension names to group by (for query action) |
-| `where` | `str` | No | WHERE clause filter (for query action) |
-| `order_by` | `str` | No | ORDER BY clause, use "ALL" for ORDER BY ALL (for query action) |
-| `limit` | `int` | No | Row limit (for query action) |
-| `principal` | `str` | No | User/group to grant to (for grant action) |
-| `privileges` | `List[str]` | No | Privileges to grant, default ["SELECT"] (for grant action) |
-| `warehouse_id` | `str` | No | SQL warehouse ID (auto-selected if not provided) |
+| `action` | `str` | Yes | — |
+| `full_name` | `str` | Yes | — |
+| `source` | `str` | No | — |
+| `dimensions` | `List[Dict[str, str]]` | No | — |
+| `measures` | `List[Dict[str, str]]` | No | — |
+| `version` | `str` | No | — |
+| `comment` | `str` | No | — |
+| `filter_expr` | `str` | No | — |
+| `joins` | `List[Dict[str, Any]]` | No | — |
+| `materialization` | `Dict[str, Any]` | No | — |
+| `or_replace` | `bool` | No | — |
+| `query_measures` | `List[str]` | No | — |
+| `query_dimensions` | `List[str]` | No | — |
+| `where` | `str` | No | — |
+| `order_by` | `str` | No | — |
+| `limit` | `int` | No | — |
+| `principal` | `str` | No | — |
+| `privileges` | `List[str]` | No | — |
+| `warehouse_id` | `str` | No | — |
 
 ## manage_uc_connections
 
@@ -108,92 +53,92 @@ Browse and manage Unity Catalog objects, permissions, volumes, and governance po
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "create", "get", "list", "update", "delete", "create_foreign_catalog" |
-| `name` | `str` | No | Connection name (for CRUD operations) |
-| `connection_type` | `str` | No | "SNOWFLAKE", "POSTGRESQL", "MYSQL", "SQLSERVER", "BIGQUERY" (for create) |
-| `options` | `Dict[str, str]` | No | Connection options dict with keys like "host", "port", "user", "password", "database" |
-| `comment` | `str` | No | Description |
-| `owner` | `str` | No | Owner |
-| `new_name` | `str` | No | New name for rename |
-| `connection_name` | `str` | No | Connection to use (for create_foreign_catalog) |
-| `catalog_name` | `str` | No | Name for the foreign catalog (for create_foreign_catalog) |
-| `catalog_options` | `Dict[str, str]` | No | Options for foreign catalog (e.g., \{"database": "mydb"\}) |
-| `warehouse_id` | `str` | No | SQL warehouse ID (for create_foreign_catalog) |
+| `action` | `str` | Yes | — |
+| `name` | `str` | No | — |
+| `connection_type` | `str` | No | — |
+| `options` | `Dict[str, str]` | No | — |
+| `comment` | `str` | No | — |
+| `owner` | `str` | No | — |
+| `new_name` | `str` | No | — |
+| `connection_name` | `str` | No | — |
+| `catalog_name` | `str` | No | — |
+| `catalog_options` | `Dict[str, str]` | No | — |
+| `warehouse_id` | `str` | No | — |
 
 ## manage_uc_grants
 
-**Description:** Manage permissions on Unity Catalog securables.
+**Description:** Manage UC permissions: grant/revoke/get/get_effective.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "grant", "revoke", "get", or "get_effective" |
-| `securable_type` | `str` | Yes | Object type: "catalog", "schema", "table", "volume", "function", "storage_credential", "external_location", "connection", "share", "metastore" |
-| `full_name` | `str` | Yes | Full name of the securable object |
-| `principal` | `str` | No | User, group, or service principal (required for grant/revoke) |
-| `privileges` | `List[str]` | No | List of privileges (required for grant/revoke). Common values: "SELECT", "MODIFY", "CREATE_TABLE", "CREATE_SCHEMA", "USE_CATALOG", "USE_SCHEMA", "ALL_PRIVILEGES", "EXECUTE", "READ_VOLUME", "WRITE_VOLUME", "CREATE_VOLUME", "CREATE_FUNCTION" |
+| `action` | `str` | Yes | — |
+| `securable_type` | `str` | Yes | — |
+| `full_name` | `str` | Yes | — |
+| `principal` | `str` | No | — |
+| `privileges` | `List[str]` | No | — |
 
 ## manage_uc_monitors
 
-**Description:** Manage Lakehouse quality monitors on tables.
+**Description:** Manage Lakehouse quality monitors for data quality tracking.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "create", "get", "run_refresh", "list_refreshes", "delete" |
-| `table_name` | `str` | Yes | Full table name being monitored (catalog.schema.table) |
-| `output_schema_name` | `str` | No | Schema for output tables (for create, e.g., "catalog.schema") |
-| `schedule_cron` | `str` | No | Quartz cron expression (for create, e.g., "0 0 12 * * ?") |
-| `schedule_timezone` | `str` | No | Timezone (default: "UTC") |
-| `assets_dir` | `str` | No | Workspace path for assets (for create) |
+| `action` | `str` | Yes | — |
+| `table_name` | `str` | Yes | — |
+| `output_schema_name` | `str` | No | — |
+| `schedule_cron` | `str` | No | — |
+| `schedule_timezone` | `str` | No | — |
+| `assets_dir` | `str` | No | — |
 
 ## manage_uc_objects
 
-**Description:** Manage Unity Catalog namespace objects: catalogs, schemas, volumes, functions.
+**Description:** Manage UC namespace objects: catalog/schema/volume/function.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `object_type` | `str` | Yes | "catalog", "schema", "volume", or "function" |
-| `action` | `str` | Yes | "create", "get", "list", "update", or "delete" |
-| `name` | `str` | No | Object name (for create) |
-| `full_name` | `str` | No | Full qualified name (for get/update/delete). |
-| `catalog_name` | `str` | No | Parent catalog (for list schemas/volumes/functions, or create schema) |
-| `schema_name` | `str` | No | Parent schema (for list volumes/functions, or create volume) |
-| `comment` | `str` | No | Description (for create/update) |
-| `owner` | `str` | No | Owner (for create/update) |
-| `storage_root` | `str` | No | Managed storage location (for catalog/schema create) |
-| `volume_type` | `str` | No | "MANAGED" or "EXTERNAL" (for volume create, default: MANAGED) |
-| `storage_location` | `str` | No | Cloud storage URL (for external volumes) |
-| `new_name` | `str` | No | New name (for update/rename) |
-| `properties` | `Dict[str, str]` | No | Key-value properties (for catalog create) |
-| `isolation_mode` | `str` | No | "OPEN" or "ISOLATED" (for catalog update) |
-| `force` | `bool` | No | Force deletion (default: False) |
+| `object_type` | `str` | Yes | — |
+| `action` | `str` | Yes | — |
+| `name` | `str` | No | — |
+| `full_name` | `str` | No | — |
+| `catalog_name` | `str` | No | — |
+| `schema_name` | `str` | No | — |
+| `comment` | `str` | No | — |
+| `owner` | `str` | No | — |
+| `storage_root` | `str` | No | — |
+| `volume_type` | `str` | No | — |
+| `storage_location` | `str` | No | — |
+| `new_name` | `str` | No | — |
+| `properties` | `Dict[str, str]` | No | — |
+| `isolation_mode` | `str` | No | — |
+| `force` | `bool` | No | — |
 
 ## manage_uc_security_policies
 
-**Description:** Manage row-level security and column masking policies.
+**Description:** Manage row-level security and column masking.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "set_row_filter", "drop_row_filter", "set_column_mask", "drop_column_mask", "create_security_function" |
-| `table_name` | `str` | No | Full table name (for row filter/column mask operations) |
-| `column_name` | `str` | No | Column name (for column mask operations) |
-| `filter_function` | `str` | No | Full function name for row filter |
-| `filter_columns` | `List[str]` | No | Columns passed to the filter function |
-| `mask_function` | `str` | No | Full function name for column mask |
-| `function_name` | `str` | No | Full function name to create (catalog.schema.function) |
-| `function_body` | `str` | No | SQL function body (e.g., "RETURN IF(IS_ACCOUNT_GROUP_MEMBER('admins'), val, '***')") |
-| `parameter_name` | `str` | No | Function input parameter name |
-| `parameter_type` | `str` | No | Function input parameter type (e.g., "STRING") |
-| `return_type` | `str` | No | Function return type ("BOOLEAN" for filters, data type for masks) |
-| `function_comment` | `str` | No | Function description |
-| `warehouse_id` | `str` | No | SQL warehouse ID (auto-selected if not provided) |
+| `action` | `str` | Yes | — |
+| `table_name` | `str` | No | — |
+| `column_name` | `str` | No | — |
+| `filter_function` | `str` | No | — |
+| `filter_columns` | `List[str]` | No | — |
+| `mask_function` | `str` | No | — |
+| `function_name` | `str` | No | — |
+| `function_body` | `str` | No | — |
+| `parameter_name` | `str` | No | — |
+| `parameter_type` | `str` | No | — |
+| `return_type` | `str` | No | — |
+| `function_comment` | `str` | No | — |
+| `warehouse_id` | `str` | No | — |
 
 ## manage_uc_sharing
 
@@ -203,19 +148,19 @@ Browse and manage Unity Catalog objects, permissions, volumes, and governance po
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `resource_type` | `str` | Yes | "share", "recipient", or "provider" |
-| `action` | `str` | Yes | Operation to perform (see combinations above) |
-| `name` | `str` | No | Resource name (share/recipient/provider name) |
-| `comment` | `str` | No | Description (for create) |
-| `table_name` | `str` | No | Full table name for add_table/remove_table |
-| `shared_as` | `str` | No | Alias for shared table (hides internal naming) |
-| `partition_spec` | `str` | No | Partition filter for shared table |
-| `authentication_type` | `str` | No | "TOKEN" or "DATABRICKS" (for recipient create) |
-| `sharing_id` | `str` | No | Sharing identifier for D2D sharing (for recipient create) |
-| `ip_access_list` | `List[str]` | No | Allowed IP addresses (for recipient create) |
-| `share_name` | `str` | No | Share name (for grant/revoke operations) |
-| `recipient_name` | `str` | No | Recipient name (for grant/revoke operations) |
-| `include_shared_data` | `bool` | No | Include shared objects in get (default: True) |
+| `resource_type` | `str` | Yes | — |
+| `action` | `str` | Yes | — |
+| `name` | `str` | No | — |
+| `comment` | `str` | No | — |
+| `table_name` | `str` | No | — |
+| `shared_as` | `str` | No | — |
+| `partition_spec` | `str` | No | — |
+| `authentication_type` | `str` | No | — |
+| `sharing_id` | `str` | No | — |
+| `ip_access_list` | `List[str]` | No | — |
+| `share_name` | `str` | No | — |
+| `recipient_name` | `str` | No | — |
+| `include_shared_data` | `bool` | No | — |
 
 ## manage_uc_storage
 
@@ -225,51 +170,55 @@ Browse and manage Unity Catalog objects, permissions, volumes, and governance po
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `resource_type` | `str` | Yes | "credential" or "external_location" |
-| `action` | `str` | Yes | "create", "get", "list", "update", "delete", "validate" |
-| `name` | `str` | No | Resource name (for all actions except list) |
-| `aws_iam_role_arn` | `str` | No | AWS IAM Role ARN (for credential create/update on AWS) |
-| `azure_access_connector_id` | `str` | No | Azure Access Connector ID (for credential create/update on Azure) |
-| `url` | `str` | No | Cloud storage URL (for external_location create/update, or credential validate) |
-| `credential_name` | `str` | No | Storage credential name (for external_location create/update) |
-| `read_only` | `bool` | No | Whether resource is read-only (default: False) |
-| `comment` | `str` | No | Description |
-| `owner` | `str` | No | Owner |
-| `new_name` | `str` | No | New name for update/rename |
-| `force` | `bool` | No | Force deletion (default: False) |
+| `resource_type` | `str` | Yes | — |
+| `action` | `str` | Yes | — |
+| `name` | `str` | No | — |
+| `aws_iam_role_arn` | `str` | No | — |
+| `azure_access_connector_id` | `str` | No | — |
+| `url` | `str` | No | — |
+| `credential_name` | `str` | No | — |
+| `read_only` | `bool` | No | — |
+| `comment` | `str` | No | — |
+| `owner` | `str` | No | — |
+| `new_name` | `str` | No | — |
+| `force` | `bool` | No | — |
 
 ## manage_uc_tags
 
-**Description:** Manage tags and comments on Unity Catalog objects.
+**Description:** Manage UC tags and comments.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "set_tags", "unset_tags", "set_comment", "query_table_tags", "query_column_tags" |
-| `object_type` | `str` | No | "catalog", "schema", "table", or "column" (for set/unset/comment) |
-| `full_name` | `str` | No | Full object name (for set/unset/comment) |
-| `column_name` | `str` | No | Column name when object_type is "column" |
-| `tags` | `Dict[str, str]` | No | Tag key-value pairs for set_tags (e.g., \{"pii": "true", "classification": "confidential"\}) |
-| `tag_names` | `List[str]` | No | Tag keys to remove for unset_tags |
-| `comment_text` | `str` | No | Comment text for set_comment |
-| `catalog_filter` | `str` | No | Filter by catalog name (for query actions) |
-| `tag_name_filter` | `str` | No | Filter by tag name (for query actions) |
-| `tag_value_filter` | `str` | No | Filter by tag value (for query actions) |
-| `table_name_filter` | `str` | No | Filter by table name (for query_column_tags) |
-| `limit` | `int` | No | Max rows for query (default: 100) |
-| `warehouse_id` | `str` | No | SQL warehouse ID (auto-selected if not provided) |
+| `action` | `str` | Yes | — |
+| `object_type` | `str` | No | — |
+| `full_name` | `str` | No | — |
+| `column_name` | `str` | No | — |
+| `tags` | `Dict[str, str]` | No | — |
+| `tag_names` | `List[str]` | No | — |
+| `comment_text` | `str` | No | — |
+| `catalog_filter` | `str` | No | — |
+| `tag_name_filter` | `str` | No | — |
+| `tag_value_filter` | `str` | No | — |
+| `table_name_filter` | `str` | No | — |
+| `limit` | `int` | No | — |
+| `warehouse_id` | `str` | No | — |
 
-## upload_to_volume
+## manage_volume_files
 
-**Description:** Upload local file(s) or folder(s) to a Unity Catalog volume.
+**Description:** Manage Unity Catalog Volume files: list, upload, download, delete, mkdir, get_info.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `local_path` | `str` | Yes | Local path - file, folder, or glob (e.g., "*.csv", "/path/*") |
-| `volume_path` | `str` | Yes | Target volume path (e.g., "/Volumes/catalog/schema/volume/data") |
-| `max_workers` | `int` | No | Parallel upload threads (default: 4) |
-| `overwrite` | `bool` | No | Overwrite existing files (default: True) |
+| `action` | `str` | Yes | — |
+| `volume_path` | `str` | Yes | — |
+| `local_path` | `Optional[str]` | No | — |
+| `local_destination` | `Optional[str]` | No | — |
+| `max_results` | `int` | No | — |
+| `recursive` | `bool` | No | — |
+| `max_workers` | `int` | No | — |
+| `overwrite` | `bool` | No | — |
 

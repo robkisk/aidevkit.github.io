@@ -17,108 +17,100 @@ Execute code on Databricks compute, manage clusters and warehouses, and upload f
 
 ---
 
-## delete_from_workspace
-
-**Description:** Delete a file or folder from Databricks workspace.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `workspace_path` | `str` | Yes | Path to delete in Databricks workspace |
-| `recursive` | `bool` | No | If True, delete folder and all contents (default: False) |
-
 ## execute_code
 
-**Description:** Execute code on Databricks — serverless or cluster compute.
+**Description:** Execute code on Databricks via serverless or cluster compute.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `code` | `str` | No | Code to execute. Required unless file_path is provided. |
-| `file_path` | `str` | No | Local file path to execute instead of code. Language auto-detected from extension (.py, .scala, .sql, .r). |
-| `compute_type` | `str` | No | "serverless", "cluster", or "auto" (default). |
-| `cluster_id` | `str` | No | Cluster ID for cluster compute. Auto-selects if omitted. |
-| `context_id` | `str` | No | Reuse an existing execution context (cluster compute only). Enables state preservation across calls. |
-| `language` | `str` | No | "python" (default), "scala", "sql", or "r". Ignored when file_path is set (auto-detected) or for .ipynb content. |
-| `timeout` | `int` | No | Max wait in seconds. Defaults: serverless=1800, cluster=120, file=600. |
-| `destroy_context_on_completion` | `bool` | No | Destroy cluster execution context after run. Default False (keeps context for reuse). |
-| `workspace_path` | `str` | No | Save code as a notebook at this workspace path (e.g. "/Workspace/Users/user@company.com/project/train"). If omitted, execution is ephemeral. |
-| `run_name` | `str` | No | Human-readable name for the run (serverless only). |
+| `code` | `str` | No | — |
+| `file_path` | `str` | No | — |
+| `compute_type` | `str` | No | — |
+| `cluster_id` | `str` | No | — |
+| `context_id` | `str` | No | — |
+| `language` | `str` | No | — |
+| `timeout` | `int` | No | — |
+| `destroy_context_on_completion` | `bool` | No | — |
+| `workspace_path` | `str` | No | — |
+| `run_name` | `str` | No | — |
+| `job_extra_params` | `Dict[str, Any]` | No | — |
 
 ## list_compute
 
-**Description:** List and inspect compute resources: clusters, node types, or spark versions.
+**Description:** List compute resources: clusters, node types, or spark versions.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `resource` | `str` | No | What to list. One of: - "clusters" (default): List all user-created clusters with state info. - "node_types": List available VM types for cluster creation. - "spark_versions": List available Databricks Runtime versions. |
-| `cluster_id` | `str` | No | (clusters only) If provided, returns detailed status for this specific cluster. Use after starting a cluster to poll until RUNNING. |
-| `auto_select` | `bool` | No | (clusters only) If True, returns the best running cluster (prefers "shared" &gt; "demo" in name). Useful for auto-picking a cluster. |
+| `resource` | `str` | No | — |
+| `cluster_id` | `str` | No | — |
+| `auto_select` | `bool` | No | — |
 
 ## manage_cluster
 
-**Description:** Create, modify, start, terminate, or delete a Databricks cluster.
+**Description:** Create, modify, start, terminate, or delete a cluster.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | One of "create", "modify", "start", "terminate", "delete". |
-| `cluster_id` | `str` | No | Required for modify, start, terminate, delete. |
-| `name` | `str` | No | Cluster name. Required for create, optional for modify. |
-| `num_workers` | `int` | No | Fixed worker count (ignored if autoscale is set). Default 1 for create. |
-| `spark_version` | `str` | No | DBR version key (e.g. "15.4.x-scala2.12"). Auto-picks if omitted. |
-| `node_type_id` | `str` | No | Worker node type (e.g. "i3.xlarge"). Auto-picked if omitted. |
-| `autotermination_minutes` | `int` | No | Minutes of inactivity before auto-stop. Default 120. |
-| `data_security_mode` | `str` | No | "SINGLE_USER", "USER_ISOLATION", etc. Default SINGLE_USER. |
-| `spark_conf` | `str` | No | JSON string of Spark config overrides. |
-| `autoscale_min_workers` | `int` | No | Min workers for autoscaling (set with max to enable). |
-| `autoscale_max_workers` | `int` | No | Max workers for autoscaling. |
+| `action` | `str` | Yes | — |
+| `cluster_id` | `str` | No | — |
+| `name` | `str` | No | — |
+| `num_workers` | `int` | No | — |
+| `spark_version` | `str` | No | — |
+| `node_type_id` | `str` | No | — |
+| `autotermination_minutes` | `int` | No | — |
+| `data_security_mode` | `str` | No | — |
+| `spark_conf` | `str` | No | — |
+| `autoscale_min_workers` | `int` | No | — |
+| `autoscale_max_workers` | `int` | No | — |
 
 ## manage_sql_warehouse
 
-**Description:** Create, modify, or delete a Databricks SQL warehouse.
+**Description:** Create, modify, or delete a SQL warehouse.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | One of "create", "modify", "delete". |
-| `warehouse_id` | `str` | No | Required for modify and delete. |
-| `name` | `str` | No | Warehouse name. Required for create. |
-| `size` | `str` | No | T-shirt size ("2X-Small" through "4X-Large"). Default "Small". |
-| `min_num_clusters` | `int` | No | Minimum cluster count. Default 1. |
-| `max_num_clusters` | `int` | No | Maximum cluster count for scaling. Default 1. |
-| `auto_stop_mins` | `int` | No | Minutes of inactivity before auto-stop. Default 120. |
-| `warehouse_type` | `str` | No | "PRO" or "CLASSIC". Default "PRO". |
-| `enable_serverless` | `bool` | No | Enable serverless compute. Default True. |
+| `action` | `str` | Yes | — |
+| `warehouse_id` | `str` | No | — |
+| `name` | `str` | No | — |
+| `size` | `str` | No | — |
+| `min_num_clusters` | `int` | No | — |
+| `max_num_clusters` | `int` | No | — |
+| `auto_stop_mins` | `int` | No | — |
+| `warehouse_type` | `str` | No | — |
+| `enable_serverless` | `bool` | No | — |
 
 ## manage_workspace
 
-**Description:** Manage the active Databricks workspace connection.
+**Description:** Manage active Databricks workspace connection (session-scoped).
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | One of "status", "list", "switch", or "login". |
-| `profile` | `Optional[str]` | No | Profile name from ~/.databrickscfg (for switch). |
-| `host` | `Optional[str]` | No | Workspace URL, e.g. https://adb-123.azuredatabricks.net (for switch or login). |
+| `action` | `str` | Yes | — |
+| `profile` | `Optional[str]` | No | — |
+| `host` | `Optional[str]` | No | — |
 
-## upload_to_workspace
+## manage_workspace_files
 
-**Description:** Upload files or folders to Databricks workspace.
+**Description:** Manage workspace files: upload, delete.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `local_path` | `str` | Yes | Path to local file, folder, or glob pattern. - Single file: "/path/to/file.py" - Folder: "/path/to/folder" (preserves folder name) - Folder contents: "/path/to/folder/" or "/path/to/folder/*" - Glob pattern: "/path/to/*.py" - Tilde expansion: "~/projects/file.py" |
-| `workspace_path` | `str` | Yes | Target path in Databricks workspace (e.g., "/Workspace/Users/user@example.com/my-project") |
-| `max_workers` | `int` | No | Maximum parallel upload threads (default: 10) |
-| `overwrite` | `bool` | No | Whether to overwrite existing files (default: True) |
+| `action` | `str` | Yes | — |
+| `workspace_path` | `str` | Yes | — |
+| `local_path` | `Optional[str]` | No | — |
+| `max_workers` | `int` | No | — |
+| `overwrite` | `bool` | No | — |
+| `recursive` | `bool` | No | — |
 

@@ -74,13 +74,14 @@ SKILL_MAP: dict[str, tuple[str, str]] = {
 
 # Skills rendered as a single .mdx (not a directory with index + children)
 SINGLE_PAGE_SKILLS: set[str] = {
-    "databricks-aibi-dashboards",
     "databricks-python-sdk",
 }
 
 # Source child filename stem → override site slug (for renamed files)
 CHILD_SLUG_OVERRIDES: dict[str, str] = {
     "6-change-data-capture": "auto-cdc",
+    "3-examples": "dashboard-templates",
+    "4-examples": "json-reference",
 }
 
 # Source subdirectories to skip when scanning for child pages

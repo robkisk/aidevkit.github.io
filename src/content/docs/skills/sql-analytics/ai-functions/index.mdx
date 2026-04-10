@@ -21,17 +21,17 @@ You can enrich any table with AI-powered classification, entity extraction, sent
 SELECT
     ticket_id,
     ticket_text,
-    ai_classify(ticket_text, ARRAY('urgent', 'not urgent', 'spam'))   AS priority,
-    ai_extract(ticket_text, ARRAY('product', 'error_code', 'date'))   AS entities,
-    ai_analyze_sentiment(ticket_text)                                  AS sentiment
+    ai_classify(ticket_text, '["urgent", "not urgent", "spam"]')        AS priority,
+    ai_extract(ticket_text, '["product", "error_code", "date"]')        AS entities,
+    ai_analyze_sentiment(ticket_text)                                    AS sentiment
 FROM support_tickets;
 ```
 
 **Key decisions:**
 - **Task-specific functions over `ai_query`** -- `ai_classify`, `ai_extract`, and `ai_analyze_sentiment` are purpose-built and faster. Reserve `ai_query` for complex JSON schemas or custom model endpoints.
 - **Multiple functions in one SELECT** -- each function call is an independent LLM invocation. Chaining them in one query avoids multiple table scans while keeping each operation isolated.
-- **`ai_extract` returns a STRUCT** -- access nested fields with dot notation: `entities.product`, `entities.error_code`. No JSON parsing needed.
-- **`ARRAY()` for labels and fields** -- both `ai_classify` and `ai_extract` accept SQL arrays. Keep labels clear and mutually exclusive for reliable results.
+- **JSON string arguments** -- both `ai_classify` and `ai_extract` accept JSON strings. Simple arrays (`'["a","b"]'`) work for basic use; maps with descriptions (`'\{"billing_error": "Payment issues"\}'`) improve accuracy. Both support an optional `options` MAP for instructions and (for `ai_classify`) multilabel mode.
+- **`ai_extract` returns VARIANT** -- the response is `\{"response": \{...\}, "error_message": null\}`. Supports advanced schemas with types (`string`, `number`, `boolean`, `enum`), up to 128 fields and 7 nesting levels.
 
 ## More Patterns
 

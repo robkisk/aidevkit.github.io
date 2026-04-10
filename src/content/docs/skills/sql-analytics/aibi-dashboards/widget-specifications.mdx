@@ -1,0 +1,203 @@
+---
+curated: true
+title: Core Widgets -- Text, Counters, Tables & Charts
+description: Build dashboard widgets from scratch with correct JSON for counters, tables, bar/line/pie charts, and text headers.
+sidebar:
+  order: 1
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-aibi-dashboards`
+
+## What You Can Build
+
+Every dashboard is composed of widgets -- text headers for context, counter KPIs for headline numbers, tables for detail rows, and bar/line/pie charts for visual patterns. Each widget type has a specific JSON structure with version numbers, field expressions, and encoding rules that must be followed exactly. Your AI coding assistant handles all of this, but understanding the patterns helps you write better prompts and debug faster.
+
+## In Action
+
+> "Create a KPI counter showing total revenue in USD with compact formatting, from my daily_sales dataset."
+
+```json
+{
+  "widget": {
+    "name": "kpi-revenue",
+    "queries": [{
+      "name": "main_query",
+      "query": {
+        "datasetName": "ds_daily_sales",
+        "fields": [{"name": "sum(total_revenue)", "expression": "SUM(`total_revenue`)"}],
+        "disaggregated": false
+      }
+    }],
+    "spec": {
+      "version": 2,
+      "widgetType": "counter",
+      "encodings": {
+        "value": {
+          "fieldName": "sum(total_revenue)",
+          "displayName": "Total Revenue",
+          "format": {
+            "type": "number-currency",
+            "currencyCode": "USD",
+            "abbreviation": "compact",
+            "decimalPlaces": {"type": "max", "places": 1}
+          }
+        }
+      },
+      "frame": {"title": "Total Revenue", "showTitle": true}
+    }
+  },
+  "position": {"x": 0, "y": 2, "width": 2, "height": 3}
+}
+```
+
+**Key decisions:**
+- **`version: 2`** for counters -- version 3 is for charts only. Using the wrong version produces "Invalid widget definition" errors.
+- **Field `name` matches `fieldName` exactly** -- both say `"sum(total_revenue)"`. A mismatch causes "no selected fields to visualize" and is the single most common dashboard bug.
+- **`disaggregated: false`** with an aggregation expression -- the widget performs the SUM at render time. Use `disaggregated: true` only when your dataset SQL already returns exactly one row.
+- **Currency formatting with `compact`** -- displays $1.2M instead of $1,234,567. Use `"abbreviation": "compact"` for KPIs; omit it for tables where exact values matter.
+- **Width 2, height 3** -- KPIs sit three across in the 6-column grid. Never use height 2 for counters; it clips the value.
+
+## More Patterns
+
+### Text headers
+
+> "Add a title and subtitle to the top of my dashboard."
+
+```json
+{
+  "widget": {
+    "name": "title",
+    "multilineTextboxSpec": {"lines": ["## Sales Dashboard"]}
+  },
+  "position": {"x": 0, "y": 0, "width": 6, "height": 1}
+},
+{
+  "widget": {
+    "name": "subtitle",
+    "multilineTextboxSpec": {"lines": ["Revenue and order trends across regions"]}
+  },
+  "position": {"x": 0, "y": 1, "width": 6, "height": 1}
+}
+```
+
+Text widgets do not use a `spec` block -- they use `multilineTextboxSpec` directly. Always use **separate widgets** for title and subtitle. Multiple items in the `lines` array get concatenated on one line, not stacked.
+
+### Bar chart with color grouping
+
+> "Show me monthly revenue broken down by region as a stacked bar chart."
+
+```json
+{
+  "widget": {
+    "name": "revenue-by-region",
+    "queries": [{
+      "name": "main_query",
+      "query": {
+        "datasetName": "ds_daily_sales",
+        "fields": [
+          {"name": "monthly(sale_date)", "expression": "DATE_TRUNC(\"MONTH\", `sale_date`)"},
+          {"name": "region", "expression": "`region`"},
+          {"name": "sum(total_revenue)", "expression": "SUM(`total_revenue`)"}
+        ],
+        "disaggregated": false
+      }
+    }],
+    "spec": {
+      "version": 3,
+      "widgetType": "bar",
+      "encodings": {
+        "x": {"fieldName": "monthly(sale_date)", "scale": {"type": "temporal"}, "displayName": "Month"},
+        "y": {"fieldName": "sum(total_revenue)", "scale": {"type": "quantitative"}, "displayName": "Revenue ($)"},
+        "color": {"fieldName": "region", "scale": {"type": "categorical"}, "displayName": "Region"}
+      },
+      "frame": {"title": "Revenue by Region", "showTitle": true}
+    }
+  },
+  "position": {"x": 0, "y": 6, "width": 6, "height": 5}
+}
+```
+
+Stacked is the default bar layout. Add `"mark": \{"layout": "group"\}` to the spec for grouped (side-by-side) bars. Swap `x` and `y` encodings for horizontal bars. The color scale for bar, line, and pie only supports `type` and `sort` -- do not use `scheme`, `colorRamp`, or `mappings` (those are choropleth-map only).
+
+### Table widget
+
+> "Add a detail table showing the top products by revenue."
+
+```json
+{
+  "widget": {
+    "name": "table-products",
+    "queries": [{
+      "name": "main_query",
+      "query": {
+        "datasetName": "ds_products",
+        "fields": [
+          {"name": "product_name", "expression": "`product_name`"},
+          {"name": "units_sold", "expression": "`units_sold`"},
+          {"name": "revenue", "expression": "`revenue`"}
+        ],
+        "disaggregated": true
+      }
+    }],
+    "spec": {
+      "version": 2,
+      "widgetType": "table",
+      "encodings": {
+        "columns": [
+          {"fieldName": "product_name", "displayName": "Product"},
+          {"fieldName": "units_sold", "displayName": "Units Sold"},
+          {"fieldName": "revenue", "displayName": "Revenue ($)"}
+        ]
+      },
+      "frame": {"title": "Product Performance", "showTitle": true}
+    }
+  },
+  "position": {"x": 0, "y": 12, "width": 6, "height": 6}
+}
+```
+
+Tables use `version: 2` and `disaggregated: true` for raw row display. Column objects only need `fieldName` and `displayName` -- do not add `type`, `numberFormat`, or other properties. Sort order comes from `ORDER BY` in your dataset SQL, not from the widget spec.
+
+### Pie chart
+
+> "Break down revenue by department as a pie chart."
+
+```json
+{
+  "widget": {
+    "name": "chart-by-department",
+    "queries": [{
+      "name": "main_query",
+      "query": {
+        "datasetName": "ds_daily_sales",
+        "fields": [
+          {"name": "department", "expression": "`department`"},
+          {"name": "sum(total_revenue)", "expression": "SUM(`total_revenue`)"}
+        ],
+        "disaggregated": false
+      }
+    }],
+    "spec": {
+      "version": 3,
+      "widgetType": "pie",
+      "encodings": {
+        "angle": {"fieldName": "sum(total_revenue)", "scale": {"type": "quantitative"}, "displayName": "Revenue"},
+        "color": {"fieldName": "department", "scale": {"type": "categorical"}, "displayName": "Department"}
+      },
+      "frame": {"title": "Revenue by Department", "showTitle": true}
+    }
+  },
+  "position": {"x": 0, "y": 12, "width": 3, "height": 5}
+}
+```
+
+Pie charts need 3-8 categories to stay readable. If your dimension has more distinct values, aggregate to a higher level in the dataset SQL or use a TOP-N with an "Other" bucket.
+
+## Watch Out For
+- **Version number mismatches** -- counters and tables use `version: 2`, bar/line/pie/area/scatter use `version: 3`, combo and choropleth-map use `version: 1`. There is no autocorrection; the wrong version silently produces an invalid widget.
+- **Field name !== encoding name** -- the `name` in `query.fields` and the `fieldName` in `encodings` must be identical strings. `"spend"` and `"sum(spend)"` are different. This is the #1 cause of blank widgets.
+- **Text widgets with `spec` blocks** -- text widgets must not have a `spec`. Use `multilineTextboxSpec` directly on the widget. Adding `"widgetType": "text"` causes a parse failure.
+- **Widget expressions are limited** -- you can use `SUM`, `AVG`, `COUNT`, `COUNT(DISTINCT ...)`, `MIN`, `MAX`, and `DATE_TRUNC` in field expressions. No `CAST`, no `CASE`, no multi-column formulas. Compute anything complex as a derived column in the dataset SQL.

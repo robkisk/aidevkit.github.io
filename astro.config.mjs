@@ -49,7 +49,7 @@ export default defineConfig({
 								{ label: 'Databricks SQL', autogenerate: { directory: 'skills/sql-analytics/databricks-sql' } },
 								{ label: 'Genie Spaces', autogenerate: { directory: 'skills/sql-analytics/genie-spaces' } },
 								{ label: 'Metric Views', autogenerate: { directory: 'skills/sql-analytics/metric-views' } },
-								{ slug: 'skills/sql-analytics/aibi-dashboards' },
+								{ label: 'AI/BI Dashboards', autogenerate: { directory: 'skills/sql-analytics/aibi-dashboards' } },
 							],
 						},
 						{

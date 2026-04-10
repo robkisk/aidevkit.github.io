@@ -1,0 +1,135 @@
+---
+curated: true
+title: Run Heavy Workloads as Serverless Jobs
+description: Execute ML training and batch processing on Databricks serverless without managing clusters or infrastructure
+sidebar:
+  order: 2
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-execution-compute`
+
+## What You Can Build
+
+Serverless jobs let you push a Python script to Databricks and walk away -- no cluster to provision, no notebook to open, no local machine that needs to stay awake. Your AI coding assistant handles the `execute_code` call, dependency spec, and output capture so you can fire off ML training runs, batch transforms, and data pipelines as fire-and-forget jobs.
+
+## In Action
+
+> "Train a scikit-learn model on the `main.ml.training_data` table and log it to MLflow. Run it as a serverless job so my laptop can go to sleep."
+
+```python
+# train_model.py -- runs entirely on Databricks serverless
+import mlflow
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.model_selection import train_test_split
+from databricks.connect import DatabricksSession
+import json
+
+spark = DatabricksSession.builder.serverless(True).getOrCreate()
+pdf = spark.table("main.ml.training_data").toPandas()
+
+X_train, X_test, y_train, y_test = train_test_split(
+    pdf.drop("label", axis=1), pdf["label"], test_size=0.2
+)
+
+mlflow.set_experiment("/Users/me/churn-model")
+with mlflow.start_run():
+    model = GradientBoostingClassifier(n_estimators=200, max_depth=5)
+    model.fit(X_train, y_train)
+    accuracy = model.score(X_test, y_test)
+    mlflow.log_metric("accuracy", accuracy)
+    mlflow.sklearn.log_model(model, "model")
+
+# Return results -- print() is unreliable in serverless jobs
+dbutils.notebook.exit(json.dumps({"accuracy": accuracy}))
+```
+
+Then submit it:
+
+```python
+execute_code(
+    file_path="/local/path/to/train_model.py",
+    job_extra_params={
+        "environments": [{
+            "environment_key": "ml_env",
+            "spec": {
+                "client": "4",
+                "dependencies": ["scikit-learn", "mlflow", "pandas"]
+            }
+        }]
+    }
+)
+```
+
+**Key decisions:**
+- **`file_path` over inline `code`** -- the script is non-trivial, so keep it in a file where you can edit and re-run. Inline code is for one-liners.
+- **`"client": "4"` in the environment spec** -- this is mandatory. `"client": "1"` silently ignores dependencies and your job fails with `ModuleNotFoundError`.
+- **`dbutils.notebook.exit()` for output** -- `print()` is unreliable in serverless execution context. The exit call is the only guaranteed way to return structured results.
+- **Top-level dependencies only** -- do not freeze a full `pip freeze` list. The serverless runtime has pre-installed packages that conflict with pinned versions.
+
+## More Patterns
+
+### Simple script execution with no dependencies
+
+> "Run this data cleanup script on serverless. It only uses PySpark, no extra packages."
+
+```python
+execute_code(
+    file_path="/local/path/to/cleanup.py",
+    compute_type="serverless"
+)
+```
+
+When your script only uses PySpark and standard library modules, skip the `job_extra_params` entirely. The serverless runtime has PySpark, pandas, and NumPy pre-installed.
+
+### Return structured results from a job
+
+> "I need the job to return row counts and validation results so I can check them after."
+
+```python
+# validate_tables.py
+import json
+
+spark = DatabricksSession.builder.serverless(True).getOrCreate()
+
+results = {}
+for table in ["main.bronze.orders", "main.bronze.customers", "main.bronze.products"]:
+    count = spark.table(table).count()
+    nulls = spark.table(table).filter("id IS NULL").count()
+    results[table] = {"row_count": count, "null_ids": nulls}
+
+# This is the ONLY reliable way to return data
+dbutils.notebook.exit(json.dumps(results))
+```
+
+Always use `dbutils.notebook.exit()` with JSON-serialized output. The `execute_code` MCP tool captures this return value and surfaces it back to your AI coding assistant. Anything sent to `print()` may or may not appear in the response.
+
+### Install custom dependencies for a one-off run
+
+> "Run a script that uses the `holidays` and `phonenumbers` packages. I don't want to set up a cluster."
+
+```python
+execute_code(
+    file_path="/local/path/to/enrich.py",
+    job_extra_params={
+        "environments": [{
+            "environment_key": "enrichment_env",
+            "spec": {
+                "client": "4",
+                "dependencies": ["holidays", "phonenumbers"]
+            }
+        }]
+    }
+)
+```
+
+The `environment_key` is an arbitrary label -- name it whatever makes sense for the workload. What matters is `"client": "4"` and the dependency list. Each invocation builds a fresh environment, so there is a 25-50 second cold start while packages install.
+
+## Watch Out For
+
+- **`"client": "1"` silently drops dependencies** -- the environment spec installs nothing and your job fails with import errors. Always use `"client": "4"`.
+- **30-minute timeout** -- serverless jobs cap at 1800 seconds. If your workload is longer, split it into stages or switch to an interactive cluster with no timeout.
+- **No state between calls** -- every `execute_code` invocation gets a fresh Python process. Variables from a previous run do not exist. If you need state continuity, use an interactive cluster with `context_id`.
+- **`print()` output is unreliable** -- serverless execution captures stdout inconsistently. Use `dbutils.notebook.exit(json.dumps(result))` for anything you need to read after the job finishes.

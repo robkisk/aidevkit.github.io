@@ -1,0 +1,137 @@
+---
+curated: true
+title: Run Spark Locally with Databricks Connect
+description: Develop and debug PySpark code on your laptop with instant execution on Databricks serverless compute
+sidebar:
+  order: 1
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-execution-compute`
+
+## What You Can Build
+
+Databricks Connect lets you write PySpark on your laptop and execute it on Databricks serverless compute -- no cluster provisioning, no cold starts, no notebooks. Your AI coding assistant generates the session setup, dependency declarations, and write-to-table logic so you get a local development loop with remote Spark power.
+
+## In Action
+
+> "Set up a Databricks Connect script that generates 10K fake customer records with Faker, writes them to `main.bronze.customers`, and includes address and phone columns."
+
+```python
+from databricks.connect import DatabricksSession, DatabricksEnv
+from pyspark.sql import functions as F
+from pyspark.sql.types import StructType, StructField, StringType, LongType
+
+# Declare remote dependencies -- Faker runs inside UDFs on serverless
+env = DatabricksEnv().withDependencies("faker")
+
+spark = (
+    DatabricksSession.builder
+    .withEnvironment(env)
+    .serverless(True)
+    .getOrCreate()
+)
+
+@F.udf(returnType=StringType())
+def fake_name():
+    from faker import Faker
+    return Faker().name()
+
+@F.udf(returnType=StringType())
+def fake_address():
+    from faker import Faker
+    return Faker().address().replace("\n", ", ")
+
+@F.udf(returnType=StringType())
+def fake_phone():
+    from faker import Faker
+    return Faker().phone_number()
+
+df = (
+    spark.range(10000)
+    .withColumn("customer_name", fake_name())
+    .withColumn("address", fake_address())
+    .withColumn("phone", fake_phone())
+)
+
+df.write.mode("overwrite").saveAsTable("main.bronze.customers")
+```
+
+**Key decisions:**
+- **`withDependencies("faker")`** instead of local pip install -- Faker runs inside UDFs on the remote cluster, so the remote environment needs it, not your laptop
+- **`serverless(True)`** over a named cluster -- zero provisioning, instant session, no cost when idle
+- **No `.profile()` call** -- uses the DEFAULT profile from `~/.databrickscfg`, which is correct for most single-workspace setups
+- **`@F.udf` with explicit return type** -- Databricks Connect requires typed UDFs; untyped lambdas fail silently
+
+## More Patterns
+
+### Target a specific workspace profile
+
+> "I have two workspaces in my databrickscfg. Run this against my staging workspace."
+
+```python
+from databricks.connect import DatabricksSession, DatabricksEnv
+
+env = DatabricksEnv().withDependencies("holidays")
+
+spark = (
+    DatabricksSession.builder
+    .profile("staging")  # matches [staging] section in ~/.databrickscfg
+    .withEnvironment(env)
+    .serverless(True)
+    .getOrCreate()
+)
+
+df = spark.sql("SELECT current_catalog(), current_schema()")
+df.show()
+```
+
+When you have multiple workspace profiles, pass `.profile("name")` to target the right one. Without it, Databricks Connect uses `[DEFAULT]`. This is also how you run the same script against dev vs. staging vs. prod without changing code -- just switch the profile argument.
+
+### Set up databrickscfg for serverless
+
+> "I just installed databricks-connect but I'm getting a serverless_compute_id error."
+
+```ini
+# ~/.databrickscfg
+[DEFAULT]
+host = https://my-workspace.cloud.databricks.com/
+serverless_compute_id = auto
+auth_type = databricks-cli
+```
+
+The `serverless_compute_id = auto` line is what tells Databricks Connect to use serverless compute. Without it, the SDK looks for a classic cluster ID and fails. If you use OAuth or PAT auth instead of CLI auth, change `auth_type` accordingly but keep the serverless line.
+
+### Read and transform an existing table
+
+> "Read the sales.transactions table, filter to last 30 days, aggregate by region, and write to sales.regional_summary."
+
+```python
+from databricks.connect import DatabricksSession
+from pyspark.sql import functions as F
+
+spark = DatabricksSession.builder.serverless(True).getOrCreate()
+
+summary = (
+    spark.table("main.sales.transactions")
+    .filter(F.col("txn_date") >= F.date_sub(F.current_date(), 30))
+    .groupBy("region")
+    .agg(
+        F.sum("amount").alias("total_amount"),
+        F.count("*").alias("txn_count"),
+    )
+)
+
+summary.write.mode("overwrite").saveAsTable("main.sales.regional_summary")
+```
+
+No `DatabricksEnv` needed here because there are no custom dependencies -- only built-in PySpark functions. This is the simplest possible Databricks Connect pattern: read, transform, write.
+
+## Watch Out For
+
+- **`ModuleNotFoundError` inside UDFs** -- the package is on your laptop but not on remote compute. Add it to `withDependencies()`. Pandas and NumPy are pre-installed; everything else must be declared.
+- **Python 3.12 required** -- `databricks-connect >= 16.4` hard-requires Python 3.12. If your system Python is older, create a virtual environment with the right version. Do not downgrade databricks-connect to dodge this.
+- **`.cache()` and `.persist()` fail on serverless** -- `PERSIST TABLE not supported` is the error. Serverless compute does not support DataFrame persistence. Restructure your code to avoid caching, or switch to an interactive cluster.
+- **`broadcast()` joins break** -- Spark Connect does not support broadcast hints. Replace broadcast joins with regular joins, or collect the small DataFrame to a Python list and use it as a filter instead.

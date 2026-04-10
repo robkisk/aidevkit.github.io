@@ -17,86 +17,47 @@ Create vector search endpoints and indexes, run similarity queries, and manage e
 
 ---
 
-## create_or_update_vs_endpoint
-
-**Description:** Idempotent create for Vector Search endpoints. Returns existing if one with the same name already exists (endpoints are immutable after creation).
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | Endpoint name (unique within workspace) |
-| `endpoint_type` | `str` | No | "STANDARD" (low-latency, &lt;100ms) or "STORAGE_OPTIMIZED" (cost-effective, ~250ms, supports 1B+ vectors) |
-
-## create_or_update_vs_index
-
-**Description:** Idempotent create for Vector Search indexes. Returns existing if one with the same name already exists. Triggers an initial sync after creating a new DELTA_SYNC index.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | Fully qualified index name (catalog.schema.index_name) |
-| `endpoint_name` | `str` | Yes | Vector Search endpoint to host this index |
-| `primary_key` | `str` | Yes | Column name for the primary key |
-| `index_type` | `str` | No | "DELTA_SYNC" or "DIRECT_ACCESS" |
-| `delta_sync_index_spec` | `Optional[Dict[str, Any]]` | No | Config for Delta Sync index: - source_table: Fully qualified source table - embedding_source_columns: For managed embeddings [\{"name": "content", "embedding_model_endpoint_name": "databricks-gte-large-en"\}] - embedding_vector_columns: For self-managed embeddings [\{"name": "embedding", "embedding_dimension": 768\}] - pipeline_type: "TRIGGERED" or "CONTINUOUS" - columns_to_sync: Optional list of columns to include |
-| `direct_access_index_spec` | `Optional[Dict[str, Any]]` | No | Config for Direct Access index: - embedding_vector_columns: [\{"name": "embedding", "embedding_dimension": 768\}] - schema_json: JSON schema string |
-
-## delete_vs_endpoint
-
-**Description:** Delete a Vector Search endpoint.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | Endpoint name to delete |
-
-## delete_vs_index
-
-**Description:** Delete a Vector Search index.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `index_name` | `str` | Yes | Fully qualified index name (catalog.schema.index_name) |
-
-## get_vs_endpoint
-
-**Description:** Get Vector Search endpoint details, or list all endpoints.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `Optional[str]` | No | Endpoint name. If omitted, lists all endpoints. |
-
-## get_vs_index
-
-**Description:** Get Vector Search index details, or list indexes.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `index_name` | `Optional[str]` | No | Fully qualified index name (catalog.schema.index_name). If provided, returns detailed index info. |
-| `endpoint_name` | `Optional[str]` | No | Endpoint name. Lists all indexes on this endpoint. |
-
 ## manage_vs_data
 
-**Description:** Manage data in a Vector Search index: upsert, delete, scan, or sync.
+**Description:** Manage Vector Search index data: upsert, delete, scan, sync.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `index_name` | `str` | Yes | Fully qualified index name (catalog.schema.index_name) |
-| `operation` | `str` | Yes | One of "upsert", "delete", "scan", or "sync" |
-| `inputs_json` | `Optional[Union[str, list]]` | No | Records to upsert. REQUIRED for "upsert", ignored otherwise. |
+| `action` | `str` | Yes | — |
+| `index_name` | `str` | Yes | — |
+| `inputs_json` | `Optional[Union[str, list]]` | No | — |
 | `primary_keys` | `Optional[List[str]]` | No | — |
 | `num_results` | `int` | No | — |
+
+## manage_vs_endpoint
+
+**Description:** Manage Vector Search endpoints: create, get, list, delete.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | Yes | — |
+| `name` | `Optional[str]` | No | — |
+| `endpoint_type` | `str` | No | — |
+
+## manage_vs_index
+
+**Description:** Manage Vector Search indexes: create, get, list, delete.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | Yes | — |
+| `name` | `Optional[str]` | No | — |
+| `endpoint_name` | `Optional[str]` | No | — |
+| `primary_key` | `Optional[str]` | No | — |
+| `index_type` | `str` | No | — |
+| `delta_sync_index_spec` | `Optional[Dict[str, Any]]` | No | — |
+| `direct_access_index_spec` | `Optional[Dict[str, Any]]` | No | — |
 
 ## query_vs_index
 
@@ -106,12 +67,12 @@ Create vector search endpoints and indexes, run similarity queries, and manage e
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `index_name` | `str` | Yes | Fully qualified index name (catalog.schema.index_name) |
-| `columns` | `List[str]` | Yes | Column names to return in results |
-| `query_text` | `Optional[str]` | No | Text query (for managed/attached embeddings) |
-| `query_vector` | `Optional[List[float]]` | No | Pre-computed query embedding vector |
-| `num_results` | `int` | No | Number of results to return (default: 5) |
-| `filters_json` | `Optional[Union[str, dict]]` | No | JSON string filters for Standard endpoints |
-| `filter_string` | `Optional[str]` | No | SQL-like filter for Storage-Optimized endpoints |
-| `query_type` | `Optional[str]` | No | "ANN" (default) or "HYBRID" (vector + keyword search) |
+| `index_name` | `str` | Yes | — |
+| `columns` | `List[str]` | Yes | — |
+| `query_text` | `Optional[str]` | No | — |
+| `query_vector` | `Optional[List[float]]` | No | — |
+| `num_results` | `int` | No | — |
+| `filters_json` | `Optional[Union[str, dict]]` | No | — |
+| `filter_string` | `Optional[str]` | No | — |
+| `query_type` | `Optional[str]` | No | — |
 

@@ -1,0 +1,223 @@
+---
+curated: true
+title: JSON Structure & Layout Reference
+description: Understand the dashboard JSON anatomy -- datasets, pages, widgets, grid layout, and field expression rules.
+sidebar:
+  order: 5
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-aibi-dashboards`
+
+## What You Can Build
+
+Every AI/BI dashboard is a single JSON document with three layers: datasets (SQL queries), pages (canvases and filter pages), and widgets (positioned on the 6-column grid). Understanding this structure helps you debug layout issues, fix field mismatches, and extend templates. Your AI coding assistant generates this JSON, but knowing the anatomy lets you prompt more precisely.
+
+## In Action
+
+> "Show me the full structure of a dashboard JSON with a dataset, a canvas page with a KPI row, and a chart."
+
+```json
+{
+  "datasets": [
+    {
+      "name": "ds_sales",
+      "displayName": "Sales Data",
+      "queryLines": [
+        "SELECT sale_date, region, department, ",
+        "total_revenue, total_orders, profit_margin ",
+        "FROM catalog.schema.gold_daily_sales ",
+        "ORDER BY sale_date"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "overview",
+      "displayName": "Sales Overview",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi-revenue",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_sales",
+                "fields": [{"name": "sum(total_revenue)", "expression": "SUM(`total_revenue`)"}],
+                "disaggregated": false
+              }
+            }],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_revenue)",
+                  "displayName": "Total Revenue",
+                  "format": {"type": "number-currency", "currencyCode": "USD", "abbreviation": "compact"}
+                }
+              },
+              "frame": {"title": "Total Revenue", "showTitle": true}
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "chart-trend",
+            "queries": [{
+              "name": "main_query",
+              "query": {
+                "datasetName": "ds_sales",
+                "fields": [
+                  {"name": "sale_date", "expression": "`sale_date`"},
+                  {"name": "sum(total_revenue)", "expression": "SUM(`total_revenue`)"}
+                ],
+                "disaggregated": false
+              }
+            }],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {"fieldName": "sale_date", "scale": {"type": "temporal"}, "displayName": "Date"},
+                "y": {"fieldName": "sum(total_revenue)", "scale": {"type": "quantitative"}, "displayName": "Revenue ($)"}
+              },
+              "frame": {"title": "Revenue Trend", "showTitle": true}
+            }
+          },
+          "position": {"x": 0, "y": 3, "width": 6, "height": 5}
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Key decisions:**
+- **Datasets are shared** -- both the KPI and the chart reference `ds_sales`. Define the query once, use it in multiple widgets. Each widget's `fields` array selects and optionally aggregates the columns it needs.
+- **Widgets are inline** -- each `layout` entry is `\{widget: \{...\}, position: \{...\}\}`. There is no top-level `"widgets"` array. Separating widgets from layout causes a parse failure.
+- **Position is a 6-column grid** -- `x` and `y` set the top-left cell, `width` and `height` set the span. Every row must fill exactly 6 columns.
+- **`pageType` is required** -- every page needs `PAGE_TYPE_CANVAS` or `PAGE_TYPE_GLOBAL_FILTERS`. Omitting it produces a blank page.
+
+## More Patterns
+
+### Dataset architecture
+
+> "Design the datasets for a dashboard with KPIs, charts, and a detail table from two source tables."
+
+```json
+{
+  "datasets": [
+    {
+      "name": "ds_daily_sales",
+      "displayName": "Daily Sales",
+      "queryLines": [
+        "SELECT sale_date, region, department, ",
+        "total_orders, total_revenue, profit_margin ",
+        "FROM catalog.schema.gold_daily_sales ",
+        "ORDER BY sale_date"
+      ]
+    },
+    {
+      "name": "ds_products",
+      "displayName": "Product Performance",
+      "queryLines": [
+        "SELECT product_name, department, region, ",
+        "units_sold, revenue, profit ",
+        "FROM catalog.schema.gold_product_performance ",
+        "ORDER BY revenue DESC"
+      ]
+    }
+  ]
+}
+```
+
+One dataset per domain, not one per widget. Multiple widgets share the same dataset by referencing different fields. Use fully qualified table names (`catalog.schema.table`). Put all derived columns, CASE/WHEN logic, and ratios into the SELECT with explicit aliases -- widget field expressions only support simple aggregations and date truncation, not complex SQL.
+
+### Grid layout patterns
+
+> "What's the recommended layout for a dashboard with KPIs, trend charts, and a detail table?"
+
+```text
+y=0:  Title      (width=6, height=1)
+y=1:  Subtitle   (width=6, height=1)
+y=2:  KPI | KPI | KPI  (width=2 each, height=3)
+y=5:  Section header  (width=6, height=1)
+y=6:  Chart | Chart  (width=3 each, height=5)
+y=11: Section header  (width=6, height=1)
+y=12: Table  (width=6, height=6)
+```
+
+Recommended widget sizes:
+
+| Widget Type | Width | Height | Notes |
+|-------------|-------|--------|-------|
+| Text header | 6 | 1 | Full width. Separate widgets for title and subtitle |
+| Counter/KPI | 2 | 3-4 | Never use height 2 -- clips the value |
+| Bar/Line chart | 3 | 5-6 | Pair side-by-side to fill the row |
+| Pie chart | 2-3 | 5-6 | Needs space for the legend |
+| Full-width chart | 6 | 5-7 | For detailed time series |
+| Table | 6 | 5-8 | Full width for readability |
+
+### Field expression reference
+
+> "What expressions can I use in widget query fields?"
+
+Widget field expressions support a limited set of operations. For anything more complex, compute it in the dataset SQL.
+
+**Aggregations:**
+```json
+{"name": "sum(revenue)", "expression": "SUM(`revenue`)"}
+{"name": "avg(price)", "expression": "AVG(`price`)"}
+{"name": "count(id)", "expression": "COUNT(`id`)"}
+{"name": "countdistinct(id)", "expression": "COUNT(DISTINCT `id`)"}
+{"name": "min(date)", "expression": "MIN(`order_date`)"}
+{"name": "max(date)", "expression": "MAX(`order_date`)"}
+```
+
+**Date truncation:**
+```json
+{"name": "daily(date)", "expression": "DATE_TRUNC(\"DAY\", `date`)"}
+{"name": "weekly(date)", "expression": "DATE_TRUNC(\"WEEK\", `date`)"}
+{"name": "monthly(date)", "expression": "DATE_TRUNC(\"MONTH\", `date`)"}
+```
+
+**Simple reference (pre-aggregated data):**
+```json
+{"name": "category", "expression": "`category`"}
+```
+
+No CAST, no CASE, no arithmetic between fields. If you need `revenue / orders` as a derived metric, compute it in the dataset SQL: `SELECT SUM(revenue) / COUNT(order_id) AS avg_order_value`.
+
+### Number formatting
+
+> "How do I format currency, percentages, and large numbers?"
+
+```json
+{
+  "format": {
+    "type": "number-currency",
+    "currencyCode": "USD",
+    "abbreviation": "compact",
+    "decimalPlaces": {"type": "max", "places": 2}
+  }
+}
+```
+
+| Data Type | Format `type` | Result |
+|-----------|---------------|--------|
+| Currency | `number-currency` | $1.2M |
+| Percentage | `number-percent` | 45.2% (data must be 0-1) |
+| Large numbers | `number` with `"abbreviation": "compact"` | 1.5K, 2.3M |
+
+`abbreviation` options: `"compact"` for K/M/B suffixes, or omit for full numbers. `decimalPlaces` takes `\{"type": "max", "places": N\}` for up-to-N digits, or `\{"type": "fixed", "places": N\}` for exactly N digits.
+
+## Watch Out For
+- **Widget `name` characters** -- only alphanumeric, hyphens, and underscores (max 60 characters). Spaces or special characters cause a parse failure. The `frame.title` can use any characters for the display label.
+- **`queryLines` is an array of strings** -- each line is a separate array element, concatenated at query time. Do not put the entire SQL in one string (though it works, it is harder to read and debug). Never use semicolons between statements -- one query per dataset.
+- **Cardinality kills readability** -- chart color/grouping dimensions should have 3-8 distinct values. More than 10 values makes the chart unreadable. Use `get_table_stats_and_schema` to check cardinality before designing the chart, and use TOP-N with an "Other" bucket for high-cardinality dimensions.
+- **Spark SQL, not ANSI SQL** -- use `date_sub(current_date(), N)` for date math, not `INTERVAL` syntax. Use `DATE_TRUNC('MONTH', col)` for truncation. The dashboard engine runs Spark SQL, and `INTERVAL` expressions fail silently.

@@ -17,174 +17,117 @@ Deploy Databricks Apps, manage Knowledge Assistants and Supervisor Agents, and c
 
 ---
 
-## create_or_update_app
-
-**Description:** Create a Databricks App if it doesn't exist, and optionally deploy it.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | App name (must be unique within the workspace). |
-| `source_code_path` | `Optional[str]` | No | Workspace path to deploy from (e.g., /Workspace/Users/user@example.com/my_app). If provided, deploys after create/find. |
-| `description` | `Optional[str]` | No | Optional human-readable description (used on create only). |
-| `mode` | `Optional[str]` | No | Optional deployment mode (e.g., "snapshot"). |
-
-## create_or_update_lakebase_branch
-
-**Description:** Create or update a Lakebase Autoscale branch with its compute endpoint.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `project_name` | `str` | Yes | Project name (e.g., "my-app" or "projects/my-app") |
-| `branch_id` | `str` | Yes | Branch identifier (1-63 chars, lowercase letters, digits, hyphens) |
-| `source_branch` | `Optional[str]` | No | Source branch to fork from (default: production) |
-| `ttl_seconds` | `Optional[int]` | No | Time-to-live in seconds (max 30 days = 2592000s) |
-| `no_expiry` | `bool` | No | If True, branch never expires |
-| `is_protected` | `Optional[bool]` | No | If True, branch cannot be deleted |
-| `endpoint_type` | `str` | No | "ENDPOINT_TYPE_READ_WRITE" or "ENDPOINT_TYPE_READ_ONLY" |
-| `autoscaling_limit_min_cu` | `Optional[float]` | No | Minimum compute units (0.5-32) |
-| `autoscaling_limit_max_cu` | `Optional[float]` | No | Maximum compute units (0.5-112) |
-| `scale_to_zero_seconds` | `Optional[int]` | No | Inactivity timeout before suspending (0 to disable) |
-
-## create_or_update_lakebase_database
-
-**Description:** Create or update a Lakebase managed PostgreSQL database.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | Database name (1-63 chars, lowercase letters, digits, hyphens) |
-| `type` | `str` | No | "provisioned" (fixed capacity) or "autoscale" (auto-scaling compute) |
-| `capacity` | `str` | No | Provisioned compute: "CU_1", "CU_2", "CU_4", or "CU_8" |
-| `stopped` | `bool` | No | If True, create provisioned instance in stopped state |
-| `display_name` | `Optional[str]` | No | Autoscale display name (defaults to name) |
-| `pg_version` | `str` | No | Autoscale Postgres version: "16" or "17" |
-
-## create_or_update_lakebase_sync
-
-**Description:** Set up reverse ETL from a Delta table to Lakebase.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `instance_name` | `str` | Yes | Lakebase instance name |
-| `source_table_name` | `str` | Yes | Source Delta table (catalog.schema.table) |
-| `target_table_name` | `str` | Yes | Target table in Lakebase (catalog.schema.table) |
-| `catalog_name` | `Optional[str]` | No | UC catalog name for the Lakebase instance. If omitted, derives from target_table_name. |
-| `database_name` | `str` | No | PostgreSQL database name (default: "databricks_postgres") |
-| `primary_key_columns` | `Optional[List[str]]` | No | Primary key columns (defaults to source table's PK) |
-| `scheduling_policy` | `str` | No | "TRIGGERED", "SNAPSHOT", or "CONTINUOUS" |
-
-## delete_app
-
-**Description:** Delete a Databricks App.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | App name to delete. |
-
-## delete_lakebase_branch
-
-**Description:** Delete a Lakebase Autoscale branch and its compute endpoints.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | Branch resource name (e.g., "projects/my-app/branches/development") |
-
-## delete_lakebase_database
-
-**Description:** Delete a Lakebase database and its resources.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | Database name to delete |
-| `type` | `str` | No | "provisioned" or "autoscale" |
-| `force` | `bool` | No | If True, force-delete child resources (provisioned only) |
-
-## delete_lakebase_sync
-
-**Description:** Remove a Lakebase synced table and optionally its UC catalog registration.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `table_name` | `str` | Yes | Fully qualified synced table name (catalog.schema.table) |
-| `catalog_name` | `Optional[str]` | No | UC catalog to also remove. If omitted, only the synced table is deleted. |
-
 ## generate_lakebase_credential
 
-**Description:** Generate an OAuth token for connecting to a Lakebase database.
+**Description:** Generate OAuth token (~1hr) for Lakebase connection. Use as password with sslmode=require.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `instance_names` | `Optional[List[str]]` | No | Provisioned instance names to generate credentials for |
-| `endpoint` | `Optional[str]` | No | Autoscale endpoint resource name (e.g., "projects/my-app/branches/production/endpoints/ep-primary") |
+| `instance_names` | `Optional[List[str]]` | No | — |
+| `endpoint` | `Optional[str]` | No | — |
 
-## get_app
+## manage_app
 
-**Description:** Get app details by name, or list all apps.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `Optional[str]` | No | App name. If provided, returns detailed app info. |
-| `name_contains` | `Optional[str]` | No | Filter apps by name substring (for listing). |
-| `include_logs` | `bool` | No | If True and name is provided, include deployment logs. |
-| `deployment_id` | `Optional[str]` | No | Specific deployment ID for logs. If omitted, uses the active deployment. |
-
-## get_lakebase_database
-
-**Description:** Get details of a Lakebase database, or list all databases.
+**Description:** Manage Databricks Apps: create, deploy, get, list, delete.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `name` | `Optional[str]` | No | Database name. If omitted, lists all databases. |
-| `type` | `Optional[str]` | No | Filter by "provisioned" or "autoscale". If omitted, checks both. |
+| `action` | `str` | Yes | — |
+| `name` | `Optional[str]` | No | — |
+| `source_code_path` | `Optional[str]` | No | — |
+| `description` | `Optional[str]` | No | — |
+| `mode` | `Optional[str]` | No | — |
+| `include_logs` | `bool` | No | — |
+| `deployment_id` | `Optional[str]` | No | — |
+| `name_contains` | `Optional[str]` | No | — |
 
 ## manage_ka
 
-**Description:** Create or update a Knowledge Assistant (KA) with document knowledge sources.
+**Description:** Manage Knowledge Assistant (KA) - RAG-based document Q&A.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "create_or_update", "get", "find_by_name", or "delete" |
-| `name` | `str` | No | Name for the KA (for create_or_update, find_by_name) |
-| `volume_path` | `str` | No | Path to the volume folder containing documents (e.g., "/Volumes/catalog/schema/volume/folder") (for create_or_update) |
-| `description` | `str` | No | Optional description of what the KA does (for create_or_update) |
-| `instructions` | `str` | No | Optional instructions for how the KA should answer (for create_or_update) |
-| `tile_id` | `str` | No | The KA tile ID (for get, delete, or update via create_or_update) |
-| `add_examples_from_volume` | `bool` | No | If True, scan the volume for JSON files containing question/guideline pairs and add them as examples (for create_or_update) |
+| `action` | `str` | Yes | — |
+| `name` | `str` | No | — |
+| `volume_path` | `str` | No | — |
+| `description` | `str` | No | — |
+| `instructions` | `str` | No | — |
+| `tile_id` | `str` | No | — |
+| `add_examples_from_volume` | `bool` | No | — |
+
+## manage_lakebase_branch
+
+**Description:** Manage Autoscale branches: create, update, delete.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | Yes | — |
+| `project_name` | `Optional[str]` | No | — |
+| `branch_id` | `Optional[str]` | No | — |
+| `source_branch` | `Optional[str]` | No | — |
+| `ttl_seconds` | `Optional[int]` | No | — |
+| `no_expiry` | `bool` | No | — |
+| `is_protected` | `Optional[bool]` | No | — |
+| `endpoint_type` | `str` | No | — |
+| `autoscaling_limit_min_cu` | `Optional[float]` | No | — |
+| `autoscaling_limit_max_cu` | `Optional[float]` | No | — |
+| `scale_to_zero_seconds` | `Optional[int]` | No | — |
+| `name` | `Optional[str]` | No | — |
+
+## manage_lakebase_database
+
+**Description:** Manage Lakebase PostgreSQL databases: create, update, get, list, delete.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | Yes | — |
+| `name` | `Optional[str]` | No | — |
+| `type` | `str` | No | — |
+| `capacity` | `str` | No | — |
+| `stopped` | `bool` | No | — |
+| `display_name` | `Optional[str]` | No | — |
+| `pg_version` | `str` | No | — |
+| `force` | `bool` | No | — |
+
+## manage_lakebase_sync
+
+**Description:** Manage Lakebase sync (reverse ETL): create, delete.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | Yes | — |
+| `instance_name` | `Optional[str]` | No | — |
+| `source_table_name` | `Optional[str]` | No | — |
+| `target_table_name` | `Optional[str]` | No | — |
+| `catalog_name` | `Optional[str]` | No | — |
+| `database_name` | `str` | No | — |
+| `primary_key_columns` | `Optional[List[str]]` | No | — |
+| `scheduling_policy` | `str` | No | — |
+| `table_name` | `Optional[str]` | No | — |
 
 ## manage_mas
 
-**Description:** Create or update a Supervisor Agent (formerly Multi-Agent Supervisor, MAS).
+**Description:** Manage Supervisor Agent (MAS) - orchestrates multiple agents for query routing.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `str` | Yes | "create_or_update", "get", "find_by_name", or "delete" |
-| `name` | `str` | No | Name for the Supervisor Agent (for create_or_update, find_by_name) |
-| `agents` | `List[Dict[str, str]]` | No | List of agent configurations (for create_or_update). Each agent requires: - name: Agent identifier (used internally for routing) - description: What this agent handles (critical for routing decisions) - endpoint_name: Model serving endpoint name (for custom agents) - genie_space_id: Genie space ID (for SQL-based data agents) - ka_tile_id: Knowledge Assistant tile ID (for document Q&A agents) - uc_function_name: Unity Catalog function name in format 'catalog.schema.function_name' - connection_name: Unity Catalog connection name (for external MCP servers) |
+| `action` | `str` | Yes | — |
+| `name` | `str` | No | — |
+| `agents` | `List[Dict[str, str]]` | No | — |
 | `description` | `str` | No | — |
 | `instructions` | `str` | No | — |
 | `tile_id` | `str` | No | — |

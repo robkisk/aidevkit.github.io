@@ -17,38 +17,20 @@ Monitor model serving endpoints and send inference requests.
 
 ---
 
-## get_serving_endpoint_status
+## manage_serving_endpoint
 
-**Description:** Get the status of a Model Serving endpoint.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | The name of the serving endpoint |
-
-## list_serving_endpoints
-
-**Description:** List Model Serving endpoints in the workspace.
+**Description:** Manage Model Serving endpoints: get status, list, query.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `limit` | `int` | No | Maximum number of endpoints to return (default: 50) |
-
-## query_serving_endpoint
-
-**Description:** Query a Model Serving endpoint.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `str` | Yes | The name of the serving endpoint |
-| `messages` | `Optional[List[Dict[str, str]]]` | No | List of chat messages for chat/agent endpoints. |
-| `inputs` | `Optional[Dict[str, Any]]` | No | Dictionary of inputs for custom pyfunc models. Format depends on model signature. |
-| `dataframe_records` | `Optional[List[Dict[str, Any]]]` | No | List of records for ML models. |
-| `max_tokens` | `Optional[int]` | No | Maximum tokens for chat/completion endpoints |
-| `temperature` | `Optional[float]` | No | Temperature for chat/completion endpoints (0.0-2.0) |
+| `action` | `str` | Yes | — |
+| `name` | `Optional[str]` | No | — |
+| `messages` | `Optional[List[Dict[str, str]]]` | No | — |
+| `inputs` | `Optional[Dict[str, Any]]` | No | — |
+| `dataframe_records` | `Optional[List[Dict[str, Any]]]` | No | — |
+| `max_tokens` | `Optional[int]` | No | — |
+| `temperature` | `Optional[float]` | No | — |
+| `limit` | `int` | No | — |
 

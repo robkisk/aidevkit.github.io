@@ -19,69 +19,71 @@ Run SQL queries, inspect table schemas, and manage warehouse connections.
 
 ## execute_sql
 
-**Description:** Execute a SQL query on a Databricks SQL Warehouse.
+**Description:** Execute SQL query on Databricks warehouse. Auto-selects warehouse if not provided.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `sql_query` | `str` | Yes | SQL query to execute |
-| `warehouse_id` | `str` | No | Optional warehouse ID. If not provided, auto-selects one. |
-| `catalog` | `str` | No | Optional catalog context for unqualified table names. |
-| `schema` | `str` | No | Optional schema context for unqualified table names. |
-| `timeout` | `int` | No | Timeout in seconds (default: 180) |
-| `query_tags` | `str` | No | Optional query tags for cost attribution (e.g., "team:eng,cost_center:701"). Appears in system.query.history and Query History UI. |
-| `output_format` | `str` | No | Result format — "markdown" (default) or "json". Markdown tables are ~50% smaller than JSON because column names appear only once in the header instead of on every row. Use "json" when you need machine-parseable output. |
+| `sql_query` | `str` | Yes | — |
+| `warehouse_id` | `str` | No | — |
+| `catalog` | `str` | No | — |
+| `schema` | `str` | No | — |
+| `timeout` | `int` | No | — |
+| `query_tags` | `str` | No | — |
+| `output_format` | `str` | No | — |
 
 ## execute_sql_multi
 
-**Description:** Execute multiple SQL statements with dependency-aware parallelism.
+**Description:** Execute multiple SQL statements with dependency-aware parallelism. Independent queries run in parallel.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `sql_content` | `str` | Yes | SQL content with multiple statements separated by ; |
-| `warehouse_id` | `str` | No | Optional warehouse ID. If not provided, auto-selects one. |
-| `catalog` | `str` | No | Optional catalog context for unqualified table names. |
-| `schema` | `str` | No | Optional schema context for unqualified table names. |
-| `timeout` | `int` | No | Timeout per query in seconds (default: 180) |
-| `max_workers` | `int` | No | Maximum parallel queries per group (default: 4) |
-| `query_tags` | `str` | No | Optional query tags for cost attribution (e.g., "team:eng,cost_center:701"). |
-| `output_format` | `str` | No | Result format — "markdown" (default) or "json". Markdown tables are ~50% smaller than JSON because column names appear only once in the header instead of on every row. |
-
-## get_best_warehouse
-
-**Description:** Get the ID of the best available SQL warehouse.
+| `sql_content` | `str` | Yes | — |
+| `warehouse_id` | `str` | No | — |
+| `catalog` | `str` | No | — |
+| `schema` | `str` | No | — |
+| `timeout` | `int` | No | — |
+| `max_workers` | `int` | No | — |
+| `query_tags` | `str` | No | — |
+| `output_format` | `str` | No | — |
 
 ## get_table_stats_and_schema
 
-**Description:** Get schema and statistics for tables in a Unity Catalog schema.
+**Description:** Get schema and stats for tables. table_stat_level: NONE (schema only), SIMPLE (default, +row count), DETAILED (+cardinality/min/max/histograms).
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `catalog` | `str` | Yes | Unity Catalog name |
-| `schema` | `str` | Yes | Schema name |
-| `table_names` | `List[str]` | No | List of table names or GLOB patterns (e.g., ["bronze_*", "silver_orders"]). If None, returns all tables in the schema. |
-| `table_stat_level` | `str` | No | Level of statistics to collect: - "NONE": Schema only (column names, types) - fast, no stats - "SIMPLE": Schema + row count, basic column info (default) - "DETAILED": Full column stats including cardinality, min/max, null counts, histograms, and percentiles |
-| `warehouse_id` | `str` | No | Optional warehouse ID. If not provided, auto-selects one. |
+| `catalog` | `str` | Yes | — |
+| `schema` | `str` | Yes | — |
+| `table_names` | `List[str]` | No | — |
+| `table_stat_level` | `str` | No | — |
+| `warehouse_id` | `str` | No | — |
 
 ## get_volume_folder_details
 
-**Description:** Get schema and statistics for data files in a Databricks Volume folder.
+**Description:** Get schema/stats for data files in Volume folder. format: parquet/csv/json/delta/file.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `volume_path` | `str` | Yes | Path to the volume folder. Can be: - "catalog/schema/volume/path" (e.g., "ai_dev_kit/demo/raw_data/customers") - "/Volumes/catalog/schema/volume/path" |
-| `format` | `str` | No | Data format - "parquet", "csv", "json", "delta", or "file" (just list files). |
-| `table_stat_level` | `str` | No | Level of statistics - "NONE", "SIMPLE" (default), or "DETAILED". |
-| `warehouse_id` | `str` | No | Optional warehouse ID. If not provided, auto-selects one. |
+| `volume_path` | `str` | Yes | — |
+| `format` | `str` | No | — |
+| `table_stat_level` | `str` | No | — |
+| `warehouse_id` | `str` | No | — |
 
-## list_warehouses
+## manage_warehouse
 
-**Description:** List all SQL warehouses in the workspace.
+**Description:** Manage SQL warehouses: list, get_best.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `str` | No | — |
 
