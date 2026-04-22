@@ -19,7 +19,7 @@ Create and manage Spark Declarative Pipelines and orchestration jobs.
 
 ## manage_job_runs
 
-**Description:** Manage job runs: run_now, get, get_output, cancel, list, wait.
+**Description:** Manage job runs: run_now, repair, get, get_output, cancel, list, wait.
 
 **Parameters:**
 
@@ -38,6 +38,10 @@ Create and manage Spark Declarative Pipelines and orchestration jobs.
 | `sql_params` | `Dict[str, str]` | No | — |
 | `dbt_commands` | `List[str]` | No | — |
 | `queue` | `Dict[str, Any]` | No | — |
+| `rerun_all_failed_tasks` | `bool` | No | — |
+| `rerun_dependent_tasks` | `bool` | No | — |
+| `rerun_tasks` | `List[str]` | No | — |
+| `latest_repair_id` | `int` | No | — |
 | `active_only` | `bool` | No | — |
 | `completed_only` | `bool` | No | — |
 | `limit` | `int` | No | — |
