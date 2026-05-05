@@ -19,6 +19,7 @@ Sync new content from the ai-dev-kit source repo, curate new pages, and deploy:
 ```bash
 # 1. Sync — dry run first, then write
 uv run scripts/sync_content.py
+uv run scripts/detect_drift.py             # Optional: check curated pages for stale upstream source
 uv run scripts/sync_content.py --write --force
 
 # 2. Find uncurated pages

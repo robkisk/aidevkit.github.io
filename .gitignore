@@ -26,3 +26,4 @@ docs/superpowers/
 .mcp.json
 .claude/
 .cursor/mcp.json
+/scripts/__pycache__
