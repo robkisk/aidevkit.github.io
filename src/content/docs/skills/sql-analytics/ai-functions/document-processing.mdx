@@ -10,7 +10,7 @@ sidebar:
 
 ## What You Can Build
 
-AI functions chain into multi-stage pipelines that take raw files from a landing volume and produce structured Delta output. You parse binary documents with `ai_parse_document`, classify them with `ai_classify`, extract flat fields with `ai_extract`, pull nested JSON with `ai_query`, and score similarity with `ai_similarity`. The result is a production-grade document processing architecture that runs entirely in SQL.
+AI functions chain into multi-stage pipelines that take raw files from a landing volume and produce structured Delta output. You parse binary documents with `ai_parse_document` v2, classify them with `ai_classify` v2 (JSON-string labels), extract flat or shallow-nested fields with `ai_extract` v2 (typed schemas), pull deeply nested JSON with `ai_query`, and score similarity with `ai_similarity`. The result is a production-grade document processing architecture that runs entirely in SQL.
 
 ## In Action
 
@@ -50,39 +50,44 @@ SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
 
 ### Classify document types after parsing
 
-> "Write a SQL query that classifies parsed documents into invoice, contract, or report categories."
+> "Write a SQL query that uses ai_classify v2 to bucket parsed documents into invoice, contract, or report categories."
 
 ```sql
 SELECT
   source_path,
   ai_classify(
     content,
-    ARRAY('invoice', 'contract', 'report', 'correspondence')
-  ) AS doc_type
+    '["invoice", "contract", "report", "correspondence"]',
+    MAP('version', '2.0')
+  ):response[0]::STRING AS doc_type
 FROM catalog.schema.parsed_chunks
 WHERE element_type = 'text';
 ```
 
-Run classification on the text content, not the raw binary. Use the first text element or a concatenation of the first few elements for a representative sample.
+Run classification on the text content, not the raw binary. v2 returns a VARIANT with `response` (an array of matched labels) and `error_message` -- use `:response[0]::STRING` to pull the top match. For ambiguous categories, swap the simple array for a label-with-description map (`'\{"billing_error": "Payment, invoice, or refund issues"\}'`) -- accuracy improves significantly with no extra cost.
 
-### Extract structured fields from invoices
+### Extract flat invoice headers with ai_extract v2
 
-> "Write a SQL query that extracts invoice number, vendor name, and total amount as structured JSON using ai_query with responseFormat."
+> "Write a SQL query that extracts invoice number, vendor name, and total amount with ai_extract v2 typed schemas."
 
 ```sql
 SELECT
   source_path,
-  ai_query(
-    'databricks-claude-sonnet-4',
-    CONCAT('Extract invoice fields and return ONLY valid JSON. Fields: invoice_number, vendor_name, total_amount, line_items (array of item_code, description, quantity, unit_price). Document: ', content),
-    responseFormat => '{"type":"json_object"}',
-    failOnError => false
+  ai_extract(
+    content,
+    '{
+      "invoice_number": {"type": "string"},
+      "vendor_name":    {"type": "string"},
+      "total_amount":   {"type": "number"},
+      "currency":       {"type": "enum", "labels": ["USD", "EUR", "GBP"]}
+    }',
+    MAP('version', '2.0', 'instructions', 'These are vendor invoices.')
   ) AS extraction
 FROM catalog.schema.parsed_chunks
 WHERE element_type = 'text';
 ```
 
-Use `ai_extract` for flat fields (person, location, date). Switch to `ai_query` with `responseFormat` when the output has nested arrays like line items. Always set `failOnError => false` in batch to avoid losing the entire job on one bad document.
+`ai_extract` v2 supports typed schemas (`string`, `number`, `boolean`, `enum`) up to 128 fields and 7 nesting levels. The result is a VARIANT with `response` (the extracted STRUCT) and `error_message`. Reach for `ai_query` with `responseFormat` only when the schema has deeply nested arrays like invoice line items that exceed `ai_extract`'s nesting limit. Always set `failOnError => false` in batch to avoid losing the entire job on one bad document.
 
 ### Store prompts in centralized config
 
@@ -104,7 +109,8 @@ Externalizing prompts into config means a prompt change is a config change, not 
 ## Watch Out For
 
 - **Passing raw binary directly to `ai_query`** -- always parse first with `ai_parse_document`, then feed the extracted text to `ai_query`. Raw binary content produces unusable output.
+- **Skipping `MAP('version', '2.0')`** -- v2 changed the response shape on `ai_classify`, `ai_extract`, and `ai_parse_document`. Pass the version map and read v2 paths (`:response`, `:error_message`); legacy callers still work but are on a deprecation track.
 - **Skipping `failOnError => false` in batch document pipelines** -- one corrupt PDF kills the entire query. Route errors to a sidecar table for manual review.
 - **Sending full document text to `ai_query` without truncation** -- context windows have hard limits. Use `LEFT(text, 6000)` to cap input length, or chunk documents and process each chunk separately.
-- **Using `ai_extract` when the output schema has nested arrays** -- `ai_extract` returns flat STRUCTs only. For invoice line items, nested address objects, or any array output, use `ai_query` with `responseFormat`.
+- **Reaching for `ai_query` when `ai_extract` v2 fits** -- v2 handles up to 128 fields and 7 nesting levels with typed schemas. Only escalate to `ai_query` with `responseFormat` when the output schema genuinely exceeds those limits (deeply nested arrays like line items).
 - **Hardcoding prompts in SQL** -- prompts belong in config files. When extraction quality degrades, you want to update a prompt without touching pipeline code.

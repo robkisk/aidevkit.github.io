@@ -129,23 +129,31 @@ WHERE ai_similarity(a.name, b.name) > 0.85;
 
 ### Chain functions in PySpark
 
-> "Write PySpark code that applies classification, extraction, and sentiment analysis to a support tickets table using expr()."
+> "Write PySpark code that applies ai_classify v2, ai_extract v2, and ai_analyze_sentiment to a support tickets table using expr()."
 
 ```python
 from pyspark.sql.functions import expr
 
 df = (spark.table("catalog.schema.support_tickets")
-    .withColumn("priority", expr("ai_classify(ticket_text, '[\"urgent\", \"not urgent\", \"spam\"]')"))
-    .withColumn("entities", expr("ai_extract(ticket_text, '[\"product\", \"error_code\"]')"))
+    .withColumn("priority",
+        expr("""ai_classify(ticket_text,
+                            '["urgent", "not urgent", "spam"]',
+                            MAP('version', '2.0'))"""))
+    .withColumn("entities",
+        expr("""ai_extract(ticket_text,
+                           '{"product": {"type": "string"},
+                             "error_code": {"type": "string"}}',
+                           MAP('version', '2.0'))"""))
     .withColumn("sentiment", expr("ai_analyze_sentiment(ticket_text)"))
 )
 ```
 
-All task-specific functions work through `expr()` in PySpark. This is the standard pattern for mixing AI functions into Spark DataFrame pipelines.
+All task-specific functions work through `expr()` in PySpark. The `MAP('version', '2.0')` opt-in selects the v2 response shape (VARIANT with `response` and `error_message`); the legacy form still works without it but is on a deprecation path. Access nested fields with `df.select("entities:response:product::STRING", ...)` or wrap in `from_json` for stronger typing.
 
 ## Watch Out For
 
-- **Using `ARRAY()` syntax instead of JSON strings** -- `ai_classify` and `ai_extract` now accept JSON string arguments, not SQL `ARRAY()`. Use `'["a", "b"]'` for simple labels and `'\{"key": "description"\}'` for labeled maps.
+- **Using `ARRAY()` syntax instead of JSON strings** -- v2 `ai_classify` and `ai_extract` accept JSON string arguments, not SQL `ARRAY()`. Use `'["a", "b"]'` for simple labels and `'\{"key": "description"\}'` for labeled maps. Pair with `MAP('version', '2.0')` to select the v2 response shape.
+- **Forgetting `MAP('version', '2.0')`** -- v2 returns VARIANT with `response` and `error_message` fields, which is what downstream `:response[0]::STRING` extraction patterns expect. Legacy callers without the version map still work but will eventually be deprecated.
 - **Ignoring the `options` MAP** -- both `ai_classify` and `ai_extract` accept `MAP('instructions', '...')` for domain context. On ambiguous data, adding instructions significantly improves accuracy for zero extra cost.
 - **Running AI functions without LIMIT during development** -- each row incurs Foundation Model API token costs. Start with `LIMIT 10`, validate the output shape, then remove the limit for production runs.
 - **Using `ai_translate` for unsupported languages** -- the function silently falls back to English or returns poor results. Check the supported list (`en`, `de`, `fr`, `it`, `pt`, `hi`, `es`, `th`) and use `ai_query` with a custom prompt for anything else.

@@ -125,7 +125,7 @@ Nested `joins` create a snowflake schema traversal. Query `Region` to roll up ac
 CREATE OR REPLACE VIEW catalog.schema.daily_growth
 WITH METRICS LANGUAGE YAML
 AS $$
-  version: 1.1
+  version: 0.1
   source: catalog.schema.orders
   dimensions:
     - name: date
@@ -148,7 +148,7 @@ AS $$
 $$
 ```
 
-Window measures enable trailing aggregations, running totals, and period-over-period calculations. `semiadditive: last` controls what happens when the window dimension isn't in the GROUP BY -- it returns the last value instead of summing across time. Derived measures reference window measures via `MEASURE()`.
+Window measures enable trailing aggregations, running totals, and period-over-period calculations. They are still an experimental feature and require `version: 0.1` even when the rest of your metric views run on `1.1`. `semiadditive: last` controls what happens when the window dimension isn't in the GROUP BY -- it returns the last value instead of summing across time. Derived measures reference window measures via `MEASURE()` and do not need their own `window` block.
 
 ### Pre-compute common aggregations with materialization
 

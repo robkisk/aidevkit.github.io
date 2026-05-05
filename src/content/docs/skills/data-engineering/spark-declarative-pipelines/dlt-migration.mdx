@@ -166,7 +166,7 @@ def sales_categorized():
 
 **After (SDP SQL):**
 ```sql
-CREATE OR REPLACE MATERIALIZED VIEW sales_categorized AS
+CREATE OR REFRESH MATERIALIZED VIEW sales_categorized AS
 SELECT
   *,
   CASE

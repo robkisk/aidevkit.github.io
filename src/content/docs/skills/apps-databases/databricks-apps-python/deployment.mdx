@@ -40,6 +40,29 @@ databricks apps get sales-dashboard
 
 ## More Patterns
 
+### Skipping non-deployable directories on upload
+
+> "Make sure my upload doesn't push node_modules or virtualenvs into the workspace."
+
+```python
+# SDK upload helpers (upload_folder / upload_to_workspace) auto-skip:
+#   node_modules, __pycache__, .venv, venv, .tox,
+#   .pytest_cache, .mypy_cache, .ruff_cache,
+#   dist, build, .eggs, *.egg-info
+#
+# databricks workspace import-dir does NOT apply these exclusions.
+```
+
+```bash
+# Option 1: clean before importing
+rm -rf node_modules __pycache__ .venv dist build
+databricks workspace import-dir . /Workspace/Users/you@company.com/apps/sales-dashboard
+
+# Option 2: use the SDK helpers which exclude these directories automatically
+```
+
+The SDK upload helpers strip the standard set of build artifacts and dependency directories before pushing to the workspace -- this keeps app uploads fast and stays under platform file limits. The bare `workspace import-dir` CLI command does not: it copies whatever you point it at. For Reflex, FastAPI+React, or any app with a frontend, ALWAYS clean the directory or switch to the SDK uploader before deploying. Otherwise you push the entire `node_modules` tree, blowing past the file count and size limits.
+
 ### Multi-environment deployment with Asset Bundles
 
 > "Set up a DABs pipeline to deploy the same app to dev and prod targets."
@@ -86,27 +109,11 @@ databricks apps deploy sales-dashboard \
   --source-code-path /Workspace/Users/you@company.com/apps/sales-dashboard
 ```
 
-This three-step cycle -- delete, upload, deploy -- ensures the workspace copy matches your local directory exactly. The app restarts automatically after deployment.
-
-### Service principal permission setup via DABs
-
-> "In a databricks.yml bundle, declare a SQL warehouse resource with auto-granted permissions."
-
-```yaml
-resources:
-  apps:
-    sales_dashboard:
-      resources:
-        - name: my-warehouse
-          sql_warehouse:
-            id: ${var.warehouse_id}
-            permission: CAN_USE
-```
-
-When you declare a resource with a `permission` field, the platform auto-grants that permission to the app's service principal on deployment. This eliminates the manual step of granting SP access through the UI.
+This three-step cycle -- delete, upload, deploy -- ensures the workspace copy matches your local directory exactly. The app restarts automatically after deployment. Remember the `import-dir` exclusion gap: if your local tree contains `node_modules` or `.venv`, scrub them first.
 
 ## Watch Out For
 
+- **Uploading `node_modules` or virtualenvs via `workspace import-dir`** -- the CLI uploader does not filter build artifacts. Clean the directory first or use the SDK upload helpers (`upload_folder` / `upload_to_workspace`) which auto-skip `node_modules`, `__pycache__`, `.venv`, `dist`, `build`, and similar directories.
 - **Running `bundle deploy` without `bundle run`** -- deployment pushes code and config, but the app does not start or apply new configuration until you also run `bundle run`. This is different from CLI deploys, which start automatically.
 - **Putting environment variables in `databricks.yml`** -- for Databricks Apps, environment variables belong in `src/app/app.yaml`, not the bundle config. The bundle manages the app resource; `app.yaml` manages the runtime.
 - **Exceeding the 10 MB file limit** -- the platform rejects individual files larger than 10 MB. If a dependency is too large, put it in `requirements.txt` and let the runtime install it instead of bundling it with your source.

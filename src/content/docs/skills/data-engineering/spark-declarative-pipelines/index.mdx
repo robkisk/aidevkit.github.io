@@ -134,15 +134,17 @@ Python uses `cloudFiles` format instead of `read_files()`. The `schemaLocation` 
 ```sql
 CREATE OR REFRESH STREAMING TABLE dim_customers;
 
-APPLY CHANGES INTO dim_customers
-FROM STREAM silver_customers
+CREATE FLOW customers_scd2_flow AS
+AUTO CDC INTO dim_customers
+FROM stream(silver_customers)
 KEYS (customer_id)
 APPLY AS DELETE WHEN operation = 'DELETE'
 SEQUENCE BY updated_at
+COLUMNS * EXCEPT (operation)
 STORED AS SCD TYPE 2;
 ```
 
-AUTO CDC tracks the full change history. Query current state with `WHERE __END_AT IS NULL`. For point-in-time analysis, filter with `WHERE __START_AT &lt;= '2025-06-01' AND (__END_AT IS NULL OR __END_AT &gt; '2025-06-01')`. Note the double underscores on `__START_AT` and `__END_AT`.
+AUTO CDC tracks the full change history. Query current state with `WHERE __END_AT IS NULL`. For point-in-time analysis, filter with `WHERE __START_AT &lt;= '2025-06-01' AND (__END_AT IS NULL OR __END_AT &gt; '2025-06-01')`. Note the double underscores on `__START_AT` and `__END_AT`. Put `APPLY AS DELETE WHEN` before `SEQUENCE BY` — the parser is strict about clause order.
 
 ## Watch Out For
 - **Missing `STREAM` keyword** — `FROM read_files(...)` is batch. `FROM STREAM read_files(...)` is incremental. Getting this wrong means the pipeline re-scans every file on every run, then errors on streaming tables.

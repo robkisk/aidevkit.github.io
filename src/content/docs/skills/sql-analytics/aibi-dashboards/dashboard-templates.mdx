@@ -44,20 +44,21 @@ A complete dashboard from schema inspection to a published URL -- following the 
     "name": "overview",
     "displayName": "NYC Taxi Overview",
     "pageType": "PAGE_TYPE_CANVAS",
+    "layoutVersion": "GRID_V1",
     "layout": [
       {
         "widget": {
           "name": "title",
           "multilineTextboxSpec": {"lines": ["## NYC Taxi Dashboard"]}
         },
-        "position": {"x": 0, "y": 0, "width": 6, "height": 1}
+        "position": {"x": 0, "y": 0, "width": 12, "height": 1}
       },
       {
         "widget": {
           "name": "subtitle",
           "multilineTextboxSpec": {"lines": ["Trip statistics and analysis"]}
         },
-        "position": {"x": 0, "y": 1, "width": 6, "height": 1}
+        "position": {"x": 0, "y": 1, "width": 12, "height": 1}
       },
       {
         "widget": {
@@ -79,7 +80,7 @@ A complete dashboard from schema inspection to a published URL -- following the 
             "frame": {"title": "Total Trips", "showTitle": true}
           }
         },
-        "position": {"x": 0, "y": 2, "width": 2, "height": 3}
+        "position": {"x": 0, "y": 2, "width": 4, "height": 3}
       },
       {
         "widget": {
@@ -101,7 +102,7 @@ A complete dashboard from schema inspection to a published URL -- following the 
             "frame": {"title": "Average Fare", "showTitle": true}
           }
         },
-        "position": {"x": 2, "y": 2, "width": 2, "height": 3}
+        "position": {"x": 4, "y": 2, "width": 4, "height": 3}
       },
       {
         "widget": {
@@ -123,7 +124,7 @@ A complete dashboard from schema inspection to a published URL -- following the 
             "frame": {"title": "Average Distance", "showTitle": true}
           }
         },
-        "position": {"x": 4, "y": 2, "width": 2, "height": 3}
+        "position": {"x": 8, "y": 2, "width": 4, "height": 3}
       },
       {
         "widget": {
@@ -149,7 +150,7 @@ A complete dashboard from schema inspection to a published URL -- following the 
             "frame": {"title": "Trips by Pickup ZIP", "showTitle": true}
           }
         },
-        "position": {"x": 0, "y": 5, "width": 6, "height": 5}
+        "position": {"x": 0, "y": 5, "width": 12, "height": 5}
       },
       {
         "widget": {
@@ -177,7 +178,7 @@ A complete dashboard from schema inspection to a published URL -- following the 
             "frame": {"title": "Top ZIP Codes", "showTitle": true}
           }
         },
-        "position": {"x": 0, "y": 10, "width": 6, "height": 5}
+        "position": {"x": 0, "y": 10, "width": 12, "height": 5}
       }
     ]
   }]
@@ -185,10 +186,11 @@ A complete dashboard from schema inspection to a published URL -- following the 
 ```
 
 **Key decisions:**
+- **`layoutVersion: GRID_V1` next to `pageType`** -- mandatory on every page. The 12-column grid only honors widget widths and heights when `GRID_V1` is declared.
 - **One dataset per domain** -- `summary` for aggregate KPIs, `by_zip` for dimensional breakdown. Datasets own their SQL; widgets just reference columns.
 - **`disaggregated: true` for pre-aggregated data** -- the summary dataset returns one row, so counters use `disaggregated: true` and reference the column directly. No widget-level aggregation needed.
 - **LIMIT 10 in the dataset SQL** -- the bar chart and table both reference `by_zip`. Capping at 10 keeps the chart readable and avoids rendering thousands of bars.
-- **Layout fills width 6 at every row** -- three KPIs at width 2 (2+2+2=6), chart and table at full width 6. No gaps allowed in the grid.
+- **Every row sums to width 12** -- three KPIs at width 4 (4+4+4=12), chart and table at full width 12. The 12-column grid does not tolerate gaps.
 
 Deploy this template:
 
@@ -238,12 +240,14 @@ The full sales analytics template includes global filters that cross-cut all dat
       "name": "sales_overview",
       "displayName": "Sales Overview",
       "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1",
       "layout": []
     },
     {
       "name": "global_filters",
       "displayName": "Filters",
       "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1",
       "layout": [
         {
           "widget": {
@@ -265,7 +269,7 @@ The full sales analytics template includes global filters that cross-cut all dat
               "frame": {"showTitle": true, "title": "Date Range"}
             }
           },
-          "position": {"x": 0, "y": 0, "width": 2, "height": 2}
+          "position": {"x": 0, "y": 0, "width": 4, "height": 2}
         },
         {
           "widget": {
@@ -286,7 +290,7 @@ The full sales analytics template includes global filters that cross-cut all dat
               "frame": {"showTitle": true, "title": "Region"}
             }
           },
-          "position": {"x": 2, "y": 0, "width": 2, "height": 2}
+          "position": {"x": 4, "y": 0, "width": 4, "height": 2}
         },
         {
           "widget": {
@@ -307,7 +311,7 @@ The full sales analytics template includes global filters that cross-cut all dat
               "frame": {"showTitle": true, "title": "Department"}
             }
           },
-          "position": {"x": 4, "y": 0, "width": 2, "height": 2}
+          "position": {"x": 8, "y": 0, "width": 4, "height": 2}
         }
       ]
     }
@@ -315,7 +319,7 @@ The full sales analytics template includes global filters that cross-cut all dat
 }
 ```
 
-The `layout` array on the canvas page holds KPIs, charts, and tables (shown in full in the JSON Reference page). The filter page binds region and department across both datasets. A filter only applies to datasets that include the filter column -- if you add a dataset without a `region` column, the region filter ignores it automatically.
+Both pages declare `"layoutVersion": "GRID_V1"`. The `layout` array on the canvas page holds KPIs, charts, and tables (shown in full in the JSON Reference page). The filter page places three filters side-by-side (4+4+4=12) and binds region and department across both datasets. A filter only applies to datasets that include the filter column -- if you add a dataset without a `region` column, the region filter ignores it automatically.
 
 ### Deployment and lifecycle
 
@@ -346,6 +350,7 @@ Use `publish=True` on `create_or_update` to publish immediately. For updates to 
 
 ## Watch Out For
 - **Skipping query validation** -- always test every dataset SQL via `execute_sql` before building the JSON. Untested queries cause "Invalid widget definition" errors at render time, not at deploy time. The dashboard deploys successfully but shows broken widgets.
+- **Missing `layoutVersion: GRID_V1`** -- every page (canvas and filter) needs `"layoutVersion": "GRID_V1"` next to `pageType`. Without it, the dashboard renders on the legacy grid and ignores the position widths and heights.
 - **`queryLines` must be an array** -- not a single string. `"queryLines": "SELECT ..."` causes a parse failure. Use `["SELECT ... ", "FROM ... "]` with each line as an array element.
-- **Grid gaps** -- every row must sum to width 6. Three KPIs at width 2 (6 total) is correct. Two KPIs at width 2 (4 total) leaves a gap and breaks the layout.
+- **Grid gaps** -- every row must sum to width 12 on the GRID_V1 layout. Three KPIs at width 4 (12 total) is correct. Two KPIs at width 4 (8 total) leaves a gap and breaks the layout.
 - **Percent values in data** -- counter widgets with `number-percent` format expect values between 0 and 1, not 0 and 100. A profit margin of 0.45 displays as 45%. A value of 45 displays as 4,500%.

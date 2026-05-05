@@ -1,7 +1,7 @@
 ---
 curated: true
 title: Document Processing Pipeline
-description: Build end-to-end document processing pipelines using AI Functions to parse, classify, extract, and match documents at scale.
+description: Build end-to-end document processing pipelines using AI Functions v2 to parse, classify, extract, and match documents at scale.
 sidebar:
   order: 4
 ---
@@ -10,11 +10,11 @@ sidebar:
 
 ## What You Can Build
 
-A multi-stage document processing pipeline that parses PDFs and images, classifies document types, extracts structured fields, and matches entities against master data -- all using SQL AI Functions inside a Spark Declarative Pipeline. Each stage uses the cheapest function that can handle the job: `ai_parse_document` for OCR, `ai_classify` for routing, `ai_extract` for flat fields, and `ai_query` only when you need nested JSON output.
+A multi-stage document processing pipeline that parses PDFs and images, classifies document types, extracts structured fields, and matches entities against master data -- all using SQL AI Functions inside a Spark Declarative Pipeline. Each stage uses the cheapest function that can handle the job: `ai_parse_document` for OCR, `ai_classify` v2 for routing, `ai_extract` v2 for flat or nested fields, and `ai_query` only when the output schema exceeds `ai_extract` limits (128 fields, 7 nesting levels).
 
 ## In Action
 
-> "Write a SDP pipeline in Python that parses documents from a landing volume, classifies them, extracts invoice fields, and routes errors to a sidecar table."
+> "Write a SDP pipeline in Python that parses documents from a landing volume, classifies them with ai_classify v2, extracts invoice fields with ai_extract v2 typed schemas, and routes errors to a sidecar table."
 
 ```python
 import dlt
@@ -30,32 +30,74 @@ PROMPT   = CFG["prompts"]["extract_invoice"]
 def raw_parsed():
     return (
         spark.read.format("binaryFile").load(CFG["volumes"]["input"])
-        .withColumn("parsed", expr("ai_parse_document(content)"))
+        .withColumn("parsed", expr("ai_parse_document(content, MAP('version', '2.0'))"))
+        .withColumn("text_blocks", expr("""
+            concat_ws('\n', transform(
+                parsed:document:elements,
+                e -> e:content::STRING
+            ))
+        """))
         .selectExpr(
             "path",
-            "parsed:pages[*].elements[*].content AS text_blocks",
-            "parsed:error AS parse_error",
+            "text_blocks",
+            "parsed:error_status AS parse_error",
         )
         .filter("parse_error IS NULL")
     )
 
-# Stage 2: Classify document type
+# Stage 2: Classify document type with ai_classify v2
 @dlt.table(comment="Document type classification")
 def classified_docs():
     return (
         dlt.read("raw_parsed")
         .withColumn(
             "doc_type",
-            expr("ai_classify(text_blocks, array('invoice', 'purchase_order', 'receipt', 'contract', 'other'))")
+            expr("""
+                ai_classify(
+                    text_blocks,
+                    '["invoice", "purchase_order", "receipt", "contract", "other"]',
+                    MAP('version', '2.0')
+                ):response[0]::STRING
+            """)
         )
     )
 
-# Stage 3: Extract structured fields
-@dlt.table(comment="Invoice fields extracted with ai_query for nested JSON")
-def extracted_docs():
+# Stage 3a: Flat field extraction with ai_extract v2 typed schema
+@dlt.table(comment="Flat header fields extracted from invoices")
+def extracted_flat():
     return (
         dlt.read("classified_docs")
         .filter("doc_type = 'invoice'")
+        .filter("text_blocks IS NOT NULL")
+        .withColumn(
+            "result",
+            expr("""
+                ai_extract(
+                    text_blocks,
+                    '{
+                        "invoice_number": {"type": "string"},
+                        "vendor_name":    {"type": "string"},
+                        "issue_date":     {"type": "string", "description": "dd/mm/yyyy"},
+                        "total_amount":   {"type": "number"},
+                        "tax_id":         {"type": "string"}
+                     }',
+                    MAP('version', '2.0')
+                )
+            """)
+        )
+        .selectExpr(
+            "path", "doc_type", "text_blocks",
+            "result:response AS header",
+            "result:error_message::STRING AS extract_error"
+        )
+    )
+
+# Stage 3b: Nested line items via ai_query (last resort)
+@dlt.table(comment="Nested line items -- ai_query used only for the array schema")
+def extracted_line_items():
+    return (
+        dlt.read("extracted_flat")
+        .filter("extract_error IS NULL")
         .withColumn(
             "ai_response",
             expr(f"""
@@ -68,38 +110,44 @@ def extracted_docs():
             """)
         )
         .withColumn(
-            "invoice",
+            "line_items",
             from_json(
                 col("ai_response.response"),
-                "STRUCT<invoice_number:STRING, vendor_name:STRING, issue_date:STRING, "
-                "total_amount:DOUBLE, line_items:ARRAY<STRUCT<item_code:STRING, "
-                "description:STRING, quantity:DOUBLE, unit_price:DOUBLE, total:DOUBLE>>>"
+                "STRUCT<line_items:ARRAY<STRUCT<item_code:STRING, description:STRING, "
+                "quantity:DOUBLE, unit_price:DOUBLE, total:DOUBLE>>>"
             )
         )
-        .select("path", "doc_type", "invoice", col("ai_response.error").alias("extraction_error"))
+        .select("path", "doc_type", "header", "line_items",
+                col("ai_response.error").alias("extraction_error"))
     )
 
 # Stage 4: Success output
 @dlt.table(comment="Processed documents ready for downstream consumption")
 def processed_docs():
-    return dlt.read("extracted_docs").filter("extraction_error IS NULL")
+    return dlt.read("extracted_line_items").filter("extraction_error IS NULL")
 
 # Stage 5: Error sidecar
 @dlt.table(comment="Failed extractions for review and reprocess")
 def processing_errors():
     return (
-        dlt.read("extracted_docs")
-        .filter("extraction_error IS NOT NULL")
-        .select("path", "doc_type", col("extraction_error").alias("error"))
+        dlt.read("extracted_flat")
+        .filter("extract_error IS NOT NULL")
+        .select("path", "doc_type", col("extract_error").alias("error"))
+        .unionByName(
+            dlt.read("extracted_line_items")
+            .filter("extraction_error IS NOT NULL")
+            .select("path", "doc_type", col("extraction_error").alias("error"))
+        )
     )
 ```
 
 **Key decisions:**
-- **`ai_parse_document` first, not `ai_query`** -- it handles OCR natively without requiring a model endpoint, and the output is structured for downstream extraction
-- **`ai_classify` for routing, not `ai_query`** -- task-specific functions are faster and cheaper because they use optimized endpoints
-- **`ai_query` only for nested JSON** -- `ai_extract` handles flat fields well, but cannot produce nested arrays like `line_items`. Reach for `ai_query` with `responseFormat` only when you need structured nesting
-- **`failOnError => false` everywhere** -- a single malformed document should not kill the entire batch. Route errors to a sidecar table for retry
-- **`LEFT(text_blocks, 6000)` caps input length** -- long documents silently truncate or exceed context windows. Truncate explicitly
+- **`ai_parse_document` with `MAP('version', '2.0')`** -- the v2 schema returns elements under `parsed:document:elements` and surfaces errors at `parsed:error_status`. Always use v2 for new pipelines; the legacy `parsed:pages[*].elements[*]` shape is going away.
+- **`ai_classify` v2 with JSON-string labels** -- pass `'["invoice", ...]'` plus `MAP('version', '2.0')`, then extract the top label with `:response[0]::STRING`. The legacy `array(...)` form is deprecated; v2 returns VARIANT with `response` and `error_message` fields.
+- **`ai_extract` v2 with typed schema** -- declare types (`string`, `number`, `enum`) so downstream tables get clean STRUCTs instead of raw VARIANT. Up to 128 fields and 7 nesting levels, which covers most invoice headers without falling back to `ai_query`.
+- **`ai_query` only when schema exceeds `ai_extract` limits** -- nested arrays like `line_items` blow past 7 nesting levels. That is the one case where `ai_query` with `responseFormat` is the right tool.
+- **`failOnError => false` everywhere** -- a single malformed document should not kill the entire batch. Route errors to a sidecar table for retry.
+- **`LEFT(text_blocks, 6000)` caps input length** -- long documents silently truncate or exceed context windows. Truncate explicitly.
 
 ## More Patterns
 
@@ -136,7 +184,7 @@ This pure-SQL approach is useful when you want to chunk documents for RAG or vec
 
 ### Streaming ingestion with incremental parsing
 
-> "Write PySpark to set up a streaming job that parses new documents as they land in a volume."
+> "Write PySpark to set up a streaming job that parses new documents as they land in a volume, using v2 schema and exactly-once checkpoints."
 
 ```python
 from pyspark.sql.functions import col, current_timestamp, expr
@@ -151,7 +199,12 @@ files_df = (
 parsed_df = (
     files_df
     .repartition(8, expr("crc32(path) % 8"))
-    .withColumn("parsed", expr("ai_parse_document(content)"))
+    .withColumn("parsed", expr("""
+        ai_parse_document(content, map(
+            'version', '2.0',
+            'descriptionElementTypes', '*'
+        ))
+    """))
     .withColumn("parsed_at", current_timestamp())
     .select("path", "parsed", "parsed_at")
 )
@@ -159,13 +212,14 @@ parsed_df = (
 (
     parsed_df.writeStream.format("delta")
     .outputMode("append")
-    .option("checkpointLocation", "/Volumes/catalog/schema/checkpoints/parse")
+    .option("checkpointLocation", "/Volumes/catalog/schema/checkpoints/01_parse")
+    .option("mergeSchema", "true")
     .trigger(availableNow=True)
     .toTable("catalog.schema.parsed_documents_raw")
 )
 ```
 
-The `repartition` call distributes documents across partitions to parallelize `ai_parse_document` calls. Without it, a single partition processes all files sequentially. `trigger(availableNow=True)` processes all pending files then stops -- useful for scheduled batch jobs that run on a cadence.
+`repartition` by file hash parallelizes `ai_parse_document` across workers; without it, a single partition processes files sequentially. `trigger(availableNow=True)` processes all pending files then stops -- ideal for scheduled batch jobs. The checkpoint guarantees exactly-once processing so re-runs do not re-parse unchanged documents. For a production-ready two-stage variant that separates parse from text extraction with independent checkpoints, see the [bundle example](https://github.com/databricks/bundle-examples/tree/main/contrib/job_with_ai_parse_document).
 
 ### Fuzzy vendor matching with ai_similarity
 
@@ -189,6 +243,8 @@ ORDER BY match_score DESC;
 ## Watch Out For
 
 - **Passing raw binary to `ai_query` produces garbage** -- always parse documents with `ai_parse_document` first, then feed the extracted text to `ai_query` or `ai_extract`. Binary content is not text.
-- **`ai_extract` cannot handle nested arrays** -- it returns flat key-value pairs. For invoice line items, order details, or any array-of-structs, you must use `ai_query` with `responseFormat`.
+- **Skipping `MAP('version', '2.0')` on v2 functions** -- `ai_parse_document`, `ai_classify`, and `ai_extract` all gained v2 schemas with a different response shape (`:response`, `:error_message`, `parsed:document:elements`). Pass `MAP('version', '2.0')` and read v2 paths; legacy callers still work but will eventually break.
+- **`ai_extract` only when fields exceed 128 or nesting exceeds 7 levels** -- otherwise reach for `ai_extract` v2 with a typed schema. Falling back to `ai_query` for flat fields wastes endpoint quota and produces less consistent output than the optimized task-specific endpoint.
+- **`explode` on a VARIANT** -- `explode()` requires `ARRAY`. Use `variant_get(doc, '$.document.elements', 'ARRAY<VARIANT>')` to cast before exploding when chunking for RAG.
 - **`ai_parse_document` is the bottleneck** -- it is the slowest stage in the pipeline. Repartition before calling it to parallelize across executors, and use `trigger(availableNow=True)` for batch scheduling.
 - **Prompt drift across config changes** -- externalizing prompts to a `config.yml` makes them versionable and testable. Hardcoded prompts scattered across pipeline stages are hard to audit and easy to break.

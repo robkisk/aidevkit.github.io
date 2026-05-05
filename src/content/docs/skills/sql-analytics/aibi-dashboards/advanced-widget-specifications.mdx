@@ -51,7 +51,7 @@ Beyond the core bar/line/pie, AI/BI dashboards support area charts for cumulativ
       "frame": {"title": "Revenue & Growth Rate", "showTitle": true}
     }
   },
-  "position": {"x": 0, "y": 0, "width": 6, "height": 5}
+  "position": {"x": 0, "y": 0, "width": 12, "height": 5}
 }
 ```
 
@@ -59,7 +59,7 @@ Beyond the core bar/line/pie, AI/BI dashboards support area charts for cumulativ
 - **`version: 1`** for combo charts -- not version 3 like other charts. Combo has its own spec version.
 - **`y.primary` and `y.secondary`** split the dual axes -- primary renders as bars, secondary as a line. Each gets its own scale, so revenue in millions and growth rate as a decimal coexist without distortion.
 - **`label: show: false`** -- label overlays on combo charts create visual noise. Turn them off unless the chart has very few data points.
-- **Full-width at height 5** -- combo charts need room for two legends and axis labels. Width 6 is the minimum for readability.
+- **Full-width at height 5** -- combo charts need room for two legends and axis labels on the 12-column grid. Drop to width 6 only when pairing side-by-side with another chart.
 
 ## More Patterns
 
@@ -99,11 +99,11 @@ Beyond the core bar/line/pie, AI/BI dashboards support area charts for cumulativ
       "frame": {"title": "Revenue vs Returns", "showTitle": true}
     }
   },
-  "position": {"x": 0, "y": 0, "width": 6, "height": 5}
+  "position": {"x": 0, "y": 0, "width": 12, "height": 5}
 }
 ```
 
-Area charts share the same `version: 3` and encoding structure as line charts. Use them when the filled area helps communicate cumulative magnitude -- revenue vs cost, inflow vs outflow. For simple trend lines, stick with `widgetType: "line"`.
+Area charts share the same `version: 3` and encoding structure as line charts. Use them when the filled area helps communicate cumulative magnitude -- revenue vs cost, inflow vs outflow. For simple trend lines, stick with `widgetType: "line"`. Width 12 for full-row trends; width 6 when pairing with a second chart on the same row.
 
 ### Scatter plot with bubble sizing
 
@@ -138,11 +138,11 @@ Area charts share the same `version: 3` and encoding structure as line charts. U
       "frame": {"title": "Returns Analysis", "showTitle": true}
     }
   },
-  "position": {"x": 0, "y": 0, "width": 6, "height": 6}
+  "position": {"x": 0, "y": 0, "width": 12, "height": 6}
 }
 ```
 
-The `size` encoding is optional -- without it you get a standard scatter. Both `x` and `y` can be temporal or quantitative. Keep color categories under 8 for readability.
+The `size` encoding is optional -- without it you get a standard scatter. Both `x` and `y` can be temporal or quantitative. Keep color categories under 8 for readability. Use full width 12 for scatter plots so points have room to spread.
 
 ### Choropleth map
 
@@ -188,11 +188,11 @@ The `size` encoding is optional -- without it you get a standard scatter. Both `
       "frame": {"title": "Revenue by State", "showTitle": true}
     }
   },
-  "position": {"x": 0, "y": 0, "width": 6, "height": 6}
+  "position": {"x": 0, "y": 0, "width": 12, "height": 6}
 }
 ```
 
-Choropleth maps use `version: 1`. The `admin0` level fixes the country (use `"type": "value"`), and `admin1` maps your data column to states/provinces (use `"type": "field"`). Geographic roles can be `admin0-name`, `admin1-name`, `admin1-iso`, etc. Unlike other chart types, choropleth-map supports `scheme`, `colorRamp`, and `mappings` in the color scale.
+Choropleth maps use `version: 1`. The `admin0` level fixes the country (use `"type": "value"`), and `admin1` maps your data column to states/provinces (use `"type": "field"`). Geographic roles can be `admin0-name`, `admin1-name`, `admin1-iso`, etc. Unlike other chart types, choropleth-map supports `scheme`, `colorRamp`, and `mappings` in the color scale. Full width 12 gives the map enough resolution for state-level data.
 
 ## Watch Out For
 - **Combo chart version** -- combo uses `version: 1`, not `version: 3`. Using version 3 produces an invalid widget.

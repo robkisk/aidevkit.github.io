@@ -21,6 +21,7 @@ Filters make dashboards interactive -- users slice data by region, date range, d
   "name": "global_filters",
   "displayName": "Filters",
   "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+  "layoutVersion": "GRID_V1",
   "layout": [
     {
       "widget": {
@@ -55,17 +56,18 @@ Filters make dashboards interactive -- users slice data by region, date range, d
           "frame": {"showTitle": true, "title": "Region"}
         }
       },
-      "position": {"x": 0, "y": 0, "width": 2, "height": 2}
+      "position": {"x": 0, "y": 0, "width": 4, "height": 2}
     }
   ]
 }
 ```
 
 **Key decisions:**
-- **`PAGE_TYPE_GLOBAL_FILTERS`** -- this is a dedicated filter page, not a canvas page with filter widgets. Global filters affect every dataset that contains the filter field, across all pages.
+- **`PAGE_TYPE_GLOBAL_FILTERS` + `layoutVersion: GRID_V1`** -- a dedicated filter page declares both. The 12-column grid with `GRID_V1` is mandatory; without it, position widths and heights are ignored.
 - **One query per dataset** -- each `queries` entry binds the filter to a specific dataset. The `queryName` in `encodings.fields` must match the query `name` exactly. Datasets not listed are not filtered.
 - **`disaggregated: false`** always -- filter queries aggregate to get distinct values. Using `true` would show every raw row in the dropdown.
 - **`version: 2`** for all filter types -- not version 3. The widget types are `filter-multi-select`, `filter-single-select`, and `filter-date-range-picker`. Using `widgetType: "filter"` alone causes an error.
+- **Width 4, height 2** -- standard filter sizing on the 12-column grid. Three filters fit per row (4+4+4=12).
 - **`frame` with `showTitle: true`** -- always include the frame. Without it, users cannot tell what the filter controls.
 
 ## More Patterns
@@ -79,6 +81,7 @@ Filters make dashboards interactive -- users slice data by region, date range, d
   "name": "platform_breakdown",
   "displayName": "Platform Breakdown",
   "pageType": "PAGE_TYPE_CANVAS",
+  "layoutVersion": "GRID_V1",
   "layout": [
     {
       "widget": {
@@ -100,7 +103,7 @@ Filters make dashboards interactive -- users slice data by region, date range, d
           "frame": {"showTitle": true, "title": "Platform"}
         }
       },
-      "position": {"x": 4, "y": 0, "width": 2, "height": 2}
+      "position": {"x": 8, "y": 0, "width": 4, "height": 2}
     }
   ]
 }
@@ -146,7 +149,7 @@ Page-level filters go on a `PAGE_TYPE_CANVAS` page alongside your widgets. They 
       "frame": {"showTitle": true, "title": "Date Range"}
     }
   },
-  "position": {"x": 0, "y": 0, "width": 2, "height": 2}
+  "position": {"x": 0, "y": 0, "width": 4, "height": 2}
 }
 ```
 
@@ -181,6 +184,7 @@ A filter only applies to datasets that contain the filter field. To exclude a da
 
 ## Watch Out For
 - **`widgetType: "filter"`** does not exist -- use `filter-multi-select`, `filter-single-select`, or `filter-date-range-picker`. The bare `"filter"` type causes "Invalid widget definition."
+- **Missing `layoutVersion: GRID_V1`** -- both global filter pages and canvas pages with page-level filters need `"layoutVersion": "GRID_V1"` next to `pageType`. Without it, the filter renders on the legacy grid and ignores the position widths.
 - **`associative_filter_predicate_group`** -- do not use this internal expression in filter queries. It produces `UNRESOLVED_COLUMN` SQL errors at runtime. Use a simple field expression: `\{"name": "field", "expression": "\`field\`"\}`.
 - **`queryName` mismatch** -- each `queryName` in `encodings.fields` must exactly match a `name` in the `queries` array. A typo means the filter silently does nothing for that dataset.
 - **Filters on high-cardinality columns** -- a multi-select dropdown with 10,000 values is unusable. Aggregate to a higher level (region instead of store ID) or use `filter-single-select` with a search box for large lists.

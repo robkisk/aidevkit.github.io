@@ -1,7 +1,7 @@
 ---
 curated: true
 title: MCP Approach
-description: Create, run, and iterate on SDP pipelines using MCP tools for rapid prototyping without Asset Bundles.
+description: Create, run, and iterate on SDP pipelines using consolidated MCP tools for rapid prototyping without Asset Bundles.
 sidebar:
   order: 10
 ---
@@ -10,21 +10,23 @@ sidebar:
 
 ## What You Can Build
 
-The MCP (Model Context Protocol) approach lets you create and run pipelines directly from your AI coding assistant without Asset Bundles. Ask it to create a pipeline and it will upload your files, call `create_or_update_pipeline`, run the pipeline, and verify the output tables — all in one conversation. This is the fastest path from idea to running pipeline for prototyping and experimentation.
+Skip Asset Bundles entirely when you just want to test pipeline logic. Your AI coding assistant uploads your local files, calls `manage_pipeline` to create the pipeline, runs it, and verifies the output tables — all in one conversation. This is the fastest path from idea to a running pipeline. Use it for prototyping, demos, and quick experiments; reach for Asset Bundles only when you need multi-environment deployment or CI/CD.
 
 ## In Action
 
-> "Create a serverless pipeline called my_orders_pipeline from local SQL and Python files, run it, and verify the output"
+> "Create a serverless pipeline called my_orders_pipeline from local SQL files in /tmp/my_pipeline, run it with full refresh, and validate the output tables"
 
 ```python
 # Step 1: Upload pipeline files to the workspace
-upload_folder(
-    local_folder="/path/to/my_pipeline",
-    workspace_folder="/Workspace/Users/user@example.com/my_pipeline"
+manage_workspace_files(
+    action="upload",
+    local_path="/tmp/my_pipeline",
+    workspace_path="/Workspace/Users/user@example.com/my_pipeline"
 )
 
-# Step 2: Create the pipeline and start a run
-result = create_or_update_pipeline(
+# Step 2: Create the pipeline and run it in one call
+result = manage_pipeline(
+    action="create_or_update",
     name="my_orders_pipeline",
     root_path="/Workspace/Users/user@example.com/my_pipeline",
     catalog="my_catalog",
@@ -34,18 +36,29 @@ result = create_or_update_pipeline(
         "/Workspace/Users/user@example.com/my_pipeline/silver/clean_orders.sql",
         "/Workspace/Users/user@example.com/my_pipeline/gold/daily_summary.sql"
     ],
-    start_run=True
+    start_run=True,
+    wait_for_completion=True,
+    full_refresh=True
 )
+
+# Step 3: Validate output data
+if result["success"]:
+    stats = get_table_stats_and_schema(
+        catalog="my_catalog",
+        schema="my_schema",
+        table_names=["bronze_*", "silver_*", "gold_*"]
+    )
 ```
 
 **Key decisions:**
-- **MCP for prototyping, Asset Bundles for production** — the MCP approach skips bundle configuration entirely. This is faster for experiments but lacks multi-environment deployment, CI/CD integration, and version control of pipeline settings.
-- **`workspace_file_paths` lists every file** — unlike Asset Bundles that use glob patterns, MCP requires explicit file paths. Add or remove files by updating this list.
-- **`start_run=True` for immediate execution** — the pipeline creates and runs in one call. Set to `False` if you want to inspect the config before running.
+- **`manage_pipeline(action="create_or_update")` is idempotent** — it creates the pipeline if missing, updates it in place if it exists. Using the same name twice never duplicates.
+- **`get_table_stats_and_schema` over manual SQL counts** — returns schema, row counts, and column stats in one call. Don't use `execute_sql` with COUNT queries for validation.
+- **`workspace_file_paths` lists every file** — unlike Asset Bundles' glob patterns, MCP requires explicit paths. Add or remove files by updating this list.
+- **`full_refresh=True` reprocesses everything** — for first runs and schema changes. Skip for incremental runs.
 
 ## More Patterns
 
-### Write pipeline files locally first
+### Write pipeline files locally, then upload
 > "Set up a local folder structure with SQL and Python files before uploading to the workspace"
 
 ```
@@ -80,50 +93,89 @@ FROM STREAM read_files(
 from pyspark import pipelines as dp
 from pyspark.sql.functions import col, current_timestamp
 
-schema_location_base = spark.conf.get("schema_location_base")
-
 @dp.table(name="bronze_events", cluster_by=["event_date"])
 def bronze_events():
     return (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
-        .option("cloudFiles.schemaLocation", f"{schema_location_base}/bronze_events")
         .load("/Volumes/catalog/schema/raw/events/")
         .withColumn("_ingested_at", current_timestamp())
         .withColumn("_source_file", col("_metadata.file_path"))
     )
 ```
 
-Write and test your SQL and Python files locally, then upload the entire folder in one call. The folder structure does not matter to the pipeline — it processes all files listed in `workspace_file_paths`.
+Edit and test files locally, then upload the entire folder in one call. The folder structure does not affect the pipeline — only the explicit `workspace_file_paths` list matters.
 
-### Handle run results and errors
-> "Check if the pipeline run succeeded and get detailed error information if it failed"
+### Iterate on a failing pipeline
+> "The pipeline failed. Find the error, then re-upload my fixed file and re-run."
 
 ```python
-# Check the result
-if result["success"]:
-    # Verify output tables exist and have data
-    stats = get_table_details(
-        catalog="my_catalog",
-        schema="my_schema",
-        table_names=["bronze_orders", "silver_orders", "gold_daily_summary"]
-    )
-else:
-    # result["message"] includes suggested next steps
-    print(result["message"])
+# Get detailed pipeline state and recent error events
+manage_pipeline(action="get", pipeline_id=result["pipeline_id"])
 
-    # Get detailed pipeline state and recent events
-    details = get_pipeline(pipeline_id=result["pipeline_id"])
-    print(details.get("recent_events"))
+# Or get events directly with severity filter
+manage_pipeline_run(
+    action="get_events",
+    pipeline_id=result["pipeline_id"],
+    event_log_level="ERROR",
+    max_results=10
+)
+
+# Fix the file locally, then re-upload and re-run
+manage_workspace_files(
+    action="upload",
+    local_path="/tmp/my_pipeline/silver/clean_orders.sql",
+    workspace_path="/Workspace/Users/user@example.com/my_pipeline/silver/clean_orders.sql"
+)
+
+manage_pipeline(
+    action="create_or_update",
+    name="my_orders_pipeline",
+    root_path="/Workspace/Users/user@example.com/my_pipeline",
+    catalog="my_catalog",
+    schema="my_schema",
+    workspace_file_paths=[...],
+    start_run=True
+)
 ```
 
-The `create_or_update_pipeline` response includes `success`, `state`, `errors`, and a human-readable `message` with suggested fixes. The `get_pipeline` tool provides deeper diagnostics including recent events and error stack traces. Always verify output tables after a successful run — a pipeline can complete with zero rows if the source path is wrong.
+The iteration loop is: read the error from `result["message"]` or `manage_pipeline(action="get")`, fix the file locally, re-upload, re-run. The same `name` keeps updating in place — no need to delete and recreate.
 
-### Add advanced settings
-> "Create a pipeline with development mode, continuous execution, and custom Spark configuration using extra_settings"
+### Run an existing pipeline separately
+> "I already have a pipeline. Just trigger a new run with full refresh and wait for it."
 
 ```python
-result = create_or_update_pipeline(
+manage_pipeline_run(
+    action="start",
+    pipeline_id="abc-123",
+    full_refresh=True,
+    wait=True,
+    timeout=1800
+)
+
+# Or refresh only specific tables
+manage_pipeline_run(
+    action="start",
+    pipeline_id="abc-123",
+    refresh_selection=["silver_orders", "gold_daily_summary"]
+)
+
+# Validate without writing data
+manage_pipeline_run(
+    action="start",
+    pipeline_id="abc-123",
+    validate_only=True
+)
+```
+
+`manage_pipeline_run` handles run lifecycle independent of the pipeline definition. Use `validate_only=True` to dry-run a config check without consuming compute, and `refresh_selection` to reprocess specific tables only.
+
+### Add advanced settings via extra_settings
+> "Create a pipeline with development mode, continuous execution, and pipeline-level Spark configuration"
+
+```python
+manage_pipeline(
+    action="create_or_update",
     name="my_streaming_pipeline",
     root_path="/Workspace/Users/user@example.com/my_pipeline",
     catalog="my_catalog",
@@ -133,45 +185,17 @@ result = create_or_update_pipeline(
         "development": True,
         "continuous": True,
         "configuration": {
-            "spark.sql.shuffle.partitions": "auto",
-            "schema_location_base": "/Volumes/my_catalog/metadata/schemas"
+            "spark.sql.shuffle.partitions": "auto"
         },
         "tags": {"environment": "development", "owner": "data-team"}
     }
 )
 ```
 
-The `extra_settings` dict accepts any pipeline configuration parameter. Use it for development mode, continuous execution, pipeline-level Spark configs, custom tags, notifications, and cluster overrides. See the Advanced Configuration page for the full parameter reference.
-
-### Pipeline lifecycle management
-> "Show the other MCP tools available for managing pipelines after creation"
-
-```python
-# Get pipeline status and recent events
-details = get_pipeline(pipeline_id="abc-123")
-
-# Run with options
-run_pipeline(
-    pipeline_id="abc-123",
-    full_refresh=True,
-    wait_for_completion=True,
-    timeout=1800
-)
-
-# Stop a running pipeline
-run_pipeline(pipeline_id="abc-123", stop=True)
-
-# Validate without running
-run_pipeline(pipeline_id="abc-123", validate_only=True)
-
-# Delete when done prototyping
-delete_pipeline(pipeline_id="abc-123")
-```
-
-The `run_pipeline` tool handles start, stop, validate, and full refresh. Use `full_refresh=True` when you change schema or need to reprocess all data. Use `validate_only=True` to check for configuration errors without consuming compute.
+The `extra_settings` dict accepts any pipeline configuration parameter — development mode, continuous execution, custom tags, notifications, cluster overrides, Python dependencies. See the Advanced Configuration page for the full reference.
 
 ## Watch Out For
 - **No version control for pipeline settings** — MCP creates pipelines imperatively. If you lose the conversation, you lose the configuration. Export to Asset Bundles before going to production.
-- **`workspace_file_paths` must be absolute** — relative paths or local paths do not work. Always use the full `/Workspace/Users/...` path that matches where `upload_folder` placed the files.
-- **Pipeline ID changes on recreate** — if you delete and recreate a pipeline, the ID changes. Any external references (job triggers, monitoring dashboards) break. Update the pipeline in place with `create_or_update_pipeline` using the same name instead.
-- **Timeout on large initial loads** — the default timeout may not be enough for first-run full refreshes on large datasets. Set `timeout=3600` (1 hour) or use `wait_for_completion=False` and poll with `get_pipeline`.
+- **`workspace_file_paths` must be absolute** — relative paths or local paths fail. Always use the full `/Workspace/Users/...` path that matches where `manage_workspace_files` placed the files.
+- **Pipeline ID changes on delete-and-recreate** — if you delete and recreate, external references (job triggers, monitoring dashboards) break. Update in place with `manage_pipeline(action="create_or_update")` using the same name instead.
+- **Don't validate with `execute_sql` COUNT queries** — `get_table_stats_and_schema` returns row counts and schema in one call and is meaningfully faster.

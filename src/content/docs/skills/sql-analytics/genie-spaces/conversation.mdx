@@ -125,6 +125,6 @@ Keep the same `conversation_id` for related follow-ups within a topic. Start a n
 ## Watch Out For
 
 - **Reusing conversation_id across unrelated topics** -- Genie uses prior context to interpret follow-ups. Asking "How many employees?" after a sales conversation causes Genie to look for employee data in sales tables. Start a fresh conversation for new topics.
-- **"Space not found" errors** -- verify the `space_id` is correct and you have access. Use `get_genie(space_id)` to confirm the space exists before querying.
+- **"Space not found" errors** -- verify the `space_id` is correct and you have access. Use `manage_genie(action="get", space_id=...)` to confirm the space exists before querying.
 - **Timeout on a running warehouse** -- if the SQL warehouse is stopped, it must start before executing. The startup time counts against your timeout. Set a longer timeout or ensure the warehouse is running before querying.
 - **Genie generates SQL, it does not guarantee correctness** -- always review the `sql` field for critical decisions. Add SQL instructions and certified queries in the Genie Space UI to improve accuracy for your domain.

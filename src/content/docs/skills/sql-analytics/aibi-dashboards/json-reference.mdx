@@ -10,7 +10,7 @@ sidebar:
 
 ## What You Can Build
 
-Every AI/BI dashboard is a single JSON document with three layers: datasets (SQL queries), pages (canvases and filter pages), and widgets (positioned on the 6-column grid). Understanding this structure helps you debug layout issues, fix field mismatches, and extend templates. Your AI coding assistant generates this JSON, but knowing the anatomy lets you prompt more precisely.
+Every AI/BI dashboard is a single JSON document with three layers: datasets (SQL queries), pages (canvases and filter pages with `layoutVersion: GRID_V1`), and widgets (positioned on the 12-column grid). Understanding this structure helps you debug layout issues, fix field mismatches, and extend templates. Your AI coding assistant generates this JSON, but knowing the anatomy lets you prompt more precisely.
 
 ## In Action
 
@@ -35,6 +35,7 @@ Every AI/BI dashboard is a single JSON document with three layers: datasets (SQL
       "name": "overview",
       "displayName": "Sales Overview",
       "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1",
       "layout": [
         {
           "widget": {
@@ -60,7 +61,7 @@ Every AI/BI dashboard is a single JSON document with three layers: datasets (SQL
               "frame": {"title": "Total Revenue", "showTitle": true}
             }
           },
-          "position": {"x": 0, "y": 0, "width": 2, "height": 3}
+          "position": {"x": 0, "y": 0, "width": 4, "height": 3}
         },
         {
           "widget": {
@@ -86,7 +87,7 @@ Every AI/BI dashboard is a single JSON document with three layers: datasets (SQL
               "frame": {"title": "Revenue Trend", "showTitle": true}
             }
           },
-          "position": {"x": 0, "y": 3, "width": 6, "height": 5}
+          "position": {"x": 0, "y": 3, "width": 12, "height": 5}
         }
       ]
     }
@@ -95,9 +96,10 @@ Every AI/BI dashboard is a single JSON document with three layers: datasets (SQL
 ```
 
 **Key decisions:**
+- **`layoutVersion: GRID_V1` next to `pageType`** -- mandatory on every page. The 12-column grid only honors widget widths and heights when `GRID_V1` is declared.
 - **Datasets are shared** -- both the KPI and the chart reference `ds_sales`. Define the query once, use it in multiple widgets. Each widget's `fields` array selects and optionally aggregates the columns it needs.
 - **Widgets are inline** -- each `layout` entry is `\{widget: \{...\}, position: \{...\}\}`. There is no top-level `"widgets"` array. Separating widgets from layout causes a parse failure.
-- **Position is a 6-column grid** -- `x` and `y` set the top-left cell, `width` and `height` set the span. Every row must fill exactly 6 columns.
+- **Position is a 12-column grid** -- `x` and `y` set the top-left cell, `width` and `height` set the span. Every row must fill exactly 12 columns.
 - **`pageType` is required** -- every page needs `PAGE_TYPE_CANVAS` or `PAGE_TYPE_GLOBAL_FILTERS`. Omitting it produces a blank page.
 
 ## More Patterns
@@ -140,25 +142,25 @@ One dataset per domain, not one per widget. Multiple widgets share the same data
 > "What's the recommended layout for a dashboard with KPIs, trend charts, and a detail table?"
 
 ```text
-y=0:  Title      (width=6, height=1)
-y=1:  Subtitle   (width=6, height=1)
-y=2:  KPI | KPI | KPI  (width=2 each, height=3)
-y=5:  Section header  (width=6, height=1)
-y=6:  Chart | Chart  (width=3 each, height=5)
-y=11: Section header  (width=6, height=1)
-y=12: Table  (width=6, height=6)
+y=0:  Title      (width=12, height=1)
+y=1:  Subtitle   (width=12, height=1)
+y=2:  KPI | KPI | KPI  (width=4 each, height=3)
+y=5:  Section header  (width=12, height=1)
+y=6:  Chart | Chart  (width=6 each, height=5)
+y=11: Section header  (width=12, height=1)
+y=12: Table  (width=12, height=6)
 ```
 
-Recommended widget sizes:
+Recommended widget sizes (12-column GRID_V1):
 
 | Widget Type | Width | Height | Notes |
 |-------------|-------|--------|-------|
-| Text header | 6 | 1 | Full width. Separate widgets for title and subtitle |
-| Counter/KPI | 2 | 3-4 | Never use height 2 -- clips the value |
-| Bar/Line chart | 3 | 5-6 | Pair side-by-side to fill the row |
-| Pie chart | 2-3 | 5-6 | Needs space for the legend |
-| Full-width chart | 6 | 5-7 | For detailed time series |
-| Table | 6 | 5-8 | Full width for readability |
+| Text header | 12 | 1 | Full width. Separate widgets for title and subtitle |
+| Counter/KPI | 4 | 3-4 | Never use height 2 -- clips the value |
+| Bar/Line chart | 6 | 5-6 | Pair side-by-side to fill the row |
+| Pie chart | 6 | 5-6 | Needs space for the legend |
+| Full-width chart | 12 | 5-7 | For detailed time series |
+| Table | 12 | 5-8 | Full width for readability |
 
 ### Field expression reference
 

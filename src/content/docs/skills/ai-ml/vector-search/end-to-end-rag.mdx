@@ -92,20 +92,30 @@ The similarity score is appended as the last element in each result row, regardl
 > "Search only governance-related documents using the Storage-Optimized endpoint's SQL filter syntax. Use Python."
 
 ```python
-# Storage-Optimized endpoints use filter_string (SQL syntax)
-results = w.vector_search_indexes.query_index(
-    index_name="catalog.schema.kb_index",
-    columns=["doc_id", "title", "content"],
+# Storage-Optimized endpoint with SQL-like filters (databricks-vectorsearch package)
+from databricks.vector_search.client import VectorSearchClient
+
+vsc = VectorSearchClient()
+index = vsc.get_index(endpoint_name="rag-endpoint", index_name="catalog.schema.kb_index")
+
+results = index.similarity_search(
     query_text="data access controls",
+    columns=["doc_id", "title", "content"],
     num_results=5,
-    filter_string="category = 'governance' AND updated_at >= '2024-01-01'"
+    filters="category = 'governance' AND updated_at >= '2024-01-01'"
 )
 
-# Standard endpoints use filters_json (dictionary format) instead:
-# filters_json='{"category": "governance"}'
+# Standard endpoint with dict-format filters (databricks-sdk):
+# results = w.vector_search_indexes.query_index(
+#     index_name="catalog.schema.kb_index",
+#     columns=["doc_id", "title", "content"],
+#     query_text="data access controls",
+#     num_results=5,
+#     filters_json='{"category": "governance"}'
+# )
 ```
 
-The filter syntax depends on which endpoint type you created. This is the most common source of "filter not working" issues -- always match the syntax to your endpoint.
+The filter parameter name and syntax depend on which package and endpoint type you use. Storage-Optimized endpoints take SQL-like strings via `filters` in `databricks-vectorsearch`. Standard endpoints take JSON dicts via `filters_json` in `databricks-sdk`. Mismatching them silently returns wrong results.
 
 ### Wire Results into an Agent
 
@@ -167,5 +177,5 @@ For `TRIGGERED` pipelines, the index won't reflect new or deleted rows until you
 - **Index stuck in PROVISIONING** -- the endpoint itself might still be creating. Check `get_endpoint` status before investigating the index.
 - **Query returns no results after insert** -- for `TRIGGERED` pipelines, you must call `sync_index()` and wait for the sync to complete before querying.
 - **"Column not found in index"** -- the column must be listed in `columns_to_sync` at index creation time. You can't add columns after the fact; recreate the index.
-- **Mixing up `filters_json` and `filter_string`** -- Standard endpoints use the dictionary-based `filters_json`, Storage-Optimized use SQL-like `filter_string`. The error message when you use the wrong one is not obvious.
+- **Mixing up `filters_json` and `filters`** -- Standard endpoints use the dict-based `filters_json` (in `databricks-sdk`). Storage-Optimized use SQL-like `filters` strings (in `databricks-vectorsearch`). The error message when you mix them is not obvious.
 - **Stale results after table update** -- if you're on `TRIGGERED` and forget to sync, you'll query old data without any warning.

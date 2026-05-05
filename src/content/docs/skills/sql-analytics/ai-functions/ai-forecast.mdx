@@ -102,7 +102,8 @@ Materializing forecast output to Delta lets dashboards and downstream queries re
 
 ## Watch Out For
 
-- **Using `'M'` for monthly frequency with DATE columns** -- DATE columns need `frequency => 'month'`, not `'M'`. The `'M'` shorthand is for TIMESTAMP columns only. Mismatching this produces incorrect intervals.
+- **Calling `ai_forecast` from a Classic warehouse** -- it requires Pro or Serverless. Classic and Starter warehouses fail with a generic error that does not mention the warehouse tier. Confirm tier before debugging the query.
 - **Passing unfiltered data as the observed table** -- the model trains on whatever you give it. Outliers, nulls, and gaps in the time series degrade forecast quality. Clean and filter the input TABLE expression before calling `ai_forecast`.
-- **Expecting causal explanations** -- `ai_forecast` fits a statistical trend model. It doesn't know about promotions, holidays, or business events. For those, you need to add regressors or post-process the output.
+- **More than 100 metrics per group** -- the function caps at 100 numeric value columns per group. Split into multiple calls if you exceed that, or pre-aggregate to fewer metrics.
+- **Expecting causal explanations** -- `ai_forecast` fits a prophet-like piecewise linear + seasonality model. It doesn't know about promotions, holidays, or business events. For those, you need to add regressors or post-process the output.
 - **Forecasting high-cardinality groups without limits** -- forecasting 10,000 ZIP codes in one call is expensive. Aggregate to a coarser level or limit groups to the top N by volume.

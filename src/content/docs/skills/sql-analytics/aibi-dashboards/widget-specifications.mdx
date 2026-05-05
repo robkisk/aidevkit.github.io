@@ -12,6 +12,8 @@ sidebar:
 
 Every dashboard is composed of widgets -- text headers for context, counter KPIs for headline numbers, tables for detail rows, and bar/line/pie charts for visual patterns. Each widget type has a specific JSON structure with version numbers, field expressions, and encoding rules that must be followed exactly. Your AI coding assistant handles all of this, but understanding the patterns helps you write better prompts and debug faster.
 
+Widgets sit on a 12-column grid, and every page must declare `"layoutVersion": "GRID_V1"` next to its `pageType`.
+
 ## In Action
 
 > "Create a KPI counter showing total revenue in USD with compact formatting, from my daily_sales dataset."
@@ -46,7 +48,7 @@ Every dashboard is composed of widgets -- text headers for context, counter KPIs
       "frame": {"title": "Total Revenue", "showTitle": true}
     }
   },
-  "position": {"x": 0, "y": 2, "width": 2, "height": 3}
+  "position": {"x": 0, "y": 2, "width": 4, "height": 3}
 }
 ```
 
@@ -55,7 +57,7 @@ Every dashboard is composed of widgets -- text headers for context, counter KPIs
 - **Field `name` matches `fieldName` exactly** -- both say `"sum(total_revenue)"`. A mismatch causes "no selected fields to visualize" and is the single most common dashboard bug.
 - **`disaggregated: false`** with an aggregation expression -- the widget performs the SUM at render time. Use `disaggregated: true` only when your dataset SQL already returns exactly one row.
 - **Currency formatting with `compact`** -- displays $1.2M instead of $1,234,567. Use `"abbreviation": "compact"` for KPIs; omit it for tables where exact values matter.
-- **Width 2, height 3** -- KPIs sit three across in the 6-column grid. Never use height 2 for counters; it clips the value.
+- **Width 4, height 3** -- KPIs sit three across in the 12-column grid (4+4+4=12). Never use height 2 for counters; it clips the value.
 
 ## More Patterns
 
@@ -69,18 +71,18 @@ Every dashboard is composed of widgets -- text headers for context, counter KPIs
     "name": "title",
     "multilineTextboxSpec": {"lines": ["## Sales Dashboard"]}
   },
-  "position": {"x": 0, "y": 0, "width": 6, "height": 1}
+  "position": {"x": 0, "y": 0, "width": 12, "height": 1}
 },
 {
   "widget": {
     "name": "subtitle",
     "multilineTextboxSpec": {"lines": ["Revenue and order trends across regions"]}
   },
-  "position": {"x": 0, "y": 1, "width": 6, "height": 1}
+  "position": {"x": 0, "y": 1, "width": 12, "height": 1}
 }
 ```
 
-Text widgets do not use a `spec` block -- they use `multilineTextboxSpec` directly. Always use **separate widgets** for title and subtitle. Multiple items in the `lines` array get concatenated on one line, not stacked.
+Text widgets do not use a `spec` block -- they use `multilineTextboxSpec` directly. Always use **separate widgets** for title and subtitle at full width 12. Multiple items in the `lines` array get concatenated on one line, not stacked.
 
 ### Bar chart with color grouping
 
@@ -113,11 +115,11 @@ Text widgets do not use a `spec` block -- they use `multilineTextboxSpec` direct
       "frame": {"title": "Revenue by Region", "showTitle": true}
     }
   },
-  "position": {"x": 0, "y": 6, "width": 6, "height": 5}
+  "position": {"x": 0, "y": 6, "width": 12, "height": 5}
 }
 ```
 
-Stacked is the default bar layout. Add `"mark": \{"layout": "group"\}` to the spec for grouped (side-by-side) bars. Swap `x` and `y` encodings for horizontal bars. The color scale for bar, line, and pie only supports `type` and `sort` -- do not use `scheme`, `colorRamp`, or `mappings` (those are choropleth-map only).
+Stacked is the default bar layout. Add `"mark": \{"layout": "group"\}` to the spec for grouped (side-by-side) bars. Swap `x` and `y` encodings for horizontal bars. The color scale for bar, line, and pie only supports `type` and `sort` -- do not use `scheme`, `colorRamp`, or `mappings` (those are choropleth-map only). Pair charts side-by-side at width 6 each, or use full width 12 for detail charts.
 
 ### Table widget
 
@@ -152,11 +154,11 @@ Stacked is the default bar layout. Add `"mark": \{"layout": "group"\}` to the sp
       "frame": {"title": "Product Performance", "showTitle": true}
     }
   },
-  "position": {"x": 0, "y": 12, "width": 6, "height": 6}
+  "position": {"x": 0, "y": 12, "width": 12, "height": 6}
 }
 ```
 
-Tables use `version: 2` and `disaggregated: true` for raw row display. Column objects only need `fieldName` and `displayName` -- do not add `type`, `numberFormat`, or other properties. Sort order comes from `ORDER BY` in your dataset SQL, not from the widget spec.
+Tables use `version: 2` and `disaggregated: true` for raw row display. Column objects only need `fieldName` and `displayName` -- do not add `type`, `numberFormat`, or other properties. Sort order comes from `ORDER BY` in your dataset SQL, not from the widget spec. Detail tables go at full width 12 for readability.
 
 ### Pie chart
 
@@ -187,13 +189,15 @@ Tables use `version: 2` and `disaggregated: true` for raw row display. Column ob
       "frame": {"title": "Revenue by Department", "showTitle": true}
     }
   },
-  "position": {"x": 0, "y": 12, "width": 3, "height": 5}
+  "position": {"x": 0, "y": 12, "width": 6, "height": 5}
 }
 ```
 
-Pie charts need 3-8 categories to stay readable. If your dimension has more distinct values, aggregate to a higher level in the dataset SQL or use a TOP-N with an "Other" bucket.
+Pie charts need 3-8 categories to stay readable. If your dimension has more distinct values, aggregate to a higher level in the dataset SQL or use a TOP-N with an "Other" bucket. Width 6 leaves room for the legend; pair with another width-6 chart or a width-6 table to fill the row.
 
 ## Watch Out For
+- **Missing `layoutVersion: GRID_V1`** -- every page needs `"layoutVersion": "GRID_V1"` next to `pageType`. Without it, the dashboard renders on the legacy grid and ignores `width`/`height` on positions.
+- **Rows that do not sum to width 12** -- the 12-column grid requires every row to fill exactly width 12. Two KPIs at width 4 (8 total) leaves a gap; add a third KPI or resize.
 - **Version number mismatches** -- counters and tables use `version: 2`, bar/line/pie/area/scatter use `version: 3`, combo and choropleth-map use `version: 1`. There is no autocorrection; the wrong version silently produces an invalid widget.
 - **Field name !== encoding name** -- the `name` in `query.fields` and the `fieldName` in `encodings` must be identical strings. `"spend"` and `"sum(spend)"` are different. This is the #1 cause of blank widgets.
 - **Text widgets with `spec` blocks** -- text widgets must not have a `spec`. Use `multilineTextboxSpec` directly on the widget. Adding `"widgetType": "text"` causes a parse failure.

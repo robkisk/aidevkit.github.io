@@ -108,10 +108,10 @@ Classical ML models provision in 2-5 minutes, so synchronous `create_and_wait()`
 
 ### Check Endpoint Status
 
-> "Check whether my agent endpoint has finished provisioning and is ready for queries. Use Python."
+> "Check whether my agent endpoint has finished provisioning and is ready for queries."
 
 ```python
-get_serving_endpoint_status(name="my-agent-endpoint")
+manage_serving_endpoint(action="get", name="my-agent-endpoint")
 # Returns: {"name": "...", "state": "READY", "served_entities": [...]}
 ```
 
@@ -119,10 +119,11 @@ Wait for `state: "READY"` before sending queries. For job-based deployments, you
 
 ### Query a Chat/Agent Endpoint
 
-> "Send a conversational query to my deployed agent endpoint. Use Python."
+> "Send a conversational query to my deployed agent endpoint."
 
 ```python
-query_serving_endpoint(
+manage_serving_endpoint(
+    action="query",
     name="my-agent-endpoint",
     messages=[{"role": "user", "content": "What is our refund policy?"}],
     max_tokens=500

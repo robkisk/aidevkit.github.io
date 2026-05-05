@@ -18,14 +18,15 @@ A Genie Space connects Unity Catalog tables to a natural language interface -- u
 
 ```python
 # Step 1: Inspect tables to understand the data
-get_table_details(
+get_table_stats_and_schema(
     catalog="my_catalog",
     schema="sales",
     table_stat_level="SIMPLE"
 )
 
 # Step 2: Create the space with curated context
-create_or_update_genie(
+manage_genie(
+    action="create_or_update",
     display_name="Sales Analytics",
     table_identifiers=[
         "my_catalog.sales.customers",
@@ -50,7 +51,8 @@ Tables join on customer_id and product_id.""",
 ```
 
 **Key decisions:**
-- **Always inspect tables first** -- `get_table_details` returns column names, types, sample values, and cardinality. Sample questions that reference actual column names produce dramatically better SQL generation.
+- **Always inspect tables first** -- `get_table_stats_and_schema` returns column names, types, sample values, and cardinality. Sample questions that reference actual column names produce dramatically better SQL generation.
+- **Single `manage_genie` MCP tool** -- one tool covers create, update, get, list, delete, export, and import via the `action` parameter. Pair it with `ask_genie` for queries.
 - **Descriptions explain relationships** -- Genie uses the description to understand how tables join. Without it, multi-table questions produce wrong joins or errors.
 - **Silver/gold tables only** -- bronze tables have quality issues that confuse Genie. Use cleaned, validated tables for best results.
 - **Warehouse auto-detection** -- when `warehouse_id` is omitted, the tool picks the smallest running warehouse. Specify it explicitly for production spaces.
@@ -62,7 +64,8 @@ Tables join on customer_id and product_id.""",
 > "Update my Sales Analytics Genie Space with a new table and refreshed sample questions."
 
 ```python
-create_or_update_genie(
+manage_genie(
+    action="create_or_update",
     display_name="Sales Analytics",
     space_id="01abc123...",
     table_identifiers=[
@@ -80,7 +83,7 @@ create_or_update_genie(
 )
 ```
 
-`create_or_update_genie` handles both create and update. Pass `space_id` to target a specific space, or omit it to match by `display_name`. If no match is found, a new space is created.
+`manage_genie(action="create_or_update")` handles both create and update. Pass `space_id` to target a specific space, or omit it to match by `display_name`. If no match is found, a new space is created.
 
 ### Export and clone a space
 
@@ -88,11 +91,11 @@ create_or_update_genie(
 
 ```python
 # Export the source space
-source = migrate_genie(type="export", space_id="01abc123...")
+source = manage_genie(action="export", space_id="01abc123...")
 
 # Clone as a new space
-migrate_genie(
-    type="import",
+manage_genie(
+    action="import",
     warehouse_id=source["warehouse_id"],
     serialized_space=source["serialized_space"],
     title="Sales Analytics (Dev Copy)",
@@ -100,7 +103,7 @@ migrate_genie(
 )
 ```
 
-The export captures everything -- tables, sample questions, certified SQL queries, join specs, filter snippets, and benchmarks. The import creates a brand new space with a new `space_id`.
+The export envelope contains `space_id`, `title`, `description`, `warehouse_id`, and `serialized_space` (a JSON-encoded string with the full config -- tables, sample questions, certified SQL queries, join specs, filter snippets, and benchmarks). The import creates a brand new space with a new `space_id`.
 
 ### Migrate across workspaces with catalog remapping
 
@@ -108,7 +111,7 @@ The export captures everything -- tables, sample questions, certified SQL querie
 
 ```python
 # Step 1: Export from source workspace
-exported = migrate_genie(type="export", space_id="01abc123...")
+exported = manage_genie(action="export", space_id="01abc123...")
 
 # Step 2: Remap catalog references in the serialized config
 modified = exported["serialized_space"].replace(
@@ -117,8 +120,8 @@ modified = exported["serialized_space"].replace(
 )
 
 # Step 3: Import to target workspace
-migrate_genie(
-    type="import",
+manage_genie(
+    action="import",
     warehouse_id="target_warehouse_id",
     serialized_space=modified,
     title=exported["title"],
@@ -137,10 +140,10 @@ space_ids = ["id1", "id2", "id3"]
 results = []
 
 for sid in space_ids:
-    exported = migrate_genie(type="export", space_id=sid)
+    exported = manage_genie(action="export", space_id=sid)
     modified = exported["serialized_space"].replace("prod_catalog", "dev_catalog")
-    result = migrate_genie(
-        type="import",
+    result = manage_genie(
+        action="import",
         warehouse_id="dev_warehouse_id",
         serialized_space=modified,
         title=exported["title"],
@@ -155,5 +158,5 @@ After migration, update `databricks.yml` with the new dev `space_id` values unde
 
 - **Sample questions without actual column names** -- generic questions like "show me the data" teach Genie nothing. Questions that reference real columns ("total_amount by region") dramatically improve SQL generation accuracy.
 - **Missing table comments and descriptive column names** -- Genie uses Unity Catalog metadata for query generation. `customer_name` works better than `cust_nm`. Add `COMMENT ON TABLE` and `COMMENT ON COLUMN` for best results.
-- **`migrate_genie(type="export")` returns empty `serialized_space`** -- this means the caller lacks CAN EDIT permission on the source space. Check space permissions.
+- **`manage_genie(action="export")` returns empty `serialized_space`** -- this means the caller lacks CAN EDIT permission on the source space. Check space permissions.
 - **`serialized_space` with multi-line SQL causes JSON parse errors on import** -- SQL arrays inside the config may contain `\n` escape sequences. Flatten to single-line strings before importing to avoid double-escaping issues.

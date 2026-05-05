@@ -105,23 +105,24 @@ Multiple items in the text widget `lines` array are concatenated, not stacked ve
 
 ```json
 {"widget": {"name": "title", "multilineTextboxSpec": {"lines": ["## Dashboard Title"]}},
- "position": {"x": 0, "y": 0, "width": 6, "height": 1}},
+ "position": {"x": 0, "y": 0, "width": 12, "height": 1}},
 {"widget": {"name": "subtitle", "multilineTextboxSpec": {"lines": ["Description goes here"]}},
- "position": {"x": 0, "y": 1, "width": 6, "height": 1}}
+ "position": {"x": 0, "y": 1, "width": 12, "height": 1}}
 ```
 
-### Layout gaps
+### Layout gaps and ignored widths
 
-> "My dashboard has visual gaps between widgets."
+> "My dashboard has visual gaps, or widget widths seem to be ignored."
 
-Every row in the 6-column grid must be fully filled. Common gap causes:
-- Two KPIs at width 2 (total 4) instead of three (total 6)
-- A chart at width 4 with nothing beside it
-- Y positions that skip values, leaving empty rows
+Two common causes:
 
-Fix by adding widgets to fill the row, or resize existing widgets to span the full width.
+1. **Missing `layoutVersion: GRID_V1`** -- the 12-column grid only takes effect when `"layoutVersion": "GRID_V1"` is declared next to `pageType` on every page. Without it, the dashboard falls back to the legacy grid and ignores `width`/`height` on positions.
+2. **Rows that do not sum to width 12** -- every row must be fully filled. Two KPIs at width 4 (total 8) leaves a gap; add a third KPI or resize. A chart at width 8 with nothing beside it leaves a gap; pair with a width-4 widget.
+
+Fix by adding `layoutVersion: GRID_V1` to every page, then resizing widgets so every row sums to 12.
 
 ## Watch Out For
 - **Deploying without testing queries** -- `manage_dashboard(action="create_or_update")` succeeds even if the SQL is broken. The dashboard saves, but widgets fail at render time. Always run `execute_sql` for every dataset query before building the JSON.
+- **Forgetting `layoutVersion: GRID_V1`** -- mandatory on every page. Without it, position widths are ignored and widgets reflow on the legacy grid.
 - **Spark SQL gotchas** -- use `date_sub(current_date(), N)` for date math. `INTERVAL` syntax causes silent failures. Use `DATE_TRUNC('MONTH', col)` for truncation.
 - **Unreadable charts from high cardinality** -- if a color/grouping dimension has more than 8 distinct values, the chart becomes a wall of colors. Use `get_table_stats_and_schema` to check cardinality, and aggregate to a higher level or use TOP-N in the dataset SQL.

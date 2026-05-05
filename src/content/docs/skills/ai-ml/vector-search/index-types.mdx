@@ -126,6 +126,6 @@ For `TRIGGERED` pipelines, new data sits in the source table until you explicitl
 ## Watch Out For
 
 - **Embedding dimension mismatch** -- if your query embeddings are 768-dimensional but the index was created with 1536, queries return garbage results silently. Always confirm the dimension matches your model output.
-- **Wrong filter syntax for your endpoint type** -- Standard endpoints use `filters_json` (dictionary format), while Storage-Optimized endpoints use `filter_string` (SQL syntax). Using the wrong one returns an error that doesn't clearly explain the issue.
+- **Wrong filter syntax for your endpoint type** -- Standard endpoints use `filters_json` (dict format) in `databricks-sdk`. Storage-Optimized endpoints use `filters` (SQL-like string) in `databricks-vectorsearch`. Using the wrong one returns an error that doesn't clearly explain the issue.
 - **Forgetting `columns_to_sync`** -- without it, every column in the source table gets synced. That increases storage costs and slows indexing, especially on wide tables.
 - **Choosing `CONTINUOUS` by default** -- it's tempting for freshness, but the always-on compute adds up fast. Start with `TRIGGERED` and move to `CONTINUOUS` only when your use case requires near-real-time updates.

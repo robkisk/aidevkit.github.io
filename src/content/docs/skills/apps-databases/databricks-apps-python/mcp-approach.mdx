@@ -17,26 +17,29 @@ You can go from local code to a running Databricks App without leaving your AI c
 > "Upload my app folder to the workspace, then create and deploy a Databricks App called customer-dashboard pointing at that folder."
 
 ```python
-# Step 1: MCP Tool — upload_folder
-upload_folder(
-    local_folder="/path/to/my_app",
-    workspace_folder="/Workspace/Users/user@example.com/my_app"
+# Step 1: MCP Tool — manage_workspace_files (upload local folder)
+manage_workspace_files(
+    action="upload",
+    local_path="/path/to/my_app",
+    workspace_path="/Workspace/Users/user@example.com/my_app",
 )
 
-# Step 2: MCP Tool — create_or_update_app (creates if new, redeploys if exists)
-result = create_or_update_app(
+# Step 2: MCP Tool — manage_app (creates if new, redeploys if exists)
+result = manage_app(
+    action="create_or_update",
     name="customer-dashboard",
     description="Customer analytics dashboard",
-    source_code_path="/Workspace/Users/user@example.com/my_app"
+    source_code_path="/Workspace/Users/user@example.com/my_app",
 )
 # Returns: {"name": "customer-dashboard", "url": "...", "created": True, "deployment": {...}}
 ```
 
 **Key decisions:**
-- `create_or_update_app` is idempotent -- it creates the app on first call and redeploys on subsequent calls. No need to check if the app exists first.
+- `manage_app(action="create_or_update", ...)` is idempotent -- it creates the app on first call and redeploys on subsequent calls. No need to check existence first.
 - Always upload files before deploying. The `source_code_path` must point to a workspace folder that already contains your code.
 - The app name becomes part of the URL, so keep it short, lowercase, and hyphenated.
 - The tool returns the live URL immediately, but the app takes 1-2 minutes to become healthy after deployment.
+- The MCP tools execute under the service principal -- ensure it has access to any resources the app references.
 
 ## More Patterns
 
@@ -45,9 +48,13 @@ result = create_or_update_app(
 > "Check if customer-dashboard is running and show me the logs."
 
 ```python
-# MCP Tool — get_app (with logs)
-app = get_app(name="customer-dashboard", include_logs=True)
-# Returns: {"name": "...", "url": "...", "status": "RUNNING", "logs": "..."}
+# MCP Tool — manage_app (get with logs)
+app = manage_app(
+    action="get",
+    name="customer-dashboard",
+    include_logs=True,
+)
+# Returns: {"name": "...", "url": "...", "status": "RUNNING", "logs": "...", ...}
 ```
 
 When a deployment fails, the `logs` field contains the stderr output from your app process -- import errors, missing environment variables, port binding failures. This is the first thing to check before digging into the workspace UI.
@@ -58,35 +65,49 @@ When a deployment fails, the `logs` field contains the stderr output from your a
 
 ```python
 # Re-upload the updated source
-upload_folder(
-    local_folder="/path/to/my_app",
-    workspace_folder="/Workspace/Users/user@example.com/my_app"
+manage_workspace_files(
+    action="upload",
+    local_path="/path/to/my_app",
+    workspace_path="/Workspace/Users/user@example.com/my_app",
 )
 
 # Trigger redeployment (same call as creation)
-result = create_or_update_app(
+result = manage_app(
+    action="create_or_update",
     name="customer-dashboard",
     description="Customer analytics dashboard",
-    source_code_path="/Workspace/Users/user@example.com/my_app"
+    source_code_path="/Workspace/Users/user@example.com/my_app",
 )
 ```
 
 The typical development loop is: edit locally, upload, redeploy, check logs. Your AI coding assistant can run all three steps in sequence when you say "redeploy my app."
+
+### List apps and find one by name fragment
+
+> "Show me all apps with 'dashboard' in the name."
+
+```python
+# MCP Tool — manage_app (list with optional filter)
+apps = manage_app(action="list", name_contains="dashboard")
+# Returns: [{"name": "customer-dashboard", "status": "RUNNING", ...}, ...]
+```
+
+`name_contains` is a substring filter -- useful when you have many apps and only remember a fragment of the name. Without it, `list` returns every app you have access to.
 
 ### Delete an app
 
 > "Tear down the customer-dashboard app, I'm done testing."
 
 ```python
-# MCP Tool — delete_app
-delete_app(name="customer-dashboard")
+# MCP Tool — manage_app (delete)
+manage_app(action="delete", name="customer-dashboard")
 ```
 
 This removes the app and its deployment. The workspace source files remain untouched -- only the running app is deleted.
 
 ## Project structure your assistant expects
 
-Your AI coding assistant generates apps following this layout. Keeping to this structure means `upload_folder` works without path adjustments:
+Your AI coding assistant generates apps following this layout. Keeping to this structure means `manage_workspace_files` uploads cleanly without path adjustments:
 
 ```
 my_app/
@@ -99,6 +120,7 @@ my_app/
 
 ## Watch Out For
 
-- **Deploying before uploading** -- `create_or_update_app` does not upload files for you. If the `source_code_path` is empty or stale, the deployment either fails or runs old code.
-- **Checking status too early** -- the app takes 1-2 minutes to start after deployment. Calling `get_app` immediately may show `STARTING` status. Wait a moment, then check again with `include_logs=True`.
-- **Forgetting `include_logs=True`** -- without this flag, `get_app` returns metadata but no logs. When debugging a failed deployment, always pass `include_logs=True` to see the actual error output.
+- **Deploying before uploading** -- `manage_app(action="create_or_update", ...)` does not upload files for you. If the `source_code_path` is empty or stale, the deployment either fails or runs old code.
+- **Checking status too early** -- the app takes 1-2 minutes to start after deployment. Calling `manage_app(action="get", ...)` immediately may show `STARTING` status. Wait a moment, then check again with `include_logs=True`.
+- **Forgetting `include_logs=True`** -- without this flag, `get` returns metadata but no logs. When debugging a failed deployment, always pass `include_logs=True` to see the actual error output.
+- **Skipping resource grants** -- the MCP tools deploy under the service principal. If the SP lacks access to a SQL warehouse, Lakebase, or serving endpoint referenced in `app.yaml`, the app starts but fails on first request. Add resources via the Databricks Apps UI after creation, or grant SP access through Unity Catalog.

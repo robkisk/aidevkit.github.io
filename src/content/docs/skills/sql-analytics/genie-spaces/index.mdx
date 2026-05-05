@@ -19,14 +19,15 @@ You can stand up a natural language data exploration interface backed by Unity C
 
 ```python
 # Step 1: Inspect the tables first
-get_table_details(
+get_table_stats_and_schema(
     catalog="my_catalog",
     schema="sales",
     table_stat_level="SIMPLE"
 )
 
 # Step 2: Create the space with guided sample questions
-create_or_update_genie(
+manage_genie(
+    action="create_or_update",
     display_name="Sales Analytics",
     table_identifiers=[
         "my_catalog.sales.customers",
@@ -44,7 +45,8 @@ create_or_update_genie(
 ```
 
 **Key decisions:**
-- **Inspect tables before creating** -- `get_table_details` reveals column names, types, and basic stats. This context drives better descriptions and sample questions, which directly affect Genie's SQL accuracy.
+- **Inspect tables before creating** -- `get_table_stats_and_schema` reveals column names, types, and basic stats. This context drives better descriptions and sample questions, which directly affect Genie's SQL accuracy.
+- **`manage_genie` for the full lifecycle** -- one MCP tool covers create, update, get, list, delete, export, and import via the `action` parameter. Idempotent: pass an existing `space_id` to update, omit it to create.
 - **Descriptive `description` field** -- Genie uses this to understand what the tables contain and how they relate. Vague descriptions produce vague SQL.
 - **Sample questions as guidance rails** -- these show up in the Genie UI as suggested queries. They train users on what the space can answer and give Genie concrete examples of expected question patterns.
 - **Unity Catalog three-level names** -- always use `catalog.schema.table` format. Genie resolves table identifiers through Unity Catalog, so partial names will fail.
@@ -69,11 +71,11 @@ The Conversation API returns the generated SQL alongside the result data. Use `c
 
 ```python
 # Export preserves tables, instructions, SQL examples, and layout
-exported = migrate_genie(type="export", space_id="prod_space_id")
+exported = manage_genie(action="export", space_id="prod_space_id")
 
 # Import as a new space (same catalog)
-migrate_genie(
-    type="import",
+manage_genie(
+    action="import",
     warehouse_id=exported["warehouse_id"],
     serialized_space=exported["serialized_space"],
     title="Sales Analytics - QA",
@@ -81,13 +83,14 @@ migrate_genie(
 )
 ```
 
-The serialized payload captures the full space configuration. For cross-workspace migration, use separate MCP server profiles -- one per workspace -- and export from the source, then import via the target. Catalog names can be remapped during import if they differ across environments.
+The serialized payload captures the full space configuration. For cross-workspace migration, use separate MCP server profiles -- one per workspace -- and export from the source, then import via the target. Catalog names can be remapped with a single `.replace()` on the `serialized_space` string before importing.
 
 ### Update an existing space with new tables
 > "Add the returns table to our existing Sales Analytics Genie Space."
 
 ```python
-create_or_update_genie(
+manage_genie(
+    action="create_or_update",
     space_id="existing_space_id",
     display_name="Sales Analytics",
     table_identifiers=[
@@ -105,10 +108,10 @@ create_or_update_genie(
 )
 ```
 
-Pass the `space_id` to update rather than create. Update the description and sample questions to reflect the new table -- Genie's SQL accuracy depends on knowing what data is available.
+Pass the `space_id` to update rather than create. `create_or_update` is idempotent -- if `space_id` is omitted, the tool matches by `display_name`; if no match, it creates a new space. Update the description and sample questions to reflect the new table -- Genie's SQL accuracy depends on knowing what data is available.
 
 ## Watch Out For
-- **Skipping `get_table_details` before creation** -- if you do not understand the column names and types, the description you write will be too vague for Genie to generate correct SQL. Always inspect first.
+- **Skipping `get_table_stats_and_schema` before creation** -- if you do not understand the column names and types, the description you write will be too vague for Genie to generate correct SQL. Always inspect first.
 - **Cross-workspace migration with different schema names** -- Genie migration only supports catalog remapping. If schema or table names differ between environments, you will need to manually edit the serialized payload after export.
 - **Missing SQL warehouse** -- Genie executes queries on a SQL warehouse. If none is specified, it auto-detects one, but that can fail in workspaces with restricted warehouse access. Specify the warehouse ID explicitly in production setups.
 - **Stale sample questions after table changes** -- when you add or remove tables, update the sample questions and description. Old questions referencing removed columns cause Genie to generate failing SQL.
