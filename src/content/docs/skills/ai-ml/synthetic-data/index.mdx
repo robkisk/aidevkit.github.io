@@ -11,11 +11,11 @@ sidebar:
 
 ## What You Can Build
 
-You can generate realistic, story-driven synthetic datasets — from thousands to millions of rows — using Spark, Faker, and Pandas UDFs on serverless compute. Your AI coding assistant designs the table schema with realistic distributions, referential integrity, and time patterns, then generates a complete script that creates infrastructure, produces data, and writes to Unity Catalog in one execution. The data is ready for downstream pipelines, Genie Spaces, or Knowledge Assistant demos.
+You can generate realistic synthetic datasets that tell a business story — something goes wrong, it costs money, the data lets you trace root cause and act on it. Your AI coding assistant designs the schema with realistic distributions, referential integrity, and time patterns, then generates a script that creates infrastructure, produces data, and writes to Unity Catalog in one execution. The output is ready for dashboards, SDP pipelines, Genie Spaces, or Knowledge Assistant demos — and it actually demonstrates Databricks value because the data has anomalies, cohorts, and dollar impact you can find.
 
 ## In Action
 
-> "Generate 10,000 customers and 50,000 orders for an e-commerce demo. Enterprise customers should generate 5x more orders with higher amounts. Write to my Unity Catalog."
+> "Generate a support demo with 10K customers and 80K tickets. Include a payment outage that spikes tickets, degrades resolution times, and causes enterprise customers to churn. Write to my Unity Catalog."
 
 ```python
 from databricks.connect import DatabricksSession, DatabricksEnv
@@ -75,6 +75,7 @@ customers_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.customers"
 ```
 
 **Key decisions:**
+- **Story-driven generation** — every table connects to a business event. The outage spikes tickets, the ticket spike degrades resolution times, slow resolution drives enterprise churn. Without that causal chain, the data has no analysis hook and can't show Databricks value.
 - **Spark + Faker + Pandas UDFs** — Faker runs inside Pandas UDFs for parallel execution across partitions. Pure Python Faker is single-threaded and painfully slow above a few thousand rows.
 - **Serverless with `DatabricksEnv().withDependencies()`** — installs Faker and NumPy on serverless compute without managing a cluster. Available on databricks-connect 16.4+.
 - **Log-normal distributions** — `np.random.lognormal()` produces realistic price/amount distributions with a long right tail. Enterprise customers center around $1,800, Pro around $245, Free around $55.
@@ -171,7 +172,9 @@ orders_df.write.mode("overwrite").parquet(
 Parquet in Volumes is the standard landing zone for SDP pipeline ingestion via Auto Loader. Delta tables are better when downstream consumers query directly.
 
 ## Watch Out For
-- **Never use `.cache()` or `.persist()` on serverless** — throws `AnalysisException: PERSIST TABLE is not supported on serverless compute`. Write master tables to Delta first, then read them back for joins.
+- **Flat data has no story** — uniform random distributions produce datasets with no spikes, cohorts, or anomalies, which means there is nothing to analyze and nothing to demo. Always skew categories (60/30/10 not 33/33/33) and use log-normal or Pareto for monetary values.
+- **No Python loops or `.collect()`** — driver-side iteration defeats Spark parallelism. Stay in DataFrame transforms, use `spark.range()` for row generation, and reach for `pandas_udf` only when you need Python libraries like Faker.
+- **Never use `.cache()` or `.persist()` on serverless** — throws `AnalysisException: PERSIST TABLE is not supported on serverless compute`. Write master tables to Delta first, then read them back for joins. Broadcast variables and `spark.sparkContext` are also unsupported.
 - **Always ask for catalog and schema** — never default to any catalog value. The user must confirm the target location before generation begins.
 - **`F.window` vs `Window`** — `F.window()` is for streaming time windows. For analytical functions like `row_number()` or `rank()`, import `from pyspark.sql.window import Window`.
 - **Faker inside UDFs must re-import** — each Spark partition runs in its own Python process. Put `from faker import Faker` inside the UDF body, not at module level.

@@ -1,0 +1,167 @@
+---
+title: Manage projects, branches, and endpoints
+description: Create and resize Lakebase Autoscaling projects, branches, and compute endpoints with the SDK and CLI, including FieldMask updates and scale-to-zero.
+curated: true
+sidebar:
+  order: 3
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-lakebase-autoscale`
+
+## What You Can Build
+
+You can spin up a Lakebase Autoscaling project for a new app, branch production for safe schema migrations, and resize compute endpoints without taking the database down. Every mutating call returns a long-running operation that you finalize with `.wait()`, and every update needs an explicit `FieldMask` listing the fields you are changing. Once you internalize those two rules, the resource model (project → branch → endpoint) reads cleanly from the SDK.
+
+## In Action
+
+> "Create a Lakebase Autoscaling project `analytics-app` on Postgres 17, then resize the production endpoint to autoscale between 2 and 8 CU. Wait for both operations to finish."
+
+```python
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.postgres import (
+    Project, ProjectSpec,
+    Endpoint, EndpointSpec, EndpointType,
+    FieldMask,
+)
+
+w = WorkspaceClient()
+
+# Create the project (also provisions default branch + endpoint + database)
+project = w.postgres.create_project(
+    project=Project(spec=ProjectSpec(display_name="Analytics App", pg_version="17")),
+    project_id="analytics-app",
+).wait()
+
+# Resize the primary endpoint with a FieldMask
+endpoint_name = "projects/analytics-app/branches/production/endpoints/ep-primary"
+w.postgres.update_endpoint(
+    name=endpoint_name,
+    endpoint=Endpoint(
+        name=endpoint_name,
+        spec=EndpointSpec(
+            autoscaling_limit_min_cu=2.0,
+            autoscaling_limit_max_cu=8.0,
+        ),
+    ),
+    update_mask=FieldMask(field_mask=[
+        "spec.autoscaling_limit_min_cu",
+        "spec.autoscaling_limit_max_cu",
+    ]),
+).wait()
+```
+
+**Key decisions:**
+- **`.wait()` on every mutation** — `create_project`, `update_endpoint`, `create_branch`, etc. all return long-running operation handles. Without `.wait()`, the SDK returns before the resource is usable and subsequent calls fail.
+- **`pg_version="17"` pinned** — Lakebase Autoscaling supports Postgres 16 and 17. Pin the version so version bumps are intentional rather than implicit.
+- **`FieldMask` lists every field being changed** — the API rejects updates without a mask. Field names use dotted paths like `spec.autoscaling_limit_min_cu`, not just the leaf name.
+- **`max_cu - min_cu <= 16`** — `2-8` is valid, `0.5-32` is not (spread of 31.5 exceeds 16). Autoscaling range caps at 0.5–32 CU; fixed-size always-on computes (40–112 CU) are a separate mode without autoscaling.
+- **No separate database creation** — project creation provisions `databricks_postgres` as the default database, the `production` branch, the `ep-primary` read-write endpoint, and a Postgres role for the creator's identity. You only need additional resources if your app needs them.
+
+## More Patterns
+
+### Branch production for a schema migration test
+
+> "Create a `schema-migration` branch from `production` that auto-expires after 7 days. Then protect production so it cannot be reset or deleted."
+
+```python
+from databricks.sdk.service.postgres import (
+    Branch, BranchSpec, Duration, FieldMask,
+)
+
+# Copy-on-write branch — instant, regardless of source data size
+w.postgres.create_branch(
+    parent="projects/analytics-app",
+    branch=Branch(spec=BranchSpec(
+        source_branch="projects/analytics-app/branches/production",
+        ttl=Duration(seconds=604800),  # 7 days
+    )),
+    branch_id="schema-migration",
+).wait()
+
+# Protect production
+w.postgres.update_branch(
+    name="projects/analytics-app/branches/production",
+    branch=Branch(
+        name="projects/analytics-app/branches/production",
+        spec=BranchSpec(is_protected=True),
+    ),
+    update_mask=FieldMask(field_mask=["spec.is_protected"]),
+).wait()
+```
+
+Branches are copy-on-write so creation is fast regardless of source size. Use `ttl=Duration(seconds=...)` for ephemeral branches and `no_expiry=True` for permanent ones. Maximum TTL is 30 days from now. Protected branches cannot be deleted, reset, archived, or expired — wrap production with this before letting team members run destructive migrations.
+
+### Configure scale-to-zero on a dev branch
+
+> "Set the development endpoint to scale to zero after 10 minutes of inactivity. Keep production always on."
+
+```python
+from databricks.sdk.service.postgres import (
+    Endpoint, EndpointSpec, FieldMask,
+)
+
+dev_endpoint = "projects/analytics-app/branches/development/endpoints/ep-primary"
+
+w.postgres.update_endpoint(
+    name=dev_endpoint,
+    endpoint=Endpoint(
+        name=dev_endpoint,
+        spec=EndpointSpec(scale_to_zero_seconds=600),
+    ),
+    update_mask=FieldMask(field_mask=["spec.scale_to_zero_seconds"]),
+).wait()
+```
+
+Production has scale-to-zero disabled by default — leave it that way for latency-sensitive workloads. Dev branches can suspend after as little as 60 seconds; the default is 5 minutes. First connection after suspension wakes the compute automatically, but the brief reactivation period needs retry/backoff on the client. After reactivation, sessions reset: temp tables, prepared statements, in-memory stats, and session settings are gone.
+
+### Inspect endpoint health and host before connecting
+
+> "Look up the host and current state of the primary endpoint for `analytics-app/production`."
+
+```python
+ep = w.postgres.get_endpoint(
+    name="projects/analytics-app/branches/production/endpoints/ep-primary"
+)
+
+print(f"host:          \{ep.status.hosts.host\}")
+print(f"state:         \{ep.status.current_state\}")
+print(f"min/max CU:    \{ep.status.autoscaling_limit_min_cu\}/\{ep.status.autoscaling_limit_max_cu\}")
+```
+
+GET responses return effective values under `status`, while CREATE and UPDATE payloads use `spec`. If you check `ep.spec.autoscaling_limit_max_cu` after a resize it may not reflect the latest applied value — `status` does. The endpoint host (`status.hosts.host`) is the only place to source it; do not hard-code it into config.
+
+### Use the CLI for ad-hoc lifecycle calls
+
+> "List the branches and endpoints under `analytics-app` from the terminal without writing Python."
+
+```bash
+# Inspect first — non-trivial CLI invocation
+databricks postgres list-branches --help
+
+# Branches under a project
+databricks postgres list-branches projects/analytics-app
+
+# Endpoints under a branch
+databricks postgres list-endpoints projects/analytics-app/branches/production
+
+# Resize an endpoint
+databricks postgres update-endpoint \
+  projects/analytics-app/branches/production/endpoints/ep-primary \
+  --json '{
+    "spec": {"autoscaling_limit_min_cu": 4, "autoscaling_limit_max_cu": 12},
+    "update_mask": "spec.autoscaling_limit_min_cu,spec.autoscaling_limit_max_cu"
+  }'
+```
+
+The `databricks postgres` CLI mirrors the SDK surface (`create-project`, `create-branch`, `create-endpoint`, etc.). Resource names are positional, not flag-bound — pass the full hierarchical path. Always run `--help` on a subcommand once per session before scripting it; the surface expands frequently.
+
+## Watch Out For
+
+- **Missing `FieldMask` on update calls** — the API rejects any `update_*` call without an `update_mask` listing exactly the spec fields being changed. Use dotted paths like `spec.display_name`, not leaf names alone.
+- **`status` vs `spec` after GETs** — read effective state from `result.status.*`, but build CREATE and UPDATE payloads with `spec=...`. Mixing them produces confusing diffs where the SDK appears to "forget" a change you just made.
+- **Branch deletion order** — branches with children cannot be deleted, reset, or expired. Delete child branches first. The default branch (`production` by default) cannot be deleted at all. Protected branches need to be unprotected before any destructive operation.
+- **Autoscaling range cap of 16 CU** — `max_cu - min_cu <= 16`. Valid: `4–20`, `8–16`, `16–32`. Invalid: `0.5–32`, `1–20`. The API surfaces this as a validation error; the CLI mirrors the message. Always confirm before bumping `max_cu`.
+- **Project limits per workspace** — 1000 projects per workspace, 500 branches per project, only 10 unarchived branches at a time, 20 concurrently active computes, 8 TB logical data per branch. Bake archive/cleanup into long-running automation.

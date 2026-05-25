@@ -1,0 +1,189 @@
+---
+title: Connect apps to Lakebase Autoscaling
+description: Connect production apps and notebooks to Lakebase Autoscaling with the canonical psycopg pool + OAuthConnection pattern, no background token thread.
+curated: true
+sidebar:
+  order: 2
+  badge:
+    text: New
+    variant: tip
+---
+
+**Skill:** `databricks-lakebase-autoscale`
+
+## What You Can Build
+
+You can connect a production Python app to Lakebase Autoscaling without writing a single background token-refresh thread. The canonical pattern uses `psycopg_pool.ConnectionPool` with a small `OAuthConnection` subclass that mints a fresh Lakebase credential every time the pool opens a physical connection. The pool's `max_lifetime` setting recycles connections defensively before the 1-hour OAuth token expires. No `asyncio.Task` loop, no stale-token races, no shared mutable state.
+
+## In Action
+
+> "Wire up a production Databricks App to my Lakebase Autoscaling endpoint with a pooled psycopg connection. Use the canonical OAuthConnection pattern with `max_lifetime=2700`. Read host/database/user from the auto-injected env vars."
+
+```python
+import os
+import psycopg
+from psycopg_pool import ConnectionPool
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+class OAuthConnection(psycopg.Connection):
+    @classmethod
+    def connect(cls, conninfo="", **kwargs):
+        cred = w.postgres.generate_database_credential(
+            endpoint=os.environ["ENDPOINT_NAME"]
+        )
+        kwargs["password"] = cred.token
+        return super().connect(conninfo, **kwargs)
+
+pool = ConnectionPool(
+    conninfo=(
+        f"dbname={os.environ['PGDATABASE']} "
+        f"user={os.environ['PGUSER']} "
+        f"host={os.environ['PGHOST']} "
+        f"port={os.environ.get('PGPORT', '5432')} "
+        f"sslmode={os.environ.get('PGSSLMODE', 'require')}"
+    ),
+    connection_class=OAuthConnection,
+    min_size=1,
+    max_size=10,
+    max_lifetime=2700,
+    open=True,
+)
+```
+
+**Key decisions:**
+- **`OAuthConnection.connect()` subclass over a background refresh thread** — `psycopg_pool` calls this every time it opens or replaces a physical connection. Each new connection gets a fresh just-in-time token. No shared `_current_token` variable, no race conditions, no thread to supervise.
+- **`max_lifetime=2700` (45 minutes)** — defensive recycle 15 minutes before the 1-hour Lakebase token expires. This is the value `databricks-ai-bridge` uses. The official tutorial leaves it unset; setting it ensures pool churn never trips over an expired credential.
+- **Lakebase-scoped credential** — `w.postgres.generate_database_credential(endpoint=...)` returns a token that works as the Postgres password. Do not substitute `w.config.token` or `w.config.oauth_token().access_token` — workspace-scoped tokens fail at Postgres login.
+- **`PGHOST` / `PGDATABASE` / `PGUSER` from env** — Databricks Apps auto-inject these for the first Lakebase resource. `PGUSER` is typically the app service principal client ID.
+- **`ENDPOINT_NAME` added manually** — Apps do not auto-inject the full endpoint path that `generate_database_credential` needs. Set it as a static env var in `app.yaml`.
+
+## More Patterns
+
+### FastAPI lifespan with explicit pool open/close
+
+> "Use the OAuthConnection pool inside a FastAPI app. Open the pool in the lifespan handler and close it on shutdown."
+
+```python
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+
+pool = ConnectionPool(
+    conninfo=(
+        f"dbname={os.environ['PGDATABASE']} "
+        f"user={os.environ['PGUSER']} "
+        f"host={os.environ['PGHOST']} "
+        f"sslmode=require"
+    ),
+    connection_class=OAuthConnection,
+    min_size=1,
+    max_size=10,
+    max_lifetime=2700,
+    open=False,  # do not open implicitly
+)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    pool.open(wait=True, timeout=30.0)
+    yield
+    pool.close()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/orders/\{order_id\}")
+def get_order(order_id: int):
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT * FROM orders WHERE id = %s", (order_id,))
+        return cur.fetchone()
+```
+
+`open=False` avoids implicit pool initialization at import time. `pool.open(wait=True, timeout=30.0)` blocks until `min_size` connections are ready, surfacing auth or DNS failures immediately at startup rather than on first request.
+
+### SQLAlchemy with `do_connect` hook
+
+> "Wire up SQLAlchemy async engine for Lakebase Autoscaling. Inject the OAuth token via the official `do_connect` hook and rely on `pool_recycle` instead of a background refresh task."
+
+```python
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import create_async_engine
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+endpoint_name = "projects/my-app/branches/production/endpoints/ep-primary"
+host = w.postgres.get_endpoint(name=endpoint_name).status.hosts.host
+user = w.current_user.me().user_name
+
+engine = create_async_engine(
+    f"postgresql+psycopg://{user}@{host}:5432/databricks_postgres",
+    connect_args={"sslmode": "require"},
+    pool_recycle=2700,
+)
+
+@event.listens_for(engine.sync_engine, "do_connect")
+def inject_lakebase_token(dialect, conn_rec, cargs, cparams):
+    cred = w.postgres.generate_database_credential(endpoint=endpoint_name)
+    cparams["password"] = cred.token
+```
+
+`do_connect` is the Databricks-recommended SQLAlchemy auth hook — it fires every time SQLAlchemy opens a new DBAPI connection, so each new connection gets a fresh token. `pool_recycle=2700` approximates the psycopg-pool `max_lifetime` pattern. If you need deterministic refresh, schedule `engine.dispose()` rather than maintaining a background refresh task that can race with `do_connect`.
+
+### Notebook one-shot connection
+
+> "From a notebook, connect to Lakebase Autoscaling for an ad-hoc query session under an hour."
+
+```python
+import psycopg
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+endpoint_name = "projects/my-app/branches/production/endpoints/ep-primary"
+
+ep = w.postgres.get_endpoint(name=endpoint_name)
+cred = w.postgres.generate_database_credential(endpoint=endpoint_name)
+
+conn = psycopg.connect(
+    host=ep.status.hosts.host,
+    dbname="databricks_postgres",
+    user=w.current_user.me().user_name,
+    password=cred.token,
+    sslmode="require",
+)
+```
+
+Direct `psycopg.connect` is fine for notebooks and one-shot scripts under one hour. Past that, the token expires and the next `psycopg.connect()` call fails at login. Use `w.current_user.me().user_name` for the user in notebooks; in Databricks Apps use the auto-injected `PGUSER`.
+
+### macOS DNS workaround
+
+> "Lakebase hostnames are failing to resolve on my Mac. Add the `hostaddr` workaround to the connection params."
+
+```python
+import subprocess
+
+def resolve(hostname: str) -> str:
+    out = subprocess.run(
+        ["dig", "+short", hostname], capture_output=True, text=True, timeout=5
+    )
+    for ip in out.stdout.strip().split("\n"):
+        if ip and not ip.startswith(";"):
+            return ip
+    raise RuntimeError(f"could not resolve {hostname}")
+
+conn = psycopg.connect(
+    host=host,                  # keep for TLS SNI + cert validation
+    hostaddr=resolve(host),     # actual TCP target
+    dbname="databricks_postgres",
+    user=user,
+    password=cred.token,
+    sslmode="require",
+)
+```
+
+Some macOS resolver configurations truncate long Lakebase hostnames. Resolving externally with `dig` and passing `hostaddr` alongside `host` bypasses the resolver while preserving TLS certificate validation. psycopg3 supports `hostaddr` natively.
+
+## Watch Out For
+
+- **Workspace-scoped tokens fail at Postgres login** — `w.config.token` and `w.config.oauth_token().access_token` are workspace-scoped and not valid as a Postgres password. Always use `w.postgres.generate_database_credential(endpoint=...)` for the Lakebase-scoped token.
+- **`ENDPOINT_NAME` is not auto-injected by Databricks Apps** — only `PGHOST`, `PGUSER`, `PGDATABASE`, `PGPORT`, `PGSSLMODE`, `PGAPPNAME` are auto-set, and only for the first Lakebase resource. Add `ENDPOINT_NAME` manually in `app.yaml` with the full `projects/.../branches/.../endpoints/...` path.
+- **Background refresh threads + `do_connect` race** — running a background token-cache loop alongside the SQLAlchemy `do_connect` hook creates stale-token races where the cached token is used after expiry. Pick one: `do_connect` mints fresh tokens per checkout, or a scheduled `engine.dispose()` forces re-opens. Do not layer both.
+- **Idle and lifetime caps** — Lakebase enforces a 24-hour idle timeout and 3-day maximum connection lifetime. After scale-to-zero reactivation, sessions reset: temp tables, prepared statements, and session settings are gone. Always use retry/backoff on the first query after suspension.

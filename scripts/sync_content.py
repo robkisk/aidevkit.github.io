@@ -57,7 +57,7 @@ SKILL_MAP: dict[str, tuple[str, str]] = {
     "databricks-synthetic-data-gen":            ("ai-ml", "synthetic-data"),
     "databricks-unstructured-pdf-generation": ("ai-ml", "unstructured-pdf-generation"),
     # Apps & Databases
-    "databricks-app-python":           ("apps-databases", "databricks-apps-python"),
+    "databricks-apps-python":          ("apps-databases", "databricks-apps-python"),
     "databricks-lakebase-autoscale":   ("apps-databases", "lakebase-autoscale"),
     "databricks-lakebase-provisioned": ("apps-databases", "lakebase-provisioned"),
     # Governance & Catalog

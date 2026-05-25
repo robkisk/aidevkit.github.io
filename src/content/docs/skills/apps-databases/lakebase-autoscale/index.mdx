@@ -125,52 +125,43 @@ w.postgres.update_endpoint(
 
 Every update requires an explicit `update_mask` listing the fields being changed. Miss the mask and the API rejects the call. The max-minus-min range cannot exceed 8 CU -- so `2-8` is valid but `0.5-32` is not. Each CU provides approximately 2 GB of RAM.
 
-### SQLAlchemy with token refresh for production apps
+### Canonical production pool: psycopg pool + OAuthConnection
 
-> "Wire up SQLAlchemy async engine with automatic OAuth token refresh for my FastAPI backend."
+> "Set up a production-grade Lakebase connection pool for my FastAPI backend. Use the canonical pattern with no background token-refresh thread."
 
 ```python
-import asyncio
-from sqlalchemy import event
-from sqlalchemy.ext.asyncio import create_async_engine
+import os
+import psycopg
+from psycopg_pool import ConnectionPool
 from databricks.sdk import WorkspaceClient
 
-_current_token = None
+w = WorkspaceClient()
 
-def _generate_token() -> str:
-    w = WorkspaceClient()
-    cred = w.postgres.generate_database_credential(
-        endpoint="projects/ecommerce-app/branches/production/endpoints/ep-primary"
-    )
-    return cred.token
+class OAuthConnection(psycopg.Connection):
+    @classmethod
+    def connect(cls, conninfo="", **kwargs):
+        cred = w.postgres.generate_database_credential(
+            endpoint=os.environ["ENDPOINT_NAME"]
+        )
+        kwargs["password"] = cred.token
+        return super().connect(conninfo, **kwargs)
 
-async def _refresh_loop():
-    global _current_token
-    while True:
-        await asyncio.sleep(50 * 60)  # refresh every 50 min (before 1-hour expiry)
-        _current_token = await asyncio.to_thread(_generate_token)
-
-def init_engine(host: str, user: str) -> "AsyncEngine":
-    global _current_token
-    _current_token = _generate_token()
-
-    engine = create_async_engine(
-        f"postgresql+psycopg://{user}@{host}:5432/databricks_postgres",
-        pool_size=5,
-        max_overflow=10,
-        pool_recycle=3600,
-        connect_args={"sslmode": "require"},
-    )
-
-    @event.listens_for(engine.sync_engine, "do_connect")
-    def inject_token(dialect, conn_rec, cargs, cparams):
-        cparams["password"] = _current_token
-
-    asyncio.create_task(_refresh_loop())
-    return engine
+pool = ConnectionPool(
+    conninfo=(
+        f"dbname={os.environ['PGDATABASE']} "
+        f"user={os.environ['PGUSER']} "
+        f"host={os.environ['PGHOST']} "
+        f"sslmode=require"
+    ),
+    connection_class=OAuthConnection,
+    min_size=1,
+    max_size=10,
+    max_lifetime=2700,
+    open=True,
+)
 ```
 
-The `do_connect` event injects the latest token into every new connection. The background task refreshes at 50 minutes -- 10 minutes before the 1-hour expiry -- so active connections never hit an expired password mid-query.
+This is the official Databricks pattern (also used by `databricks-ai-bridge`) and replaces older SQLAlchemy + background asyncio refresh recipes. `psycopg_pool` calls `OAuthConnection.connect()` every time it opens a physical connection, so every new connection gets a fresh just-in-time Lakebase token. `max_lifetime=2700` recycles connections defensively 15 minutes before the 1-hour token expires. No `asyncio.Task`, no shared mutable token cache, no stale-token races. See [Connect apps to Lakebase Autoscaling](/skills/apps-databases/lakebase-autoscale/connections/) for the FastAPI lifespan pattern, the SQLAlchemy `do_connect` alternative, and the macOS DNS workaround.
 
 ## Watch Out For
 - **DNS resolution on macOS** — macOS can fail to resolve Lakebase hostnames in some network configurations. Use `dig` to resolve the host manually and pass `hostaddr` alongside `host` in your psycopg connection string.
