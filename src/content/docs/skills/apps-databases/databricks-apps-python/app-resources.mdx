@@ -6,7 +6,7 @@ sidebar:
   order: 2
 ---
 
-**Skill:** `databricks-app-python`
+**Skill:** `databricks-apps-python`
 
 ## What You Can Build
 
@@ -94,6 +94,28 @@ for cluster in w.clusters.list():
 ```
 
 `WorkspaceClient()` picks up the same service principal credentials that `Config()` detects. Use it for any Databricks API call -- jobs, clusters, Unity Catalog, MLflow.
+
+### Picking a resource type for your binding
+
+> "Which resource types can I declare in app.yaml and what permissions do they need?"
+
+```yaml
+# Common resource types and their default valueFrom keys:
+#
+#   sql-warehouse         -> Can use, Can manage           (Delta queries)
+#   database              -> Can connect and create        (Lakebase)
+#   serving-endpoint      -> Can view, Can query, Can manage (ML inference)
+#   secret                -> Can read, Can write, Can manage (API keys, tokens)
+#   volume                -> Can read, Can read and write  (UC volume files)
+#   vector-search-index   -> Can select                    (semantic search)
+#   genie-space           -> Can view, Can run, Can edit   (NL analytics)
+#   connection            -> Use Connection                (UC external sources)
+#   function              -> Can execute                   (UC SQL/Python UDFs)
+#   experiment            -> Can read, Can edit            (MLflow runs)
+#   job                   -> Can view, Can manage run      (Lakeflow pipelines)
+```
+
+Pick the narrowest permission that lets the app do its job — `CAN USE` over `CAN MANAGE` for a SQL warehouse, `Can read` over `Can read and write` for a volume. The Apps UI surfaces these permission levels when you add the resource; matching them to the actual access pattern limits blast radius if the app ever leaks credentials.
 
 ### Choosing a communication strategy
 

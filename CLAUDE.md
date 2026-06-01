@@ -60,7 +60,7 @@ gh run list --limit 1 --repo robkisk/aidevkit.github.io
 **Source:** Skill definitions live in `/Users/robby.kiskanyan/dev/aitools/gold-ctx/ai-dev-kit/databricks-skills/`. Each skill directory has a `SKILL.md` and optional companion `.md` files (become child pages). MCP tools live in `databricks-mcp-server/databricks_mcp_server/tools/`.
 
 **sync_content.py** reads the source repo and generates `.mdx` pages. Key config sections:
-- `SKILL_MAP` (~line 40) — maps source skill names to `(category-slug, site-slug)` pairs
+- `SKILL_MAP` (~line 40) — maps source skill names to `(category-slug, site-slug)` pairs. **The key must exactly match the source directory name under `databricks-skills/`** — a typo (singular vs plural, missing prefix) silently produces an "unmapped skills" warning even when the site directory already exists.
 - `SINGLE_PAGE_SKILLS` — skills rendered as a single `.mdx` vs directory with children
 - `MCP_FILE_TO_PAGE` — maps MCP tool source files to site page slugs
 - `MCP_PAGE_INTROS` — intro overview + example prompts for each MCP reference page
@@ -79,6 +79,8 @@ gh run list --limit 1 --repo robkisk/aidevkit.github.io
 - `escape_mdx_angles()` — skill page bodies (tracks code fences)
 - `escape_mdx_inline()` — MCP tool descriptions and reference table cells
 - Both escape `<` → `&lt;`, `>` → `&gt;`, `{` → `\{`, `}` → `\}` outside backticks
+
+**New skeleton pages are not editable drafts.** When sync creates a page from a source `.md` file (e.g., `connections.md` → `connections.mdx`), the MDX escaping strips structure — inline code lands on its own lines with no prose. Curate by rewriting from the original source `.md`, not by editing the skeleton.
 
 ## Editorial Format: Guided Journey
 
@@ -147,6 +149,8 @@ scripts/sync_content.py     # Content pipeline script
 Category index pages (`src/content/docs/skills/*/index.mdx`) use `sidebar: hidden: true` — they serve as landing pages from the homepage, not sidebar navigation items.
 
 Custom components: `Hero.astro` overrides Starlight default. Brand styling in `src/styles/databricks.css` (DM Sans font, Databricks color palette).
+
+**AppKit pages are manually maintained.** `src/content/docs/skills/apps-databases/databricks-apps-appkit/` has no source skill in `databricks-skills/` — these pages are hand-curated and live outside the sync pipeline. Don't try to add them to `SKILL_MAP`.
 
 ## Deployment
 
