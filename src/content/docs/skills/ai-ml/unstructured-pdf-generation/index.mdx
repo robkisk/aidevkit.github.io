@@ -1,7 +1,7 @@
 ---
 curated: true
 title: Unstructured PDF Generation
-description: Generate synthetic PDF documents with companion Q&A pairs for RAG evaluation and Knowledge Assistant demos on Databricks.
+description: Generate styled PDF documents from agent-written HTML and land them in Unity Catalog Volumes — one call per document, parallel calls for batches.
 sidebar:
   label: Unstructured PDF Generation
   order: 0
@@ -11,125 +11,94 @@ sidebar:
 
 ## What You Can Build
 
-You can generate batches of realistic PDF documents — HR policies, technical docs, financial reports, training materials — and upload them directly to Unity Catalog Volumes with companion JSON files containing question/guideline pairs for RAG evaluation. Your AI coding assistant picks the right MCP tool, configures the domain and size, and produces documents ready to feed into Knowledge Assistants or Vector Search indexes.
+You can fill a Unity Catalog Volume with realistic synthetic PDFs — HR policies, technical references, financial reports — ready to feed retrieval demos, document-parsing tests, or any pipeline that needs unstructured data. The division of labor is simple: your AI coding assistant writes the complete, styled HTML for every document, and the `generate_and_upload_pdf` MCP tool converts that HTML to PDF and uploads it. Content quality is a prompting problem, not a configuration problem — there are no templates or size knobs to fight.
 
 ## In Action
 
-> "Generate 15 technical documentation PDFs for a cloud analytics platform and upload them to my Volume for RAG testing."
-
-```python
-# Batch generation — LLM creates diverse document specs, then generates in parallel
-generate_and_upload_pdfs(
-    catalog="ai_dev_kit",
-    schema="tech_docs",
-    description="""Technical documentation for a SaaS analytics platform including:
-    - Installation and setup guides
-    - REST API references with authentication
-    - Troubleshooting procedures for common errors
-    - Security best practices and compliance
-    - Integration tutorials for third-party tools""",
-    count=15,
-    folder="product_docs",
-    doc_size="MEDIUM",
-    overwrite_folder=True
-)
-
-# Output: /Volumes/ai_dev_kit/tech_docs/raw_data/product_docs/
-#   doc_001.pdf + doc_001.json
-#   doc_002.pdf + doc_002.json
-#   ... (15 pairs)
-```
-
-**Key decisions:**
-- **Batch with `generate_and_upload_pdfs`** — a two-step LLM process: first generates diverse document specifications from your description, then produces PDFs in parallel. Use this when you need variety across a corpus.
-- **`doc_size="MEDIUM"` (~4-6 pages)** — good balance for RAG testing. `SMALL` (~1 page) is fast for demos, `LARGE` (~10+ pages) is thorough for retrieval evaluation.
-- **`overwrite_folder=True`** — cleans the target folder before writing. Always use this when regenerating to avoid stale files mixing with fresh ones.
-- **Companion JSON files** — each PDF gets a JSON sidecar with `title`, `question`, `guideline`, and `pdf_path`. These power automated RAG evaluation: query with the question, score against the guideline.
-- **Detailed descriptions produce better content** — "HR policy documents" is too vague. Listing specific document types and topics gives the LLM enough context to generate diverse, realistic content.
-
-## More Patterns
-
-### Single PDF with precise control
-> "Generate one API authentication guide with a specific evaluation question."
+> "Generate a Q1 2024 quarterly report PDF with an executive summary and upload it to the finance.reports volume."
 
 ```python
 generate_and_upload_pdf(
-    title="API Authentication Guide",
-    description="""Complete guide to REST API authentication for a cloud platform.
-    Covers OAuth 2.0 flows (authorization code, client credentials),
-    API key management with rotation policies,
-    and JWT token validation with custom claims.""",
-    question="What authentication methods does the API support?",
-    guideline="Answer should mention OAuth 2.0, API keys, and JWT tokens with specific use cases for each",
-    catalog="ai_dev_kit",
-    schema="auth_docs",
-    doc_size="LARGE"
+    html_content='''<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        h1 { color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 10px; }
+        .section { margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #dadce0; padding: 12px; text-align: left; }
+        th { background: #f1f3f4; }
+    </style>
+</head>
+<body>
+    <h1>Quarterly Report Q1 2024</h1>
+    <div class="section">
+        <h2>Executive Summary</h2>
+        <p>Revenue increased 15% year-over-year, driven by enterprise expansion...</p>
+    </div>
+    <div class="section">
+        <h2>Key Metrics</h2>
+        <table>
+            <tr><th>Metric</th><th>Q1 2024</th><th>YoY</th></tr>
+            <tr><td>Revenue</td><td>$2.4M</td><td>+15%</td></tr>
+            <tr><td>Net retention</td><td>118%</td><td>+4 pts</td></tr>
+        </table>
+    </div>
+</body>
+</html>''',
+    filename="q1_report.pdf",
+    catalog="finance",
+    schema="reports"
 )
+# Returns: {"success": true, "volume_path": "/Volumes/finance/reports/raw_data/q1_report.pdf", "error": null}
 ```
 
-Use `generate_and_upload_pdf` (singular) when you need exact control over one document's title, content scope, and evaluation criteria. The `question` and `guideline` fields go into the companion JSON for downstream RAG scoring.
+**Key decisions:**
+- **The agent authors the HTML, the tool only converts and uploads** — document length, structure, and realism come from what you ask for, not from tool parameters. Want a ten-page report with tables? Ask for one.
+- **Complete HTML5 documents only** — `<!DOCTYPE html>`, a `<head>` with inline `<style>`, and a `<body>`. Fragments render unpredictably.
+- **`volume` defaults to `raw_data`** — the required arguments are `html_content`, `filename`, `catalog`, and `schema`. Pass `volume` only when your Volume has a different name.
+- **`folder` organizes the corpus** — an optional subfolder inside the Volume. Use it from the first call so multi-domain corpora stay scoped (`folder="quarterly"`, `folder="hr"`).
+- **Check `success` on the return** — every call returns `success`, `volume_path`, and `error`. The `volume_path` is the exact `/Volumes/...` path downstream tools ingest from.
 
-### HR policy corpus for Knowledge Assistant
-> "Build a complete HR document library for a Knowledge Assistant demo."
+## More Patterns
+
+### Build a corpus with parallel calls
+
+> "Create five HR policy PDFs — employee handbook, leave policy, code of conduct, benefits guide, and remote work policy — in hr_catalog.policies under a 2024 folder."
 
 ```python
-generate_and_upload_pdfs(
-    catalog="ai_dev_kit",
-    schema="hr_demo",
-    description="""HR policy documents for a technology company including:
-    - Employee handbook with remote work and hybrid policies
-    - PTO, sick leave, and parental leave policies with accrual details
-    - Performance review procedures (quarterly check-ins, annual reviews)
-    - Benefits guide covering health, dental, vision, and 401k
-    - Workplace conduct and anti-harassment guidelines
-    - Onboarding checklist for new hires""",
-    count=15,
-    folder="hr_policies",
-    overwrite_folder=True
-)
-
-# Feed directly into a Knowledge Assistant
-manage_ka(
-    action="create_or_update",
-    name="HR Policy Bot",
-    volume_path="/Volumes/ai_dev_kit/hr_demo/raw_data/hr_policies",
-    add_examples_from_volume=True  # auto-loads Q&A from JSON sidecars
-)
+# All five calls fire simultaneously — not one after another
+generate_and_upload_pdf(html_content=employee_handbook_html,
+    filename="employee_handbook.pdf", catalog="hr_catalog", schema="policies", folder="2024")
+generate_and_upload_pdf(html_content=leave_policy_html,
+    filename="leave_policy.pdf", catalog="hr_catalog", schema="policies", folder="2024")
+generate_and_upload_pdf(html_content=code_of_conduct_html,
+    filename="code_of_conduct.pdf", catalog="hr_catalog", schema="policies", folder="2024")
+generate_and_upload_pdf(html_content=benefits_guide_html,
+    filename="benefits_guide.pdf", catalog="hr_catalog", schema="policies", folder="2024")
+generate_and_upload_pdf(html_content=remote_work_html,
+    filename="remote_work_policy.pdf", catalog="hr_catalog", schema="policies", folder="2024")
 ```
 
-The companion JSON files double as Knowledge Assistant examples. With `add_examples_from_volume=True`, the KA automatically extracts question/guideline pairs and seeds them as example interactions once the endpoint is online.
+There is no batch tool — a corpus is the agent fanning out one `generate_and_upload_pdf` call per document, in parallel. The loop runs in four steps: plan the document set, author complete HTML for each, fire the calls simultaneously, then report the `volume_path` results and any errors. Each conversion and upload takes 2-5 seconds, so five sequential calls cost 15-25 seconds while five parallel calls finish in 3-5. The payoff of per-document calls: every PDF gets individually authored content instead of templated variations.
 
-### RAG evaluation pipeline
-> "Use the generated documents to test my retrieval pipeline end-to-end."
+### Stand up the target Volume first
 
-```python
-import json
-import glob
+> "Create the schema and volume for my synthetic documents before generating anything."
 
-# Load all companion JSON files
-volume_path = "/Volumes/ai_dev_kit/tech_docs/raw_data/product_docs"
-questions = []
-for json_file in glob.glob(f"{volume_path}/*.json"):
-    with open(json_file) as f:
-        questions.append(json.load(f))
-
-# Run retrieval evaluation
-for q in questions:
-    # Query your RAG system
-    response = rag_agent.invoke(q["question"])
-
-    # Evaluate using the guideline
-    score = evaluate_response(
-        response=response,
-        guideline=q["guideline"]
-    )
-    print(f"Q: {q['question'][:60]}... Score: {score}")
+```sql
+CREATE SCHEMA IF NOT EXISTS demo_catalog.synthetic_docs;
+CREATE VOLUME IF NOT EXISTS demo_catalog.synthetic_docs.raw_data;
+-- The identity running generation needs write access:
+GRANT WRITE VOLUME ON VOLUME demo_catalog.synthetic_docs.raw_data TO `data-engineers`;
 ```
 
-Each JSON sidecar contains a `question` the document can answer and a `guideline` describing what a correct answer looks like. This is the evaluation harness pattern: generate docs, index them, query with the questions, score against the guidelines.
+The tool uploads into existing infrastructure — it never creates the catalog, schema, or Volume for you, and it needs WRITE permission on the Volume. Run the DDL first (or point at infrastructure you already own) and generation works on the first try.
 
 ## Watch Out For
-- **Vague descriptions produce generic content** — "Generate some documents" yields bland output. List specific document types, topics, and domain details. The more context the LLM gets, the more diverse and realistic the corpus.
-- **Volume must exist before generation** — the tools upload to an existing Volume but do not create one. Run `CREATE VOLUME IF NOT EXISTS` first, or use the `databricks-unity-catalog` skill to set it up.
-- **Large batch timeouts** — generating 50+ documents or using `doc_size="LARGE"` can hit MCP tool timeouts. Split into batches of 10-15 documents, or use `SMALL`/`MEDIUM` sizes for faster generation.
-- **LLM endpoint auto-discovery** — the tools find `databricks-gpt-*` endpoints automatically. If none are available in your workspace, set `DATABRICKS_MODEL` and `DATABRICKS_MODEL_NANO` environment variables to point at your preferred endpoints.
+
+- **"Volume does not exist" on the first call** — the tool writes to a pre-existing Volume and defaults to one named `raw_data`. Create the Volume up front, or pass `volume="your_volume_name"` explicitly.
+- **The PDF is the only artifact** — each call writes exactly one file and returns its path. If you want manifests or metadata alongside the PDFs, that is a separate step with other tools, not something this tool produces.
+- **Print-hostile CSS silently degrades** — animations, transitions, hover effects, and form elements do nothing in a static PDF, and external resources like remote images are unsupported. Stick to supported CSS3 (flexbox, grid, CSS variables, styled tables) and embed images as base64 if a document needs them.
+- **Sequential generation is the slow path** — if a multi-document job feels slow, check whether the calls are running one at a time. Parallel calls are the intended batch pattern.

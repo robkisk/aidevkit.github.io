@@ -74,8 +74,8 @@ The endpoint needs 2-5 minutes to provision after creation. Don't send queries u
 > "I don't have real documents yet. Generate synthetic PDFs with companion evaluation data for testing my Knowledge Assistant."
 
 ```python
-# Step 1: Generate PDFs with the unstructured PDF generation skill
-# This creates PDFs in the volume plus JSON files with Q&A pairs
+# Step 1: Generate PDFs with the unstructured PDF generation skill,
+# having the agent write a companion JSON (question/guideline) per PDF
 
 # Step 2: Create the KA pointing to the generated documents
 manage_ka(
@@ -88,7 +88,7 @@ manage_ka(
 # Companion JSON files are auto-detected and added as example questions
 ```
 
-The `databricks-unstructured-pdf-generation` skill creates realistic PDFs along with JSON files containing question/guideline pairs. These JSON files are automatically picked up as examples when `add_examples_from_volume=true`.
+When generating documents with the `databricks-unstructured-pdf-generation` skill, have your agent also write a companion JSON file per PDF containing a `question`/`guideline` pair. Any such JSON files in the volume are automatically picked up as example questions when `add_examples_from_volume=true` (the default).
 
 ### Update Content After Document Changes
 

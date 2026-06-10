@@ -8,7 +8,7 @@ sidebar:
 ## Model Serving & GenAI Agents
 
 **Skills:** `databricks-model-serving`
-**MCP Tools:** `list_serving_endpoints`, `get_serving_endpoint_status`, `query_serving_endpoint`
+**MCP Tools:** `manage_serving_endpoint`
 
 ### Querying Endpoints
 
@@ -66,7 +66,7 @@ serving endpoint with auto-scaling from 0 to 4 instances.
 ## Vector Search & RAG
 
 **Skills:** `databricks-vector-search`
-**MCP Tools:** `create_or_update_vs_endpoint`, `get_vs_endpoint`, `delete_vs_endpoint`, `create_or_update_vs_index`, `get_vs_index`, `delete_vs_index`, `query_vs_index`, `manage_vs_data`
+**MCP Tools:** `manage_vs_endpoint`, `manage_vs_index`, `query_vs_index`, `manage_vs_data`
 
 ### Endpoints
 
@@ -141,7 +141,7 @@ Trigger a manual sync of my Delta Sync index to pick up new data.
 ## MLflow Evaluation & Scoring
 
 **Skills:** `databricks-mlflow-evaluation`
-**MCP Tools:** `execute_sql`, `query_serving_endpoint`
+**MCP Tools:** `execute_sql`, `manage_serving_endpoint`
 
 ```
 Write a custom MLflow scorer function that evaluates whether my agent's
@@ -192,7 +192,7 @@ Use MemAlign to align my evaluation judges with domain expert feedback — I hav
 ## Agent Bricks
 
 **Skills:** `databricks-agent-bricks`
-**MCP Tools:** `manage_ka`, `manage_mas`, `create_or_update_genie`
+**MCP Tools:** `manage_ka`, `manage_mas`, `manage_genie`
 
 ### Knowledge Assistants
 
@@ -231,7 +231,7 @@ interface.
 ## Synthetic Data Generation
 
 **Skills:** `databricks-synthetic-data-gen`
-**MCP Tools:** `execute_sql`, `execute_databricks_command`, `upload_to_volume`
+**MCP Tools:** `execute_sql`, `execute_code`, `manage_volume_files`
 
 ```
 Generate 1 million rows of realistic e-commerce transaction data with columns

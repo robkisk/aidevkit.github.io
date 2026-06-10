@@ -1,153 +1,152 @@
 ---
 title: Domain Patterns
-description: Write descriptions that produce high-quality, varied synthetic PDFs across HR, technical, financial, and training document domains.
+description: Domain-specific HTML and prompt patterns — technical docs, business reports, and HR policies that read and render like the real thing.
 curated: true
 sidebar:
-  order: 3
+  order: 2
 ---
 
 **Skill:** `databricks-unstructured-pdf-generation`
 
 ## What You Can Build
 
-The `description` parameter is the primary lever for content quality. A well-written description produces documents that are varied, realistic, and useful for testing retrieval — a weak one produces documents that are structurally identical and easy for any retriever to handle. This page covers what makes a strong description for each major domain and how to wire descriptions into repeatable generation patterns.
+A synthetic corpus only earns its keep if it resembles real documents — and real API references, financial reports, and HR policies don't look alike. Since your AI coding assistant writes the HTML for every document, each domain gets its own typography, layout, and content conventions: monospace technical references, serif finance reports with metric callouts, sans-serif policies with notice boxes. This page gives you a working pattern per domain plus the parallel fan-out for multi-domain corpora.
 
 ## In Action
 
-> "Generate 15 HR policy documents that cover distinct policy areas. I need realistic documents that vary in structure — some procedural, some reference material."
+> "Generate an API reference PDF for our payments service — endpoint listings, request headers, monospace styling — and upload it to docs_catalog.api_docs."
 
 ```python
-generate_and_upload_pdfs(
-    catalog="my_catalog",
-    schema="hr_docs",
-    description=(
-        "HR policy documents for a mid-sized technology company. Documents should cover "
-        "distinct policy areas including: PTO accrual and carryover rules, parental leave "
-        "eligibility, remote work requirements by role level, expense reimbursement limits "
-        "by category, code of conduct violations and escalation paths, performance "
-        "improvement plan procedures, and equipment return on offboarding. "
-        "Mix formats: some documents should be structured with numbered sections and "
-        "policy owner names, others should be prose-heavy reference material. "
-        "Include effective dates and version numbers."
-    ),
-    count=15,
-    doc_size="MEDIUM",
-    folder="hr_policies",
+generate_and_upload_pdf(
+    html_content='''<!DOCTYPE html>
+<html>
+<head><style>
+    body { font-family: monospace; margin: 40px; }
+    code { background: #f4f4f4; padding: 2px 6px; }
+    pre { background: #f4f4f4; padding: 15px; overflow-x: auto; }
+    .endpoint { background: #e3f2fd; padding: 10px; margin: 10px 0; }
+</style></head>
+<body>
+    <h1>Payments API Reference</h1>
+    <div class="endpoint">
+        <code>GET /api/v1/payments</code>
+        <p>Returns a paginated list of payment records.</p>
+    </div>
+    <div class="endpoint">
+        <code>POST /api/v1/payments/refunds</code>
+        <p>Creates a refund for a captured payment.</p>
+    </div>
+    <h2>Request Headers</h2>
+    <pre>Authorization: Bearer {token}
+Content-Type: application/json</pre>
+</body>
+</html>''',
+    filename="payments_api_reference.pdf",
+    catalog="docs_catalog",
+    schema="api_docs"
 )
 ```
 
 **Key decisions:**
-- **Name the policy areas explicitly** — listing 7 distinct topics for 15 documents forces variation. Without this, the model will generate slight variations of the same document.
-- **Specify structural variation** — "mix formats: some numbered, some prose" prevents all documents from having identical layout, which makes retrieval harder and more realistic.
-- **Include metadata fields** — effective dates and version numbers make the documents behave like real corporate policy files, which matters when testing metadata filtering.
+- **Monospace body font signals "technical"** — readers immediately parse it as engineering documentation, and inline code doesn't fight the body text.
+- **One `.endpoint` block per route** — each API operation becomes a distinct visual unit, which is also how real reference docs are structured.
+- **Concrete routes and headers** — `GET /api/v1/payments`, `Authorization: Bearer` — realistic specifics beat placeholder text when the corpus stands in for a customer's document estate.
 
 ## More Patterns
 
-### Technical Documentation
+### Business reports with metric callouts
 
-> "Generate 20 technical runbook PDFs for a cloud infrastructure team. I need realistic operational content with procedure steps and error handling sections."
-
-```python
-generate_and_upload_pdfs(
-    catalog="my_catalog",
-    schema="tech_docs",
-    description=(
-        "Technical runbooks and operational guides for a Kubernetes-based cloud platform team. "
-        "Topics should vary across: cluster scaling procedures, certificate rotation steps, "
-        "database failover runbooks, on-call incident triage guides, deployment rollback "
-        "procedures, load balancer configuration references, and monitoring alert definitions. "
-        "Documents should include numbered procedural steps, prerequisite sections, "
-        "expected output examples, and a 'common errors' section. "
-        "Reference specific tool names (kubectl, Helm, Terraform) where appropriate. "
-        "Some documents should be short quick-reference cards; others multi-section guides."
-    ),
-    count=20,
-    doc_size="MEDIUM",
-    folder="technical_docs",
-)
-```
-
-Technical documents benefit from naming real tools and including specific structural elements like prerequisite lists and expected outputs. These cues give the model enough context to generate content that tests multi-hop retrieval — questions like "what are the prerequisites for certificate rotation?" require the retriever to find the right section within the right document.
-
-### Financial Reports
-
-> "Create 10 financial report PDFs — quarterly earnings reports, budget variance analyses, and cost allocation summaries."
-
-```python
-generate_and_upload_pdfs(
-    catalog="my_catalog",
-    schema="finance_docs",
-    description=(
-        "Corporate financial documents for a B2B SaaS company. "
-        "Mix of document types: quarterly earnings reports with revenue by segment "
-        "(Enterprise, Mid-Market, SMB), cost variance analyses comparing actuals to budget "
-        "by department (R&D, Sales, G&A), and annual budget allocation summaries. "
-        "Include realistic financial figures in millions USD, YoY growth percentages, "
-        "and forward guidance statements. Documents should reference fiscal quarters "
-        "(Q1 FY2024, Q2 FY2024) and include CFO commentary sections. "
-        "Some reports should show positive variance, others should explain misses."
-    ),
-    count=10,
-    doc_size="LARGE",
-    folder="financial_reports",
-)
-```
-
-Financial documents work well at `LARGE` size because the realistic value is in multi-section content with numerical tables, commentary, and segment breakdowns. Use `LARGE` here — a short financial report is not a realistic test artifact.
-
-### Training Materials
-
-> "Generate training course materials and learning guides for an enterprise software product."
-
-```python
-generate_and_upload_pdfs(
-    catalog="my_catalog",
-    schema="training",
-    description=(
-        "Training materials and learning guides for a data platform product. "
-        "Document types should vary: quick-start guides for new users, "
-        "conceptual explainers on core platform features (catalogs, schemas, volumes, "
-        "compute types), hands-on lab instructions with step-by-step exercises, "
-        "certification exam study guides with practice questions, and FAQ documents "
-        "covering common beginner mistakes. "
-        "Use second-person voice ('you will configure...') for procedural docs "
-        "and third-person for conceptual material. "
-        "Include 'learning objectives' sections and 'key takeaways' at the end of each document."
-    ),
-    count=12,
-    doc_size="MEDIUM",
-    folder="training_materials",
-)
-```
-
-Training materials are ideal for RAG demos because the questions users ask map naturally to the document structure (learning objectives, FAQs, step-by-step instructions). Specifying voice — second-person for procedural, third-person for conceptual — produces documents that feel distinct rather than interchangeable.
-
-### Targeted Single Documents for Demo Scenarios
-
-> "I need one specific contract template and one product specification that I can reference by name in a demo."
+> "Create a Q1 2024 performance report with big revenue and growth callouts, styled like a finance document, in finance.reports under a quarterly folder."
 
 ```python
 generate_and_upload_pdf(
-    catalog="my_catalog",
-    schema="demo_docs",
-    title="Master Service Agreement Template v2.3",
-    description=(
-        "A software vendor Master Service Agreement covering SLA commitments (99.9% uptime), "
-        "data processing addendum requirements, limitation of liability clauses capped at "
-        "12 months of fees, termination for convenience with 30-day notice, and IP ownership. "
-        "Should read like a real legal document with numbered clauses and defined terms section."
-    ),
-    question="What is the uptime SLA commitment in the Master Service Agreement?",
-    guideline="Answer must state 99.9% uptime. Should mention how SLA credits are calculated.",
-    folder="legal_docs",
+    html_content='''<!DOCTYPE html>
+<html>
+<head><style>
+    body { font-family: Georgia, serif; margin: 50px; }
+    .metric { display: inline-block; text-align: center; margin: 20px; }
+    .metric-value { font-size: 2em; color: #1a73e8; }
+    .metric-label { color: #666; }
+</style></head>
+<body>
+    <h1>Q1 2024 Performance Report</h1>
+    <div class="metric">
+        <div class="metric-value">$2.4M</div>
+        <div class="metric-label">Revenue</div>
+    </div>
+    <div class="metric">
+        <div class="metric-value">+15%</div>
+        <div class="metric-label">Growth</div>
+    </div>
+</body>
+</html>''',
+    filename="q1_2024_report.pdf",
+    catalog="finance",
+    schema="reports",
+    folder="quarterly"
 )
 ```
 
-When a demo needs a specific document with a known title — one you'll reference by name in a walkthrough — use `generate_and_upload_pdf` (singular). You control the title, the question a user would ask, and what the correct answer looks like. Batch generation cannot guarantee a specific title will appear.
+Serif typography and metric callouts make the document read as finance, not engineering. The `folder="quarterly"` argument keeps report types separated inside the Volume, so downstream ingestion can scope to `/Volumes/finance/reports/raw_data/quarterly/` without filename gymnastics.
+
+### HR policies with notice boxes
+
+> "Write an employee leave policy PDF with numbered sections, an effective date, and a highlighted submission-deadline notice, in hr_catalog.policies."
+
+```python
+generate_and_upload_pdf(
+    html_content='''<!DOCTYPE html>
+<html>
+<head><style>
+    body { font-family: Arial; margin: 40px; line-height: 1.8; }
+    .policy-section { margin: 30px 0; }
+    .important { background: #fff3e0; padding: 15px; border-radius: 5px; }
+</style></head>
+<body>
+    <h1>Employee Leave Policy</h1>
+    <p><em>Effective: January 1, 2024</em></p>
+    <div class="policy-section">
+        <h2>1. Annual Leave</h2>
+        <p>All full-time employees are entitled to 20 days of paid annual leave per calendar year.</p>
+    </div>
+    <div class="important">
+        <strong>Note:</strong> Leave requests must be submitted at least 2 weeks in advance.
+    </div>
+</body>
+</html>''',
+    filename="leave_policy.pdf",
+    catalog="hr_catalog",
+    schema="policies"
+)
+```
+
+Policy documents trade on structure: numbered sections, an effective date, and an `.important` notice box. Generous `line-height` and plain sans-serif styling are exactly how real HR PDFs look — which matters when the corpus is standing in for a real document library in a demo.
+
+### Multi-domain corpus, one parallel fan-out
+
+> "Build a mixed demo corpus — two HR policies, two API docs, and two finance reports — each domain in its own folder under demo_catalog.synthetic."
+
+```python
+# Six parallel calls, three domain styles, one Volume
+generate_and_upload_pdf(html_content=handbook_html, filename="employee_handbook.pdf",
+    catalog="demo_catalog", schema="synthetic", folder="hr")
+generate_and_upload_pdf(html_content=conduct_html, filename="code_of_conduct.pdf",
+    catalog="demo_catalog", schema="synthetic", folder="hr")
+generate_and_upload_pdf(html_content=auth_api_html, filename="auth_api_reference.pdf",
+    catalog="demo_catalog", schema="synthetic", folder="technical")
+generate_and_upload_pdf(html_content=webhooks_html, filename="webhooks_guide.pdf",
+    catalog="demo_catalog", schema="synthetic", folder="technical")
+generate_and_upload_pdf(html_content=q1_report_html, filename="q1_earnings.pdf",
+    catalog="demo_catalog", schema="synthetic", folder="finance")
+generate_and_upload_pdf(html_content=budget_html, filename="budget_variance.pdf",
+    catalog="demo_catalog", schema="synthetic", folder="finance")
+```
+
+Batch generation is the agent making parallel `generate_and_upload_pdf` calls — there is no separate batch tool. Author all six HTML documents first, each in its domain style, then fire the calls simultaneously: at 2-5 seconds per document, the whole corpus lands in roughly the time of one. Folder-per-domain keeps ingestion pipelines cleanly scoped.
 
 ## Watch Out For
 
-- **Generic descriptions defeat the purpose** — "Generate HR policy documents" will produce documents that are almost identical in structure and topic. The retriever will get high scores not because it works well, but because all documents say roughly the same thing. Name specific subtopics.
-- **Skipping structural variation hints** — without telling the model to mix formats (procedural vs. reference, short vs. long), all documents will have the same layout. Structural variation is what makes chunking and retrieval genuinely challenging.
-- **Using `SMALL` size for financial or legal documents** — short financial reports and short contracts don't resemble real artifacts. Use `MEDIUM` or `LARGE` for domains where realistic length matters.
-- **Ignoring the `folder` parameter for multi-domain datasets** — if you generate HR docs, tech docs, and financial docs all into the same folder, ingestion pipelines lose the ability to scope by document type. Always use domain-specific folder names from the start.
+- **One stylesheet for every domain** — if HR policies, API docs, and finance reports all share the same CSS, the corpus looks machine-generated. Vary typography and layout per domain: monospace technical, serif finance, sans-serif HR.
+- **Placeholder content undermines the corpus** — "Lorem ipsum" and "policy text here" defeat the purpose. Ask for specifics: policy numbers, endpoint paths, dollar figures, effective dates.
+- **One giant document instead of a corpus** — retrieval demos need many distinct documents, not one 40-page PDF. One `generate_and_upload_pdf` call per document, fired in parallel.
+- **Mixed domains in one folder** — dumping everything into the Volume root means downstream pipelines can't scope by document type. Pass `folder=` from the first call; reorganizing a Volume afterward is manual cleanup.

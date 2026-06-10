@@ -156,5 +156,5 @@ Newly created bricks take 2-5 minutes to provision. Poll with `get` until `endpo
 ## Watch Out For
 - **Descriptions are routing contracts** — in a Supervisor Agent, vague descriptions like "handles questions" cause misrouting. Write each agent's description as a specific scope of responsibility.
 - **Endpoint provisioning delay** — new KA and MAS tiles take 2-5 minutes to go from `PROVISIONING` to `ONLINE`. Building a Supervisor before its child agents are online will fail at query time.
-- **No system table for Genie Spaces** — `system.ai.genie_spaces` does not exist. Use `find_genie_by_name` to look up a Genie space by name.
+- **No system table for Genie Spaces** — `system.ai.genie_spaces` does not exist. Use `manage_genie` with `action="list"` to find a Genie space by name.
 - **One source per agent entry** — each agent in the `agents` list takes exactly one of `ka_tile_id`, `genie_space_id`, `endpoint_name`, `uc_function_name`, or `connection_name`. Providing multiple causes a validation error.
