@@ -36,7 +36,9 @@ If the dry run shows **unmapped skills**, add entries to `SKILL_MAP` in `sync_co
 
 The `--force` flag is safe to use because `is_curated()` checks for `curated: true` in existing frontmatter and skips those pages. The sync also auto-clears all "New" sidebar badges before writing, so only genuinely new pages get the badge.
 
-`detect_drift.py` is informational — it flags skills where source git commit time is newer than the max mtime of any curated page in that directory. A flagged skill may not need re-curation if the source diff is agent-instruction-only (not user-facing). Read the source diff before re-curating.
+`detect_drift.py` is informational — it flags skills where source git commit time is newer than the max mtime of any curated page in that directory. A flagged skill may not need re-curation if the source diff is agent-instruction-only (not user-facing). Read the source diff before re-curating. After triaging a flagged skill as no-site-impact, `touch` its curated pages to acknowledge the flag — otherwise it reappears on every run.
+
+`detect_drift.py` also validates every MCP tool name across the whole site — backticked in prose, bare inside code fences — (including hand-maintained pages with no upstream source dir: `prompt-library/`, `guides/`, `mcp-tools/index.mdx`) against the current upstream tool surface. It parses every tool name that ever existed in upstream git history and flags site references to tools since removed or renamed — each flag includes the source file's current tools as replacement candidates. Upstream is canonical: a reference to a removed tool must be rewritten to the current tool or deleted, never kept.
 
 ### 2. Curate new pages
 
